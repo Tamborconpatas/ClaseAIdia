@@ -1,0 +1,11 @@
+transcriptor-env/
+__pycache__/
+*.pyc
+.git/
+.gitignore
+outputs/
+downloads/
+transcriptions_history.db
+transcriber_config.json
+.claude/
+CLAUDE.md

@@ -1,0 +1,32 @@
+# ==========================================
+# REQUIREMENTS PARA UNIVERSAL LOCAL TRANSCRIBER
+# ==========================================
+
+# 1. Interfaz de Usuario y Utilería
+gradio>=4.0.0
+
+# 2. Core AI (CPU por defecto — el hardware objetivo no tiene GPU)
+torch>=2.0.0
+torchaudio>=2.0.0
+
+# 3. Backend: Faster-Whisper (motor por defecto — CPU y GPU NVIDIA)
+# CTranslate2, modelos livianos cuantizados (tiny/base/small), corre bien en CPU.
+faster-whisper>=1.0.0
+ctranslate2>=4.0.0
+
+# 3b. Backend alternativo: Transformers (SOLO se usa si se detecta una GPU
+# AMD/ROCm — CTranslate2 no soporta ROCm, así que ahí se usa PyTorch en su
+# lugar). Opcional: si no está instalado, una GPU AMD simplemente cae a
+# faster-whisper en CPU en vez de acelerar por GPU.
+transformers>=4.35.0
+safetensors>=0.4.0
+
+# 4. Audios y Preprocesamiento
+librosa>=0.10.0
+soundfile>=0.12.1
+yt-dlp>=2023.10.13
+
+# 5. Limpieza de Audio (Pipeline de Pre-procesamiento)
+noisereduce          # Reducción de ruido DSP (Wiener filter), modo rápido
+deepfilternet  # IA local para reducción de ruido, compatible con Python 3.12
+scipy                # Filtros digitales (highpass, lowpass)

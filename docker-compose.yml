@@ -1,0 +1,53 @@
+services:
+  app:
+    build: .
+    ports:
+      - "7862:7862"
+    environment:
+      - SERVER_NAME=0.0.0.0
+      - SERVER_PORT=7862
+      - OLLAMA_URL=http://ollama-lb:11434
+    volumes:
+      - ./outputs:/app/outputs
+      - ./downloads:/app/downloads
+      - ./transcriptions_history.db:/app/transcriptions_history.db
+      - ./transcriber_config.json:/app/transcriber_config.json
+    depends_on:
+      - ollama-lb
+    restart: unless-stopped
+
+  # Cluster local (misma máquina, no distribuido). Ajusta réplicas
+  # agregando/quitando bloques ollama-N + la línea en nginx-ollama.conf,
+  # según la RAM disponible.
+  ollama-1:
+    image: ollama/ollama:latest
+    volumes:
+      - ollama_data_1:/root/.ollama
+    environment:
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-llama3}
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["ollama serve & sleep 3 && ollama pull \"$$OLLAMA_MODEL\"; wait"]
+    restart: unless-stopped
+
+  ollama-2:
+    image: ollama/ollama:latest
+    volumes:
+      - ollama_data_2:/root/.ollama
+    environment:
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-llama3}
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["ollama serve & sleep 3 && ollama pull \"$$OLLAMA_MODEL\"; wait"]
+    restart: unless-stopped
+
+  ollama-lb:
+    image: nginx:alpine
+    volumes:
+      - ./nginx-ollama.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - ollama-1
+      - ollama-2
+    restart: unless-stopped
+
+volumes:
+  ollama_data_1:
+  ollama_data_2:
