@@ -4,6 +4,7 @@ import enum
 from sqlalchemy import (
     Boolean,
     Date,
+    DateTime,
     Enum,
     ForeignKey,
     Integer,
@@ -49,6 +50,8 @@ class Usuario(Base):
     # de hashing/login llega en la Fase 2 — por ahora quedan en None.
     password_hash: Mapped[str | None] = mapped_column(String, nullable=True)
     pin_hash: Mapped[str | None] = mapped_column(String, nullable=True)
+    intentos_fallidos: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    bloqueado_hasta: Mapped[datetime.datetime | None] = mapped_column(DateTime, nullable=True)
     colegio_id: Mapped[int] = mapped_column(ForeignKey("colegios.id"), nullable=False)
 
     colegio: Mapped["Colegio"] = relationship(back_populates="usuarios")

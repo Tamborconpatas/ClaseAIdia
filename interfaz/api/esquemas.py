@@ -34,7 +34,19 @@ class UsuarioBase(BaseModel):
 
 
 class UsuarioCrear(UsuarioBase):
-    pass
+    """Alta administrativa de staff (profesor/UTP) por un UTP ya autenticado.
+    El alumno se da de alta vía POST /cursos/unirse, no por acá."""
+
+    password: str
+
+    @field_validator("roles")
+    @classmethod
+    def _solo_roles_staff(cls, valor: list[RolNombre]) -> list[RolNombre]:
+        if not valor:
+            raise ValueError("Debe especificar al menos un rol (PROFESOR o UTP)")
+        if RolNombre.ALUMNO in valor:
+            raise ValueError("Los alumnos se registran vía /cursos/unirse, no por este endpoint")
+        return valor
 
 
 class UsuarioOut(BaseModel):
@@ -93,3 +105,48 @@ class BloqueOut(BloqueBase):
     model_config = ConfigDict(from_attributes=True)
     id: int
     curso_id: int
+
+
+class TokenOut(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    roles: list[RolNombre]
+    colegio_id: int
+
+
+class BootstrapUtpIn(BaseModel):
+    rut: str
+    nombre: str
+    password: str
+    colegio_id: int
+
+    @field_validator("rut")
+    @classmethod
+    def _validar_rut(cls, valor: str) -> str:
+        if not validar_rut(valor):
+            raise ValueError("RUT inválido (dígito verificador no corresponde)")
+        return valor
+
+
+class LoginStaffIn(BaseModel):
+    rut: str
+    password: str
+
+
+class LoginAlumnoIn(BaseModel):
+    rut: str
+    pin: str
+
+
+class UnirseCursoIn(BaseModel):
+    codigo_invitacion: str
+    rut: str
+    nombre: str
+    pin: str
+
+    @field_validator("rut")
+    @classmethod
+    def _validar_rut(cls, valor: str) -> str:
+        if not validar_rut(valor):
+            raise ValueError("RUT inválido (dígito verificador no corresponde)")
+        return valor

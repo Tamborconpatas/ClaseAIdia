@@ -66,7 +66,29 @@ def rut_valido():
 
 
 @pytest.fixture()
+def rut_utp():
+    """RUT distinto de rut_valido — evita choques cuando un test crea un
+    Usuario con rut_valido Y necesita un token UTP en la misma prueba."""
+    return "7654321-6"
+
+
+@pytest.fixture()
 def colegio_id(cliente):
     r = cliente.post("/colegios", json={"nombre": "Liceo de Prueba"})
     assert r.status_code == 201
     return r.json()["id"]
+
+
+@pytest.fixture()
+def token_utp(cliente, colegio_id, rut_utp):
+    r = cliente.post(
+        "/auth/bootstrap-utp",
+        json={"rut": rut_utp, "nombre": "UTP Test", "password": "clave-segura-123", "colegio_id": colegio_id},
+    )
+    assert r.status_code == 201
+    return r.json()["access_token"]
+
+
+@pytest.fixture()
+def headers_utp(token_utp):
+    return {"Authorization": f"Bearer {token_utp}"}

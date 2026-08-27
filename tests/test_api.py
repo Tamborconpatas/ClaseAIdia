@@ -25,20 +25,25 @@ def test_obtener_colegio_inexistente(cliente):
     assert r.status_code == 404
 
 
-def test_crear_curso_genera_codigo_invitacion(cliente, colegio_id):
+def test_crear_curso_sin_token_rechaza(cliente, colegio_id):
     r = cliente.post("/cursos", json={"nombre": "8A", "colegio_id": colegio_id})
+    assert r.status_code == 401
+
+
+def test_crear_curso_genera_codigo_invitacion(cliente, colegio_id, headers_utp):
+    r = cliente.post("/cursos", json={"nombre": "8A", "colegio_id": colegio_id}, headers=headers_utp)
     assert r.status_code == 201
     curso = r.json()
     assert len(curso["codigo_invitacion"]) == 6
 
 
-def test_crear_curso_con_colegio_inexistente_falla(cliente):
-    r = cliente.post("/cursos", json={"nombre": "8A", "colegio_id": 9999})
+def test_crear_curso_con_colegio_inexistente_falla(cliente, headers_utp):
+    r = cliente.post("/cursos", json={"nombre": "8A", "colegio_id": 9999}, headers=headers_utp)
     assert r.status_code == 409
 
 
-def test_crear_bloque_bajo_curso(cliente, colegio_id):
-    curso = cliente.post("/cursos", json={"nombre": "8A", "colegio_id": colegio_id}).json()
+def test_crear_bloque_bajo_curso(cliente, colegio_id, headers_utp):
+    curso = cliente.post("/cursos", json={"nombre": "8A", "colegio_id": colegio_id}, headers=headers_utp).json()
 
     r = cliente.post(
         f"/cursos/{curso['id']}/bloques",
@@ -49,6 +54,7 @@ def test_crear_bloque_bajo_curso(cliente, colegio_id):
             "hora_inicio": "08:00:00",
             "hora_fin": "08:45:00",
         },
+        headers=headers_utp,
     )
     assert r.status_code == 201
     bloque = r.json()
@@ -59,8 +65,8 @@ def test_crear_bloque_bajo_curso(cliente, colegio_id):
     assert len(r.json()) == 1
 
 
-def test_crear_bloque_con_profesor_inexistente_falla(cliente, colegio_id):
-    curso = cliente.post("/cursos", json={"nombre": "8A", "colegio_id": colegio_id}).json()
+def test_crear_bloque_con_profesor_inexistente_falla(cliente, colegio_id, headers_utp):
+    curso = cliente.post("/cursos", json={"nombre": "8A", "colegio_id": colegio_id}, headers=headers_utp).json()
 
     r = cliente.post(
         f"/cursos/{curso['id']}/bloques",
@@ -72,55 +78,112 @@ def test_crear_bloque_con_profesor_inexistente_falla(cliente, colegio_id):
             "hora_inicio": "08:00:00",
             "hora_fin": "08:45:00",
         },
+        headers=headers_utp,
     )
     assert r.status_code == 409
 
 
-def test_crear_bloque_dia_semana_invalido(cliente, colegio_id):
-    curso = cliente.post("/cursos", json={"nombre": "8A", "colegio_id": colegio_id}).json()
+def test_crear_bloque_dia_semana_invalido(cliente, colegio_id, headers_utp):
+    curso = cliente.post("/cursos", json={"nombre": "8A", "colegio_id": colegio_id}, headers=headers_utp).json()
 
     r = cliente.post(
         f"/cursos/{curso['id']}/bloques",
         json={"tipo": "RECREO", "dia_semana": 7, "hora_inicio": "10:00:00", "hora_fin": "10:15:00"},
+        headers=headers_utp,
     )
     assert r.status_code == 422
 
 
-def test_crear_usuario_con_roles(cliente, colegio_id, rut_valido):
+def test_crear_usuario_sin_token_rechaza(cliente, colegio_id, rut_valido):
     r = cliente.post(
         "/usuarios",
-        json={"rut": rut_valido, "nombre": "Profe Test", "colegio_id": colegio_id, "roles": ["PROFESOR"]},
+        json={"rut": rut_valido, "nombre": "Profe", "colegio_id": colegio_id, "roles": ["PROFESOR"], "password": "x"},
+    )
+    assert r.status_code == 401
+
+
+def test_crear_usuario_con_roles(cliente, colegio_id, rut_valido, headers_utp):
+    r = cliente.post(
+        "/usuarios",
+        json={
+            "rut": rut_valido,
+            "nombre": "Profe Test",
+            "colegio_id": colegio_id,
+            "roles": ["PROFESOR"],
+            "password": "clave-segura-123",
+        },
+        headers=headers_utp,
     )
     assert r.status_code == 201
     usuario = r.json()
     assert usuario["roles"] == ["PROFESOR"]
 
 
-def test_crear_usuario_rut_invalido_rechaza(cliente, colegio_id):
+def test_crear_usuario_rol_alumno_rechazado(cliente, colegio_id, rut_valido, headers_utp):
     r = cliente.post(
         "/usuarios",
-        json={"rut": "12345678-9", "nombre": "Malo", "colegio_id": colegio_id, "roles": []},
+        json={
+            "rut": rut_valido,
+            "nombre": "Alumno Colado",
+            "colegio_id": colegio_id,
+            "roles": ["ALUMNO"],
+            "password": "clave-segura-123",
+        },
+        headers=headers_utp,
     )
     assert r.status_code == 422
 
 
-def test_crear_usuario_rut_duplicado_falla(cliente, colegio_id, rut_valido):
-    datos = {"rut": rut_valido, "nombre": "Uno", "colegio_id": colegio_id, "roles": []}
-    assert cliente.post("/usuarios", json=datos).status_code == 201
+def test_crear_usuario_rut_invalido_rechaza(cliente, colegio_id, headers_utp):
+    r = cliente.post(
+        "/usuarios",
+        json={
+            "rut": "12345678-9",
+            "nombre": "Malo",
+            "colegio_id": colegio_id,
+            "roles": ["PROFESOR"],
+            "password": "clave-segura-123",
+        },
+        headers=headers_utp,
+    )
+    assert r.status_code == 422
+
+
+def test_crear_usuario_rut_duplicado_falla(cliente, colegio_id, rut_valido, headers_utp):
+    datos = {
+        "rut": rut_valido,
+        "nombre": "Uno",
+        "colegio_id": colegio_id,
+        "roles": ["PROFESOR"],
+        "password": "clave-segura-123",
+    }
+    assert cliente.post("/usuarios", json=datos, headers=headers_utp).status_code == 201
 
     datos["nombre"] = "Otro"
-    r = cliente.post("/usuarios", json=datos)
+    r = cliente.post("/usuarios", json=datos, headers=headers_utp)
     assert r.status_code == 409
 
 
-def test_crear_usuario_colegio_inexistente_falla(cliente, rut_valido):
+def test_crear_usuario_colegio_inexistente_falla(cliente, rut_valido, headers_utp):
     r = cliente.post(
         "/usuarios",
-        json={"rut": rut_valido, "nombre": "Sin Colegio", "colegio_id": 9999, "roles": []},
+        json={
+            "rut": rut_valido,
+            "nombre": "Sin Colegio",
+            "colegio_id": 9999,
+            "roles": ["PROFESOR"],
+            "password": "clave-segura-123",
+        },
+        headers=headers_utp,
     )
     assert r.status_code == 409
 
 
-def test_obtener_usuario_inexistente(cliente):
+def test_obtener_usuario_sin_token_rechaza(cliente):
     r = cliente.get("/usuarios/9999")
+    assert r.status_code == 401
+
+
+def test_obtener_usuario_inexistente(cliente, headers_utp):
+    r = cliente.get("/usuarios/9999", headers=headers_utp)
     assert r.status_code == 404

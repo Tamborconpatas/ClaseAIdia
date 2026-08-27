@@ -51,3 +51,8 @@ alembic==1.19.1
 
 # 7. Pruebas (QA) — ver QA.md para el registro de qué se prueba en cada fase.
 pytest==9.1.1
+
+# 8. Autenticación (Fase 2) — hash de contraseña/PIN (argon2) y sesión (JWT).
+pyjwt==2.13.0
+passlib==1.7.4
+argon2-cffi==25.1.0

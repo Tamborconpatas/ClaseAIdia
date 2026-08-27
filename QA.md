@@ -44,9 +44,23 @@ El audio descargado y la transcripción de prueba se borraron después de esta v
 **Migración Alembic** (validado a mano contra una copia descartable, no contra `escuela.db`): ciclo `upgrade head` → `downgrade base` → `upgrade head` limpio, sin errores — confirma que la migración inicial es reversible, no solo que "corrió una vez".
 
 **Fuera de alcance todavía** (no hay nada que probar aún — llega en fases futuras):
-- Autenticación y verificación de roles en el backend (Fase 2) — hoy cualquiera puede llamar cualquier endpoint.
 - Frontend (Fase 3), control de clase en vivo (Fase 4), cola EDF (Fase 5).
 - Integración real con el pipeline de Gradio: nada llena `ContenidoClase` con datos reales todavía — eso es la Fase 4.
+
+## Fase 2 — Autenticación y roles (2026-08-27)
+
+**Automatizado** (`tests/test_auth.py` + extensiones a `tests/test_api.py`, 15 tests nuevos, 43 en total):
+- Bootstrap del primer UTP de un colegio; un segundo intento sobre el mismo colegio falla (409).
+- Login staff: éxito, RUT inexistente, contraseña incorrecta, y bloqueo real tras 5 fallos seguidos (verificado que incluso la contraseña correcta es rechazada con 429 mientras dura el bloqueo).
+- `/cursos/unirse`: alta de alumno nuevo, unión a un segundo curso con el mismo PIN, rechazo (401) con PIN incorrecto sobre una cuenta ya existente, 404 con código de invitación inválido.
+- `requiere_rol`: un token de rol ALUMNO no puede crear un Curso (403); todos los endpoints de escritura (`POST /cursos`, `/cursos/{id}/bloques`, `/usuarios`) y `GET /usuarios`/`GET /usuarios/{id}` rechazan sin token (401).
+- `UsuarioCrear` rechaza el rol ALUMNO (422) — ese alta es exclusiva de `/cursos/unirse`.
+
+**Probado a mano contra `escuela.db` real** (no la base de pruebas en memoria): se creó un UTP real vía `/auth/bootstrap-utp` y un alumno real vía `/cursos/unirse`, y se inspeccionó la tabla `usuarios` directamente con `sqlite3` — confirmado que `password_hash`/`pin_hash` son hashes `argon2id` reales (`$argon2id$v=19$...`), nunca el valor plano, y que cada tipo de cuenta solo llena el campo que le corresponde (staff sin `pin_hash`, alumno sin `password_hash`).
+
+**Fuera de alcance todavía:**
+- Endpoints de lectura (`GET /colegios`, `/cursos`, `/cursos/{id}/bloques`) siguen sin autenticación — decisión consciente de esta fase, documentada en el plan; el enforcement fino de "cada quien ve solo lo suyo" llega con el frontend (Fase 3/4).
+- Recuperación de contraseña/PIN olvidado — no está en el alcance de `CLAUDE.md`.
 
 **Advertencias conocidas (no bloqueantes):**
 - `StarletteDeprecationWarning: Using httpx with starlette.testclient is deprecated; install httpx2 instead` — advertencia de una futura migración de Starlette, no afecta los resultados. Revisar cuando `httpx2` sea estable.
