@@ -4,7 +4,7 @@ import time
 from nucleo import subtitulos as srt_format
 from infraestructura import hardware
 from infraestructura.herramientas_ffmpeg import optimize_audio_ffmpeg
-from infraestructura.motor_whisper import WhisperEngine, WHISPER_MODELS
+from infraestructura.motor_whisper import WhisperEngine
 
 try:
     from infraestructura.mejorador_audio import AudioEnhancer
@@ -14,10 +14,9 @@ except ImportError:
     HAS_ENHANCER = False
 
 try:
-    from infraestructura.motor_transformers import TransformersEngine, TRANSFORMERS_WHISPER_MODELS, HAS_TRANSFORMERS
+    from infraestructura.motor_transformers import TransformersEngine, HAS_TRANSFORMERS
 except ImportError:
     TransformersEngine = None
-    TRANSFORMERS_WHISPER_MODELS = []
     HAS_TRANSFORMERS = False
 
 
@@ -67,9 +66,7 @@ class TranscriptionService:
     @property
     def available_models(self):
         """Catálogo de modelos del motor activo."""
-        if isinstance(self.engine, WhisperEngine):
-            return WHISPER_MODELS
-        return TRANSFORMERS_WHISPER_MODELS
+        return self.engine.available_models
 
     def load_model(self, model_id_or_path: str) -> str:
         return self.engine.load_model(model_id_or_path)

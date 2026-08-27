@@ -38,6 +38,10 @@ class TransformersEngine:
         self.current_backend = None
         self._last_load_args = None  # (model_id_or_path,)
 
+    @property
+    def available_models(self):
+        return TRANSFORMERS_WHISPER_MODELS
+
     def free_memory(self):
         if self.current_model is not None:
             del self.current_model

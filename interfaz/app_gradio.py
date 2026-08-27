@@ -827,7 +827,12 @@ def create_ui():
                         cfg_language = gr.Dropdown(choices=["es"], label="Idioma Predeterminado", value="es")
 
                         gr.Markdown("#### Post-Procesamiento (Ollama LLM)")
-                        cfg_ollama_model = gr.Textbox(label="Modelo Ollama a utilizar", value=app_config.get_param("ollama_model"), placeholder="Ej: llama3, mistral, qwen")
+                        cfg_ollama_model = gr.Textbox(
+                            label="Modelo Ollama a utilizar",
+                            value=app_config.get_param("ollama_model"),
+                            placeholder="auto",
+                            info="'auto' elige llama3.2:1b en CPU o llama3.2:3b si hay GPU disponible. También puedes poner un modelo explícito (ej. mistral, qwen)."
+                        )
                         cfg_ollama_tokens = gr.Slider(minimum=256, maximum=8192, step=128, label="Máx. Tokens Resumen", value=int(app_config.get_param("ollama_max_tokens")))
                         cfg_ollama_chunk_chars = gr.Slider(
                             minimum=2000, maximum=16000, step=500,

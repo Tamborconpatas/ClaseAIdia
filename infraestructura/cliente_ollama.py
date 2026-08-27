@@ -1,5 +1,10 @@
 import requests
 
+# Generar texto en CPU (hardware objetivo del proyecto, sin GPU) puede tardar
+# varios minutos para un modelo de 7-9B con num_predict alto — 180s se queda
+# corto en ese escenario real, así que el timeout queda generoso a propósito.
+_REQUEST_TIMEOUT_SECONDS = 600
+
 
 def generate(prompt: str, model: str, max_tokens: int, ollama_url: str = "http://localhost:11434") -> str:
     """Transporte puro hacia la API de Ollama: envía un prompt y devuelve el
@@ -15,11 +20,17 @@ def generate(prompt: str, model: str, max_tokens: int, ollama_url: str = "http:/
     }
 
     try:
-        response = requests.post(f"{ollama_url}/api/generate", json=payload, timeout=180)
+        response = requests.post(f"{ollama_url}/api/generate", json=payload, timeout=_REQUEST_TIMEOUT_SECONDS)
     except requests.exceptions.ConnectionError:
         raise RuntimeError(
             f"No se pudo conectar a Ollama. Asegúrate de tener Ollama corriendo localmente "
             f"('ollama serve') y el modelo '{model}' instalado ('ollama run {model}')."
+        )
+    except requests.exceptions.Timeout:
+        raise RuntimeError(
+            f"Ollama tardó más de {_REQUEST_TIMEOUT_SECONDS}s en responder — en CPU, modelos "
+            f"grandes o transcripciones largas pueden tardar bastante. Intenta con un modelo "
+            f"más chico (ej. 'llama3:8b' cuantizado) o reduce el tamaño de bloque en Configuración."
         )
     except Exception as e:
         raise RuntimeError(f"Excepción al contactar a Ollama: {str(e)}")

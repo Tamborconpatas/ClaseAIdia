@@ -19,12 +19,24 @@ if torch.cuda.is_available():
     torch.backends.cudnn.benchmark = False
 
 
-# Solo modelos livianos — el hardware objetivo no tiene GPU, nunca "medium"/"large".
+# Catálogo CPU (o GPU NVIDIA con < 4GB VRAM): modelos livianos.
 WHISPER_MODELS = [
     "Systran/faster-whisper-tiny ➔ [Más liviano y rápido • menor precisión — para pruebas rápidas en CPU]",
     "Systran/faster-whisper-base ➔ [Balance rapidez/precisión en CPU modesta]",
     "Systran/faster-whisper-small ➔ [Recomendado • mejor precisión en español, aún viable en CPU]",
 ]
+
+# Catálogo GPU NVIDIA con >= 4GB VRAM: modelos más grandes y precisos.
+GPU_WHISPER_MODELS = [
+    "Systran/faster-whisper-medium ➔ [Buen punto medio • cómodo desde 4GB VRAM]",
+    "Systran/faster-whisper-large-v3-turbo ➔ [Recomendado • rápido y preciso, ~6GB VRAM]",
+    "Systran/faster-whisper-large-v3 ➔ [Máxima precisión • ideal con 8GB+ VRAM]",
+]
+
+# 3.5 en vez de 4.0: el driver/SO se queda con algo de VRAM (en una GPU de
+# notebook "4GB" real medimos ~3.68GB usables vía CUDA), así que un umbral
+# estricto de 4.0 excluiría justo a las tarjetas "clase 4GB" que se busca cubrir.
+MIN_GPU_TIER_VRAM_GB = 3.5
 
 
 def get_device():
@@ -32,6 +44,13 @@ def get_device():
     (el motor de faster-whisper) no soporta AMD/ROCm, así que una GPU AMD
     también cae a CPU aquí — su fallback real vive en motor_transformers.py."""
     return "cuda" if hardware.detect_gpu_vendor() == "nvidia" else "cpu"
+
+
+def get_vram_gb() -> float:
+    """VRAM total de la GPU CUDA actual en GB, o 0 si no hay GPU."""
+    if not torch.cuda.is_available():
+        return 0.0
+    return torch.cuda.get_device_properties(0).total_memory / (1024**3)
 
 
 class WhisperEngine:
@@ -44,6 +63,14 @@ class WhisperEngine:
         self.current_model = None
         self.current_backend = None
         self._last_load_args = None  # (model_id_or_path,)
+
+    @property
+    def available_models(self):
+        """Catálogo GPU (modelos grandes) si hay NVIDIA con >= 4GB VRAM;
+        catálogo liviano (CPU, o GPU con menos VRAM) en cualquier otro caso."""
+        if self.device == "cuda" and get_vram_gb() >= MIN_GPU_TIER_VRAM_GB:
+            return GPU_WHISPER_MODELS
+        return WHISPER_MODELS
 
     def free_memory(self):
         """Libera la memoria del modelo actual antes de cargar otro."""
@@ -72,8 +99,7 @@ class WhisperEngine:
             fw_compute_type = app_config.get_param("compute_type")
             if fw_compute_type == "default":
                 if self.device == "cuda":
-                    vram_gb = torch.cuda.get_device_properties(0).total_memory / (1024**3)
-                    fw_compute_type = "int8" if vram_gb < 5.0 else "int8_float16"
+                    fw_compute_type = "int8" if get_vram_gb() < 5.0 else "int8_float16"
                 else:
                     fw_compute_type = "int8"
 
@@ -122,10 +148,7 @@ class WhisperEngine:
         kwargs = {"audio": audio_path, "vad_filter": vad_filter, "beam_size": beam_size, "language": "es"}
 
         if self.device == "cuda":
-            props = torch.cuda.get_device_properties(0)
-            vram_gb = props.total_memory / (1024**3)
-
-            if vram_gb < 5.0:
+            if get_vram_gb() < 5.0:
                 # GPUs chicas: greedy search + VAD forzado + chunks más pequeños para evitar picos de VRAM.
                 kwargs["condition_on_previous_text"] = False
                 kwargs["beam_size"] = 1

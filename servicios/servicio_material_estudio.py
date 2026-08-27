@@ -2,7 +2,21 @@ import os
 import re
 
 from nucleo import configuracion as app_config
+from nucleo import limpieza_texto
 from infraestructura import cliente_ollama as ollama_client
+from infraestructura import hardware
+
+# Modelos livianos de la familia llama3.2 — mucho más chicos que llama3 (8B),
+# que en CPU se demora tanto generando que puede superar el timeout del
+# cliente. Se eligen automáticamente cuando "ollama_model" está en "auto".
+_OLLAMA_MODEL_CPU = "llama3.2:1b"
+_OLLAMA_MODEL_GPU = "llama3.2:3b"
+
+
+def _resolve_ollama_model(configured: str) -> str:
+    if configured != "auto":
+        return configured
+    return _OLLAMA_MODEL_GPU if hardware.detect_gpu_vendor() != "none" else _OLLAMA_MODEL_CPU
 
 # Regex tolerante en vez de string exacto: modelos locales pequeños no
 # siempre reproducen los marcadores al pie de la letra.
@@ -18,7 +32,12 @@ _SECTION_PATTERNS = [
     ("tarjetas", re.compile(r'#{0,3}\s*TARJETAS[\s_]+(DE[\s_]+)?ESTUDIO\s*#{0,3}\s*:?\s*\n?', re.IGNORECASE)),
 ]
 
-_FLASHCARD_LINE_RE = re.compile(r'P\s*:\s*(.+?)\s*\n\s*R\s*:\s*(.+?)(?=\n\s*P\s*:|\Z)', re.IGNORECASE | re.DOTALL)
+# Tolera numeración que modelos chicos agregan pese a la instrucción de no
+# numerar (ej. "P1:", "P2:" en vez de "P:").
+_FLASHCARD_LINE_RE = re.compile(
+    r'P\s*\d*\s*:\s*(.+?)\s*\n\s*R\s*\d*\s*:\s*(.+?)(?=\n\s*P\s*\d*\s*:|\Z)',
+    re.IGNORECASE | re.DOTALL,
+)
 
 # Tokens de salida solo para el resumen intermedio de cada bloque, no para
 # la pasada final (esa usa "ollama_max_tokens").
@@ -134,7 +153,9 @@ def generate_study_material(text: str):
     if not text or len(text.strip()) == 0:
         return "No hay transcripción para generar material de estudio.", "", "", []
 
-    model_name = app_config.get_param("ollama_model")
+    text = limpieza_texto.limpiar_transcripcion(text)
+
+    model_name = _resolve_ollama_model(app_config.get_param("ollama_model"))
     max_tokens = int(app_config.get_param("ollama_max_tokens"))
     ollama_url = os.environ.get("OLLAMA_URL") or app_config.get_param("ollama_url")
     chunk_chars = int(app_config.get_param("ollama_chunk_chars"))

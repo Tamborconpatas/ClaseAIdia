@@ -33,16 +33,21 @@ source transcriptor-env/bin/activate
 ### 3. Instalación de Dependencias
 El hardware objetivo de este proyecto no tiene GPU — `faster-whisper` corre bien en CPU con modelos livianos (tiny/base/small). La app detecta el hardware disponible y elige el motor sola, sin configuración manual:
 
-* **Sin GPU / GPU NVIDIA**: instala PyTorch genérico y el resto de dependencias:
+* **Sin GPU**: instala PyTorch genérico (CPU) y el resto de dependencias:
   ```bash
-  pip install torch torchaudio
+  pip install torch==2.13.0 torchaudio==2.11.0
   pip install -r requirements.txt
   ```
-  *(Si hay una GPU NVIDIA disponible, la app la detecta y usa automáticamente vía `faster-whisper` — no es un requisito).*
+
+* **GPU NVIDIA**: `faster-whisper` (CTranslate2) está compilado contra CUDA 12 — instala PyTorch fijado a ese índice, **no** el genérico (que hoy resuelve a CUDA 13 y causa un error `libcublas.so.12 not found` al transcribir en GPU). `torch` y `torchaudio` deben instalarse del mismo índice en el mismo comando — si quedan de versiones de CUDA distintas, `torchaudio` no encuentra sus propias librerías:
+  ```bash
+  pip install torch==2.13.0 torchaudio==2.11.0 --index-url https://download.pytorch.org/whl/cu126
+  pip install -r requirements.txt
+  ```
 
 * **GPU AMD (ROCm, solo Linux)**: `faster-whisper` no puede usar GPUs AMD (CTranslate2 no soporta ROCm), así que la app cae automáticamente a `transformers` + PyTorch, que sí soporta ROCm. Instala el build de PyTorch para ROCm en vez del genérico (ajusta la versión de ROCm a la que tengas instalada, ej. `rocm6.1`):
   ```bash
-  pip install torch torchaudio --index-url https://download.pytorch.org/whl/rocm6.1
+  pip install torch==2.6.0 torchaudio==2.6.0 --index-url https://download.pytorch.org/whl/rocm6.1
   pip install -r requirements.txt
   ```
   ROCm no está soportado en Windows — ahí una GPU AMD simplemente cae a `faster-whisper` en CPU.
@@ -70,15 +75,17 @@ Esto levanta:
 - `ollama-1` / `ollama-2`: dos instancias de Ollama (ajustable agregando/quitando bloques en `docker-compose.yml` + `nginx-ollama.conf`, según la RAM disponible — cada instancia carga su propio modelo en memoria), con el modelo configurado descargándose automáticamente al primer arranque.
 - `ollama-lb`: balanceador nginx que reparte las peticiones entre las instancias de Ollama.
 
-Para usar un modelo distinto al default (`llama3`):
+Por defecto se descarga `llama3.2:1b` (liviano, pensado para CPU — la app elige este mismo modelo automáticamente si `ollama_model` está en `"auto"`). Para usar otro modelo, hay que descargarlo Y decírselo a la app en Configuración:
 ```bash
 OLLAMA_MODEL=qwen2.5:7b docker compose up --build
 ```
 
+**GPU dentro de Docker**: por defecto ningún contenedor tiene acceso a la GPU del host, aunque exista una — hay que habilitarlo explícitamente con un archivo adicional (`docker-compose.gpu-nvidia.yml` o `docker-compose.gpu-amd.yml`), y para NVIDIA además instalar el NVIDIA Container Toolkit en el host. Ver el detalle paso a paso en `Notas_de_Instalacion.md`.
+
 ```mermaid
 flowchart LR
     U(["Navegador"]) -- "http://localhost:7862" --> APP["🐳 app<br/>(Gradio + faster-whisper)"]
-    APP -- "OLLAMA_URL=http://ollama-lb:11434" --> LB["🐳 ollama-lb<br/>(nginx, round-robin,<br/>timeout 300s)"]
+    APP -- "OLLAMA_URL=http://ollama-lb:11434" --> LB["🐳 ollama-lb<br/>(nginx, round-robin,<br/>timeout 600s)"]
     LB --> O1["🐳 ollama-1"]
     LB --> O2["🐳 ollama-2"]
     APP -.->|"bind mount"| DATA[("outputs/ · downloads/<br/>transcriptions_history.db<br/>transcriber_config.json")]
@@ -179,16 +186,21 @@ source transcriptor-env/bin/activate
 ### 3. Install Dependencies
 The target hardware for this project has no GPU — `faster-whisper` runs well on CPU with lightweight models (tiny/base/small). The app detects the available hardware and picks the engine on its own, no manual configuration needed:
 
-* **No GPU / NVIDIA GPU**: install generic PyTorch and the rest of the dependencies:
+* **No GPU**: install generic (CPU) PyTorch and the rest of the dependencies:
   ```bash
-  pip install torch torchaudio
+  pip install torch==2.13.0 torchaudio==2.11.0
   pip install -r requirements.txt
   ```
-  *(If an NVIDIA GPU happens to be available, the app detects and uses it automatically via `faster-whisper` — it's a bonus, not a requirement).*
+
+* **NVIDIA GPU**: `faster-whisper` (CTranslate2) is built against CUDA 12 — install PyTorch pinned to that index, **not** the generic one (which today resolves to CUDA 13 and causes a `libcublas.so.12 not found` error when transcribing on GPU). Install `torch` and `torchaudio` from the same index in the same command — if they end up on different CUDA builds, `torchaudio` won't find its own libraries:
+  ```bash
+  pip install torch==2.13.0 torchaudio==2.11.0 --index-url https://download.pytorch.org/whl/cu126
+  pip install -r requirements.txt
+  ```
 
 * **AMD GPU (ROCm, Linux only)**: `faster-whisper` can't use AMD GPUs (CTranslate2 has no ROCm support), so the app automatically falls back to `transformers` + PyTorch, which does support ROCm. Install the ROCm PyTorch build instead of the generic one (match the ROCm version you have installed, e.g. `rocm6.1`):
   ```bash
-  pip install torch torchaudio --index-url https://download.pytorch.org/whl/rocm6.1
+  pip install torch==2.6.0 torchaudio==2.6.0 --index-url https://download.pytorch.org/whl/rocm6.1
   pip install -r requirements.txt
   ```
   ROCm isn't supported on Windows — there, an AMD GPU simply falls back to `faster-whisper` on CPU.
@@ -216,10 +228,12 @@ This brings up:
 - `ollama-1` / `ollama-2`: two Ollama instances (adjustable by adding/removing blocks in `docker-compose.yml` + `nginx-ollama.conf`, based on available RAM — each instance loads its own model in memory), with the configured model auto-downloading on first boot.
 - `ollama-lb`: nginx load balancer distributing requests across the Ollama instances.
 
-To use a different model than the default (`llama3`):
+`llama3.2:1b` downloads by default (lightweight, CPU-oriented — the app picks this same model automatically when `ollama_model` is set to `"auto"`). To use a different model, download it AND tell the app about it in Settings:
 ```bash
 OLLAMA_MODEL=qwen2.5:7b docker compose up --build
 ```
+
+**GPU inside Docker**: by default no container gets access to the host's GPU, even if one exists — it must be enabled explicitly with an extra compose file (`docker-compose.gpu-nvidia.yml` or `docker-compose.gpu-amd.yml`), and for NVIDIA the NVIDIA Container Toolkit must also be installed on the host. See the step-by-step in `Notas_de_Instalacion.md` (Spanish).
 
 *(See the deployment diagram in the Spanish section above — it's not duplicated here since the diagrams are language-agnostic: the boxes are labeled with the actual Spanish file/folder names used in the codebase.)*
 

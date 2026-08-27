@@ -1,32 +1,44 @@
 # ==========================================
 # REQUIREMENTS PARA UNIVERSAL LOCAL TRANSCRIBER
 # ==========================================
+#
+# Versiones fijadas a propósito (==, no >=): un `torch` "más nuevo" cambió
+# de CUDA 12 a CUDA 13 y rompió faster-whisper/CTranslate2 en GPU
+# (libcublas.so.12 not found) sin que cambiara nuestro código — exactamente
+# el tipo de problema que se busca evitar. Esta combinación está probada
+# funcionando (CPU y GPU NVIDIA real). Si se sube alguna versión, probar
+# transcripción real en GPU antes de dar por bueno el cambio.
 
 # 1. Interfaz de Usuario y Utilería
-gradio>=4.0.0
+gradio==6.26.0
 
-# 2. Core AI (CPU por defecto — el hardware objetivo no tiene GPU)
-torch>=2.0.0
-torchaudio>=2.0.0
+# 2. Core AI — instalar torch/torchaudio ANTES de este archivo con el
+# índice correcto según el hardware (ver README/Notas_de_Instalacion):
+# CPU: pip install torch==2.13.0 torchaudio==2.11.0
+# GPU NVIDIA: pip install torch==2.13.0 torchaudio==2.11.0 --index-url https://download.pytorch.org/whl/cu126
+# GPU AMD: pip install torch==2.6.0 torchaudio==2.6.0 --index-url https://download.pytorch.org/whl/rocm6.1
+torch==2.13.0
+torchaudio==2.11.0
 
 # 3. Backend: Faster-Whisper (motor por defecto — CPU y GPU NVIDIA)
-# CTranslate2, modelos livianos cuantizados (tiny/base/small), corre bien en CPU.
-faster-whisper>=1.0.0
-ctranslate2>=4.0.0
+faster-whisper==1.2.1
+ctranslate2==4.8.1
 
 # 3b. Backend alternativo: Transformers (SOLO se usa si se detecta una GPU
 # AMD/ROCm — CTranslate2 no soporta ROCm, así que ahí se usa PyTorch en su
 # lugar). Opcional: si no está instalado, una GPU AMD simplemente cae a
 # faster-whisper en CPU en vez de acelerar por GPU.
-transformers>=4.35.0
-safetensors>=0.4.0
+transformers==5.16.1
+safetensors==0.8.0
 
 # 4. Audios y Preprocesamiento
-librosa>=0.10.0
-soundfile>=0.12.1
-yt-dlp>=2023.10.13
+librosa==0.11.0
+soundfile==0.14.0
+yt-dlp==2026.8.19
+numpy==1.26.4
+requests==2.34.2
 
 # 5. Limpieza de Audio (Pipeline de Pre-procesamiento)
-noisereduce          # Reducción de ruido DSP (Wiener filter), modo rápido
-deepfilternet  # IA local para reducción de ruido, compatible con Python 3.12
-scipy                # Filtros digitales (highpass, lowpass)
+noisereduce==3.0.3   # Reducción de ruido DSP (Wiener filter), modo rápido
+deepfilternet==0.5.6 # IA local para reducción de ruido, compatible con Python 3.12
+scipy==1.17.1        # Filtros digitales (highpass, lowpass)

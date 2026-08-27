@@ -1,0 +1,29 @@
+services:
+  app:
+    devices:
+      - /dev/kfd
+      - /dev/dri
+    group_add:
+      - video
+
+  # OLLAMA_MODEL se sube a la variante GPU aquí: la app (arriba) también
+  # cambia sola a "llama3.2:3b" cuando detecta GPU, así que Ollama necesita
+  # tenerlo descargado — si no coinciden, la generación falla con
+  # "model 'llama3.2:3b' not found" aunque la GPU esté andando bien.
+  ollama-1:
+    environment:
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-llama3.2:3b}
+    devices:
+      - /dev/kfd
+      - /dev/dri
+    group_add:
+      - video
+
+  ollama-2:
+    environment:
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-llama3.2:3b}
+    devices:
+      - /dev/kfd
+      - /dev/dri
+    group_add:
+      - video

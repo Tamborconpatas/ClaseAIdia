@@ -8,7 +8,7 @@ DEFAULT_CONFIG = {
     "beam_size": 5,
     "vad_filter": True,
     "compute_type": "default", # "default", "int8", "float16", "int8_float16"
-    "ollama_model": "llama3",
+    "ollama_model": "auto", # "auto" elige llama3.2:1b (CPU) o llama3.2:3b (GPU); o un modelo explícito
     "ollama_max_tokens": 2048,
     "ollama_url": "http://localhost:11434",
     "ollama_chunk_chars": 6000
