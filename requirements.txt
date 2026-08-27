@@ -42,3 +42,12 @@ requests==2.34.2
 noisereduce==3.0.3   # Reducción de ruido DSP (Wiener filter), modo rápido
 deepfilternet==0.5.6 # IA local para reducción de ruido, compatible con Python 3.12
 scipy==1.17.1        # Filtros digitales (highpass, lowpass)
+
+# 6. Backend real (FastAPI) — app aparte del prototipo Gradio. fastapi/uvicorn
+# ya los trae gradio como dependencia transitiva; se fijan igual acá porque
+# los usamos directamente. sqlalchemy/alembic son nuevos.
+sqlalchemy==2.0.52
+alembic==1.19.1
+
+# 7. Pruebas (QA) — ver QA.md para el registro de qué se prueba en cada fase.
+pytest==9.1.1

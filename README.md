@@ -2,8 +2,6 @@
 
 ![ULT Banner](https://img.shields.io/badge/Status-Active-brightgreen) ![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue) ![Gradio](https://img.shields.io/badge/UI-Gradio-orange)
 
-*(For the **English** version of this README, scroll down / Para la versión en **Inglés**, desplázate hacia abajo).*
-
 Una aplicación de Inteligencia Artificial alojada localmente, diseñada para transcribir audio y generar material de estudio (resumen y puntos clave) a partir de clases grabadas — pensada para correr en hardware modesto, **sin GPU**, y **completamente offline**.
 
 ## 🚀 Características Principales
@@ -64,23 +62,23 @@ Abre tu navegador web en la URL Local proporcionada por la consola (generalmente
 
 Instalación con un solo comando, incluyendo un **cluster local de Ollama** (varias instancias en la misma máquina, balanceadas con nginx) para acelerar la generación de material de estudio cuando hay varias clases en cola. **Requiere Docker instalado** (en Windows implica admin + WSL2/Hyper-V) — es una alternativa para colegios con soporte técnico, no reemplaza el objetivo de instalación portátil sin admin (pendiente vía PyInstaller).
 
-Antes del primer arranque, crea los archivos de datos vacíos (si no existen, Docker los monta como carpetas en vez de archivos):
+Todos los archivos de Docker viven en `docker/` (comandos siempre desde la raíz del repo). Antes del primer arranque, crea los archivos de datos vacíos (si no existen, Docker los monta como carpetas en vez de archivos):
 ```bash
 touch transcriptions_history.db transcriber_config.json
 mkdir -p outputs downloads
-docker compose up --build
+docker compose -f docker/docker-compose.yml up --build
 ```
 Esto levanta:
 - `app`: la interfaz Gradio, publicada en `http://localhost:7862`.
-- `ollama-1` / `ollama-2`: dos instancias de Ollama (ajustable agregando/quitando bloques en `docker-compose.yml` + `nginx-ollama.conf`, según la RAM disponible — cada instancia carga su propio modelo en memoria), con el modelo configurado descargándose automáticamente al primer arranque.
+- `ollama-1` / `ollama-2`: dos instancias de Ollama (ajustable agregando/quitando bloques en `docker/docker-compose.yml` + `docker/nginx-ollama.conf`, según la RAM disponible — cada instancia carga su propio modelo en memoria), con el modelo configurado descargándose automáticamente al primer arranque.
 - `ollama-lb`: balanceador nginx que reparte las peticiones entre las instancias de Ollama.
 
 Por defecto se descarga `llama3.2:1b` (liviano, pensado para CPU — la app elige este mismo modelo automáticamente si `ollama_model` está en `"auto"`). Para usar otro modelo, hay que descargarlo Y decírselo a la app en Configuración:
 ```bash
-OLLAMA_MODEL=qwen2.5:7b docker compose up --build
+OLLAMA_MODEL=qwen2.5:7b docker compose -f docker/docker-compose.yml up --build
 ```
 
-**GPU dentro de Docker**: por defecto ningún contenedor tiene acceso a la GPU del host, aunque exista una — hay que habilitarlo explícitamente con un archivo adicional (`docker-compose.gpu-nvidia.yml` o `docker-compose.gpu-amd.yml`), y para NVIDIA además instalar el NVIDIA Container Toolkit en el host. Ver el detalle paso a paso en `Notas_de_Instalacion.md`.
+**GPU dentro de Docker**: por defecto ningún contenedor tiene acceso a la GPU del host, aunque exista una — hay que habilitarlo explícitamente con un archivo adicional (`docker/docker-compose.gpu-nvidia.yml` o `docker/docker-compose.gpu-amd.yml`), y para NVIDIA además instalar el NVIDIA Container Toolkit en el host. Ver el detalle paso a paso en `docs/Notas_de_Instalacion.md`.
 
 ```mermaid
 flowchart LR
@@ -152,101 +150,4 @@ flowchart TD
 ```
 
 ---
-
-<br><br>
-
-# 🎙️ Universal Local Transcriber Pro (English)
-
-A locally-hosted Artificial Intelligence application designed to transcribe audio and generate study material (summary and key points) from recorded classes — built to run on modest hardware, **with no GPU**, **entirely offline**.
-
-## 🚀 Features
-
-* **Transcription with `faster-whisper` (CTranslate2)**: Single, lightweight, quantized engine (tiny/base/small) — runs on CPU in reasonable time, no GPU dependency.
-* **Advanced DSP Audio Filtering**: Integrated audio toolkit to clean noisy input before transcription (Wiener filters, active local DeepFilterNet AI, Voice Boost equalization, and Dynamic Compressors).
-* **Transcription History**: Embedded SQLite database maintaining a persistent UI visual history of previous sessions, interconnected with an `outputs/` folder system for instant `.txt` and `.srt` file extraction right from the app window.
-* **LLM Post-Processing**: Direct OLLAMA integration to generate a class summary and key points using local text models.
-
-## ⚙️ Installation
-
-### 1. FFMPEG Requirements (Mandatory for audio processing)
-* **Windows**: Download the binary from [Gyan.dev](https://www.gyan.dev/ffmpeg/builds/) and add it to your PATH variables, or use Chocolatey: `choco install ffmpeg`.
-* **Mac OS**: Use Homebrew: `brew install ffmpeg`
-* **Linux (Ubuntu)**: `sudo apt install ffmpeg`
-
-### 2. Python Environment Setup (Highly Recommended)
-Create and activate a virtual environment:
-```bash
-python -m venv transcriptor-env
-# On Linux/Mac:
-source transcriptor-env/bin/activate
-# On Windows (Powershell):
-.\transcriptor-env\Scripts\Activate.ps1
-```
-
-### 3. Install Dependencies
-The target hardware for this project has no GPU — `faster-whisper` runs well on CPU with lightweight models (tiny/base/small). The app detects the available hardware and picks the engine on its own, no manual configuration needed:
-
-* **No GPU**: install generic (CPU) PyTorch and the rest of the dependencies:
-  ```bash
-  pip install torch==2.13.0 torchaudio==2.11.0
-  pip install -r requirements.txt
-  ```
-
-* **NVIDIA GPU**: `faster-whisper` (CTranslate2) is built against CUDA 12 — install PyTorch pinned to that index, **not** the generic one (which today resolves to CUDA 13 and causes a `libcublas.so.12 not found` error when transcribing on GPU). Install `torch` and `torchaudio` from the same index in the same command — if they end up on different CUDA builds, `torchaudio` won't find its own libraries:
-  ```bash
-  pip install torch==2.13.0 torchaudio==2.11.0 --index-url https://download.pytorch.org/whl/cu126
-  pip install -r requirements.txt
-  ```
-
-* **AMD GPU (ROCm, Linux only)**: `faster-whisper` can't use AMD GPUs (CTranslate2 has no ROCm support), so the app automatically falls back to `transformers` + PyTorch, which does support ROCm. Install the ROCm PyTorch build instead of the generic one (match the ROCm version you have installed, e.g. `rocm6.1`):
-  ```bash
-  pip install torch==2.6.0 torchaudio==2.6.0 --index-url https://download.pytorch.org/whl/rocm6.1
-  pip install -r requirements.txt
-  ```
-  ROCm isn't supported on Windows — there, an AMD GPU simply falls back to `faster-whisper` on CPU.
-
-## 🖥️ Usage
-
-Simply run:
-```bash
-python app.py
-```
-And open your browser at the localized Local URL provided in the terminal (usually `http://127.0.0.1:7862`).
-
-## 🐳 Docker Deployment (alternative option)
-
-One-command install, including a **local Ollama cluster** (several instances on the same machine, load-balanced with nginx) to speed up study material generation when multiple classes are queued. **Requires Docker installed** (on Windows that means admin + WSL2/Hyper-V) — this is an alternative for schools with technical support, it doesn't replace the no-admin portable install goal (still pending via PyInstaller).
-
-Before the first run, create the empty data files (if missing, Docker mounts them as directories instead of files):
-```bash
-touch transcriptions_history.db transcriber_config.json
-mkdir -p outputs downloads
-docker compose up --build
-```
-This brings up:
-- `app`: the Gradio interface, published at `http://localhost:7862`.
-- `ollama-1` / `ollama-2`: two Ollama instances (adjustable by adding/removing blocks in `docker-compose.yml` + `nginx-ollama.conf`, based on available RAM — each instance loads its own model in memory), with the configured model auto-downloading on first boot.
-- `ollama-lb`: nginx load balancer distributing requests across the Ollama instances.
-
-`llama3.2:1b` downloads by default (lightweight, CPU-oriented — the app picks this same model automatically when `ollama_model` is set to `"auto"`). To use a different model, download it AND tell the app about it in Settings:
-```bash
-OLLAMA_MODEL=qwen2.5:7b docker compose up --build
-```
-
-**GPU inside Docker**: by default no container gets access to the host's GPU, even if one exists — it must be enabled explicitly with an extra compose file (`docker-compose.gpu-nvidia.yml` or `docker-compose.gpu-amd.yml`), and for NVIDIA the NVIDIA Container Toolkit must also be installed on the host. See the step-by-step in `Notas_de_Instalacion.md` (Spanish).
-
-*(See the deployment diagram in the Spanish section above — it's not duplicated here since the diagrams are language-agnostic: the boxes are labeled with the actual Spanish file/folder names used in the codebase.)*
-
-### 📂 Layered Architecture
-
-The project is organized in layers, each depending only on the ones below it (`interfaz → servicios → infraestructura → nucleo`). Folder and file names are in Spanish — this project targets Chilean schools, so an English-first codebase doesn't make sense here. *(See the architecture and processing-flow diagrams in the Spanish section above — same reasoning: the diagrams show the actual Spanish file/folder names, so they're not duplicated here.)*
-
-- `app.py`: Thin entry point — boots the Gradio app.
-- `interfaz/` ("interface"): Gradio interface (`app_gradio.py`). Only calls into `servicios/` (and `nucleo/configuracion.py` to read/write settings).
-- `servicios/` ("services"): Application use cases — `servicio_transcripcion.py` (orchestrates FFmpeg + audio cleanup + faster-whisper + SRT), `servicio_material_estudio.py` (study prompt + parsing the Ollama response), `servicio_historial.py` (save/list history).
-- `infraestructura/` ("infrastructure"): Adapters to external systems — `motor_whisper.py` (faster-whisper, default engine), `motor_transformers.py` (alternate engine, only activates on AMD/ROCm GPUs), `hardware.py` (GPU vendor detection), `herramientas_ffmpeg.py`, `mejorador_audio.py` (DSP), `cliente_ollama.py` (HTTP to Ollama), `repositorio_historial.py` (SQLite), `youtube.py` (yt-dlp).
-- `nucleo/` ("core"): Settings (`configuracion.py`) and dependency-free pure utilities (`subtitulos.py`).
-- `/outputs`: The secure output folder generated automatically to collect resulting `.srt` and `.txt`.
-
----
-*Created for fast, strict, and fully local privacy-based automated pipelines.*
+*Hecho para clases privadas, 100% locales y automatizadas.*

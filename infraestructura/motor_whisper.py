@@ -29,7 +29,7 @@ WHISPER_MODELS = [
 # Catálogo GPU NVIDIA con >= 4GB VRAM: modelos más grandes y precisos.
 GPU_WHISPER_MODELS = [
     "Systran/faster-whisper-medium ➔ [Buen punto medio • cómodo desde 4GB VRAM]",
-    "Systran/faster-whisper-large-v3-turbo ➔ [Recomendado • rápido y preciso, ~6GB VRAM]",
+    "deepdml/faster-whisper-large-v3-turbo-ct2 ➔ [Recomendado • rápido y preciso, ~6GB VRAM]",
     "Systran/faster-whisper-large-v3 ➔ [Máxima precisión • ideal con 8GB+ VRAM]",
 ]
 

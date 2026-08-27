@@ -77,13 +77,15 @@ Si prefieres no instalar Python/FFmpeg/dependencias a mano, `docker compose` lev
 ```bash
 touch transcriptions_history.db transcriber_config.json
 mkdir -p outputs downloads
-docker compose up --build
+docker compose -f docker/docker-compose.yml up --build
 ```
 
-Por defecto se levantan 2 instancias de Ollama (`ollama-1`, `ollama-2`) balanceadas por un contenedor nginx (`ollama-lb`) — ajusta la cantidad agregando o quitando bloques en `docker-compose.yml` y `nginx-ollama.conf` según la RAM disponible en el PC del colegio. Por defecto se descarga `llama3.2:1b` (liviano, pensado para CPU — la app lo elige solo cuando `ollama_model` está en `"auto"`; si hay GPU disponible usa `llama3.2:3b`). Para usar otro modelo hay que descargarlo Y configurarlo en la app:
+El contenedor `app` corre con tu mismo UID/GID de host (`docker/docker-compose.yml` ya lo fija a 1000:1000 por defecto) para que los archivos que genera en `outputs/`/`downloads/` sean tuyos, no de `root` — importante si alguna vez alternas entre correr esto con Docker y correrlo nativo (sin Docker) sobre la misma carpeta. Si tu usuario no es el 1000 (`id -u` para chequear), ajusta con `APP_UID=$(id -u) APP_GID=$(id -g) docker compose -f docker/docker-compose.yml up --build`.
+
+Por defecto se levantan 2 instancias de Ollama (`ollama-1`, `ollama-2`) balanceadas por un contenedor nginx (`ollama-lb`) — ajusta la cantidad agregando o quitando bloques en `docker/docker-compose.yml` y `docker/nginx-ollama.conf` según la RAM disponible en el PC del colegio. Por defecto se descarga `llama3.2:1b` (liviano, pensado para CPU — la app lo elige solo cuando `ollama_model` está en `"auto"`; si hay GPU disponible usa `llama3.2:3b`). Para usar otro modelo hay que descargarlo Y configurarlo en la app:
 
 ```bash
-OLLAMA_MODEL=qwen2.5:7b docker compose up --build
+OLLAMA_MODEL=qwen2.5:7b docker compose -f docker/docker-compose.yml up --build
 ```
 
 ```mermaid
@@ -97,7 +99,7 @@ flowchart LR
     O2 -.->|"volumen"| V2[("ollama_data_2")]
 ```
 
-Ojo: cada réplica de Ollama descarga y carga su propio modelo por separado (no comparten memoria ni disco entre sí) — 2 instancias de un modelo de 7-9B cuantizado significan el doble de RAM y disco que una sola. En un PC realmente modesto, considera dejar solo `ollama-1` (borrando el bloque `ollama-2` de `docker-compose.yml` y la línea correspondiente de `nginx-ollama.conf`) en vez de forzar el cluster.
+Ojo: cada réplica de Ollama descarga y carga su propio modelo por separado (no comparten memoria ni disco entre sí) — 2 instancias de un modelo de 7-9B cuantizado significan el doble de RAM y disco que una sola. En un PC realmente modesto, considera dejar solo `ollama-1` (borrando el bloque `ollama-2` de `docker/docker-compose.yml` y la línea correspondiente de `docker/nginx-ollama.conf`) en vez de forzar el cluster.
 
 #### GPU dentro de Docker (paso aparte, requiere `sudo`)
 
@@ -116,12 +118,12 @@ sudo systemctl restart docker
 ```
 ⚠️ El último paso reinicia el daemon de Docker — tira abajo cualquier contenedor corriendo en ese momento (incluido este proyecto, si estaba levantado). Después de instalar, levanta el stack agregando el archivo `docker-compose.gpu-nvidia.yml`:
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.gpu-nvidia.yml up -d --build
+docker compose -f docker/docker-compose.yml -f docker/docker-compose.gpu-nvidia.yml up -d --build
 ```
 
 **AMD (ROCm)** — requiere los drivers ROCm instalados en el host (ver sección 3 más arriba) y correr con:
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.gpu-amd.yml up -d --build
+docker compose -f docker/docker-compose.yml -f docker/docker-compose.gpu-amd.yml up -d --build
 ```
 
 En ambos casos, la app detecta la GPU dentro del contenedor igual que en la instalación nativa: usa el catálogo de modelos grande de faster-whisper (si es NVIDIA con ≥4GB VRAM) o el motor `transformers`/ROCm (si es AMD), y Ollama pasa a `llama3.2:3b` en vez de `llama3.2:1b`.

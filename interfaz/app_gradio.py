@@ -23,14 +23,20 @@ def create_ui():
         return transcription_service.load_model(local_path.strip())
 
     def process_url(url, language):
-        if not url: yield "No se ha ingresado una URL válida.", None, None, ""
+        if not url:
+            yield "No se ha ingresado una URL válida.", None, None, ""
+            return
         path = youtube.download_audio_from_url(url)
-        if not path: yield "❌ Error descargando la URL enviada.", None, None, ""
+        if not path:
+            yield "❌ Error descargando la URL enviada.", None, None, ""
+            return
         for update in process_audio([path], language):
             yield update
 
     def process_mic(audio_filepath, language):
-        if not audio_filepath: yield "No se detectó grabación del micrófono.", None, None, ""
+        if not audio_filepath:
+            yield "No se detectó grabación del micrófono.", None, None, ""
+            return
         for update in process_audio([audio_filepath], language):
             yield update
 
