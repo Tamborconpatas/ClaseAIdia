@@ -8,6 +8,12 @@
 # el tipo de problema que se busca evitar. Esta combinación está probada
 # funcionando (CPU y GPU NVIDIA real). Si se sube alguna versión, probar
 # transcripción real en GPU antes de dar por bueno el cambio.
+#
+# Requiere Python 3.10 a 3.13. numpy==1.26.4 no tiene wheel para 3.14+ y
+# falla al compilar desde fuente si no está python3.1X-devel instalado
+# (confirmado 2026-09-03, ver QA.md). Si el `python3`/`python` del sistema
+# ya es 3.14+, crear el venv con un intérprete más viejo instalado aparte
+# (ej. `python3.12 -m venv transcriptor-env`), no con el del sistema.
 
 # 1. Interfaz de Usuario y Utilería
 gradio==6.26.0
@@ -40,8 +46,13 @@ requests==2.34.2
 
 # 5. Limpieza de Audio (Pipeline de Pre-procesamiento)
 noisereduce==3.0.3   # Reducción de ruido DSP (Wiener filter), modo rápido
-deepfilternet==0.5.6 # IA local para reducción de ruido, compatible con Python 3.12
 scipy==1.17.1        # Filtros digitales (highpass, lowpass)
+# deepfilternet (modo 'deepfilter', máxima calidad) NO está acá a propósito:
+# su dependencia deepfilterlib compila una extensión nativa en Rust y no trae
+# wheel prebuilt para todas las plataformas — instalarla rompe TODO este archivo
+# si Cargo no está presente. infraestructura/mejorador_audio.py ya la importa
+# de forma perezosa y cae a los demás modos si falta. Instalar aparte, solo si
+# se quiere ese modo: ver requirements-deepfilter.txt
 
 # 6. Backend real (FastAPI) — app aparte del prototipo Gradio. fastapi/uvicorn
 # ya los trae gradio como dependencia transitiva; se fijan igual acá porque

@@ -6,6 +6,16 @@ Posee soporte de interfaces web creadas en **Gradio**.
 
 ## 🛠 Notas de Instalación y Entorno
 
+### 0. Versión de Python
+
+Requiere **Python 3.10 a 3.13**. `numpy==1.26.4` (fijado en `requirements.txt`) no tiene wheel prebuilt para Python 3.14+ — `pip` intenta compilarlo desde fuente y eso a su vez falla si no está instalado el paquete `-devel`/`-dev` de esa misma versión de Python (falta `Python.h`). Confirmado 2026-09-03 en un sistema Fedora/Nobara cuyo único Python instalado era 3.14 (ver `QA.md` en la raíz para el detalle completo).
+
+Si `python3 --version` da 3.14+, instala una versión soportada aparte y úsala para el venv del paso 2, sin tocar el Python del sistema:
+*   **Fedora/Nobara**: `sudo dnf install python3.12 python3.12-devel`
+*   **Ubuntu/Debian**: `sudo apt install python3.12 python3.12-venv`
+*   **Arch**: `sudo pacman -S python312` (o el paquete equivalente en AUR según la versión exacta que necesites)
+*   **Windows**: instalar 3.12 desde [python.org](https://www.python.org/downloads/) además del que ya tengas — el instalador no reemplaza versiones existentes.
+
 ### 1. Requerimientos de Sistema Operativo (Dependencias C/C++)
 
 Para que `faster-whisper` pueda procesar MP3, M4A o audio corrompido, necesitas instalar **FFMPEG**.
@@ -20,20 +30,21 @@ Para que `faster-whisper` pueda procesar MP3, M4A o audio corrompido, necesitas 
 ### 2. Creación de un Entorno Aislado
 
 ```bash
-# Python venv
-python -m venv transcriptor-env
+# Python venv — usa el binario 3.10-3.13 del paso 0 (ej. python3.12), no "python" a secas
+# si tu sistema ya trae 3.14+ por defecto.
+python3.12 -m venv transcriptor-env
 source transcriptor-env/bin/activate
 # (En Windows powershell): .\transcriptor-env\Scripts\Activate.ps1
 ```
-*(Alternativamente puedes crear un `conda create -n transcriptor python=3.10`)*
+*(Alternativamente puedes crear un `conda create -n transcriptor python=3.12`)*
 
 ### 3. PyTorch Base (CPU, NVIDIA o AMD)
 
 El hardware objetivo de este proyecto (PC de sala de colegio) no tiene GPU, así que basta con la build genérica de PyTorch. La app detecta sola el hardware disponible y elige el motor de transcripción correspondiente — no hay que configurar nada manualmente.
 
-**Sin GPU** (usa `faster-whisper` en CPU):
+**Sin GPU** (usa `faster-whisper` en CPU) — usa el índice **`cpu`** explícito, no el genérico: el índice genérico de PyPI también resuelve a una build con CUDA 13 empaquetado (~1.5GB de paquetes NVIDIA de más que nunca se van a usar sin GPU, confirmado 2026-09-03):
 ```bash
-pip install torch==2.13.0 torchaudio==2.11.0
+pip install torch==2.13.0 torchaudio==2.11.0 --index-url https://download.pytorch.org/whl/cpu
 ```
 
 **GPU NVIDIA** (usa `faster-whisper` en GPU): CTranslate2 está compilado contra CUDA 12 — el índice genérico de pip resuelve a CUDA 13 (`libcublas.so.12 not found` al transcribir), así que hay que fijar el índice a `cu126` (misma versión de PyTorch más reciente, solo cambia la familia de CUDA). `torch` y `torchaudio` van en el mismo comando — si quedan de índices distintos, `torchaudio` no encuentra sus propias librerías:
@@ -58,6 +69,12 @@ Navega a la carpeta de este README e inserta:
 
 ```bash
 pip install -r requirements.txt
+```
+
+`requirements.txt` deja afuera a propósito `deepfilternet` (modo de limpieza de audio "máxima calidad") — su dependencia `deepfilterlib` compila una extensión nativa en Rust, y si Cargo no está instalado rompe la instalación de *todas* las demás dependencias del archivo, no solo la suya (confirmado 2026-09-03). Sin este paso la app funciona igual con los demás modos de limpieza de audio (DSP/MMSE, ver `infraestructura/mejorador_audio.py`). Para tener también el modo `deepfilter`:
+```bash
+# Requiere Rust + Cargo instalados primero: https://rustup.rs/ (instalación de usuario, no necesita sudo/admin)
+pip install -r requirements-deepfilter.txt
 ```
 
 ### 5. Ejecutar la Aplicación.
