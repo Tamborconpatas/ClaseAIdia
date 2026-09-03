@@ -13,15 +13,18 @@ Una aplicación de Inteligencia Artificial alojada localmente, diseñada para tr
 
 ## ⚙️ Instalación
 
+### 0. Versión de Python
+Requiere **Python 3.10 a 3.13**. `numpy==1.26.4` (fijado en `requirements.txt`) no tiene wheel para Python 3.14+ y falla al compilar desde fuente (confirmado 2026-09-03 en un sistema con solo Python 3.14 instalado — ver `QA.md`). Si `python3 --version` ya te da 3.14 o más, instala una versión más vieja aparte (ej. `sudo apt install python3.12` / `sudo dnf install python3.12`) y usa ese binario para crear el entorno virtual del paso 2, no el del sistema.
+
 ### 1. Requisitos de FFMPEG (Necesario para procesar audio)
 * **Windows**: Descarga el ejecutable desde [Gyan.dev](https://www.gyan.dev/ffmpeg/builds/) y agrégalo a tus variables de entorno, o usa Chocolatey: `choco install ffmpeg`.
 * **Mac OS**: Usa Homebrew: `brew install ffmpeg`
 * **Linux (Ubuntu)**: `sudo apt install ffmpeg`
 
 ### 2. Configuración del Entorno Python (Recomendado)
-Crea un entorno virtual y actívalo:
+Crea un entorno virtual y actívalo (usa el binario de Python 3.10-3.13 del paso 0, ej. `python3.12`):
 ```bash
-python -m venv transcriptor-env
+python3.12 -m venv transcriptor-env
 # En Linux/Mac:
 source transcriptor-env/bin/activate
 # En Windows (Powershell):
@@ -31,9 +34,9 @@ source transcriptor-env/bin/activate
 ### 3. Instalación de Dependencias
 El hardware objetivo de este proyecto no tiene GPU — `faster-whisper` corre bien en CPU con modelos livianos (tiny/base/small). La app detecta el hardware disponible y elige el motor sola, sin configuración manual:
 
-* **Sin GPU**: instala PyTorch genérico (CPU) y el resto de dependencias:
+* **Sin GPU**: instala PyTorch desde el índice **`cpu`** explícito — el índice genérico de PyPI también resuelve a una build con CUDA 13 empaquetado (~1.5GB de paquetes NVIDIA de más, confirmado 2026-09-03) aunque no haya GPU en el equipo:
   ```bash
-  pip install torch==2.13.0 torchaudio==2.11.0
+  pip install torch==2.13.0 torchaudio==2.11.0 --index-url https://download.pytorch.org/whl/cpu
   pip install -r requirements.txt
   ```
 
@@ -49,6 +52,13 @@ El hardware objetivo de este proyecto no tiene GPU — `faster-whisper` corre bi
   pip install -r requirements.txt
   ```
   ROCm no está soportado en Windows — ahí una GPU AMD simplemente cae a `faster-whisper` en CPU.
+
+### 4. Opcional: modo de limpieza de audio "DeepFilterNet"
+`requirements.txt` no incluye `deepfilternet` a propósito — su dependencia `deepfilterlib` compila una extensión nativa en Rust y romper esto rompería la instalación de *todo* el resto de dependencias si Cargo no está presente (confirmado 2026-09-03). Sin este paso, la app funciona igual con los demás modos de limpieza de audio (DSP/MMSE). Para tener el modo `deepfilter` (máxima calidad) también:
+```bash
+# Requiere Rust + Cargo instalados primero: https://rustup.rs/ (no necesita sudo)
+pip install -r requirements-deepfilter.txt
+```
 
 ## 🖥️ Uso
 
