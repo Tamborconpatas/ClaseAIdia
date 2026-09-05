@@ -1,4 +1,4 @@
-# Fase 2 — Autenticación y roles ✅ Completada
+# Fase 2 — Autenticación y roles (Completada)
 
 Requisito previo cumplido: modelo de datos y backend FastAPI (`Fase 1`, ver `QA.md`). `Usuario` ya tiene las columnas `password_hash`/`pin_hash` en `None`; esta fase las llena y las hace cumplir.
 

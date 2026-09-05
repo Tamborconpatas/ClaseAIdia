@@ -1,16 +1,18 @@
-# 🎙️ Universal Local Transcriber
+# ClaseAIdia (Universal Local Transcriber)
 
-La aplicación "Universal Local Transcriber" transcribe audio localmente con `faster-whisper` (CTranslate2) y genera resumen y puntos clave con Ollama — 100% offline, pensada para correr en un PC sin GPU.
+La aplicación "ClaseAIdia" transcribe audio localmente con `faster-whisper` (CTranslate2) y genera resumen y puntos clave con Ollama — 100% offline, pensada para correr en un PC sin GPU.
 
 Posee soporte de interfaces web creadas en **Gradio**.
 
-## 🛠 Notas de Instalación y Entorno
+## Notas de Instalación y Entorno
 
-### 0. Versión de Python
+### 0. Versión de Python (Estrictamente 3.10 a 3.12 — Prohibido 3.13+)
 
-Requiere **Python 3.10 a 3.13**. `numpy==1.26.4` (fijado en `requirements.txt`) no tiene wheel prebuilt para Python 3.14+ — `pip` intenta compilarlo desde fuente y eso a su vez falla si no está instalado el paquete `-devel`/`-dev` de esa misma versión de Python (falta `Python.h`). Confirmado 2026-09-03 en un sistema Fedora/Nobara cuyo único Python instalado era 3.14 (ver `QA.md` en la raíz para el detalle completo).
+Requiere **Python 3.10 a 3.12** (recomendado **Python 3.12**).
+> **NO USAR Python 3.13 ni 3.14**: `numpy==1.26.4` (fijado en `requirements.txt`) no tiene wheel precompilado para 3.13+ en **ningún sistema operativo** (verificado contra PyPI: solo publica cp39-cp312) — `pip` cae a compilar desde fuente, lo que falla sin un compilador C configurado. `ctranslate2` sí soporta 3.13/3.14 en Windows y Linux, así que el bloqueador real es solo `numpy`.
+> Para una guía completa paso a paso en Windows con Conda, ver [Guía de Instalación en Windows](Guia_Instalacion_Windows.md).
 
-Si `python3 --version` da 3.14+, instala una versión soportada aparte y úsala para el venv del paso 2, sin tocar el Python del sistema:
+Si tu sistema operativo trae Python 3.13 o 3.14 instalado por defecto, instala Python 3.12 de forma aislada para el entorno virtual o utiliza Conda:
 *   **Fedora/Nobara**: `sudo dnf install python3.12 python3.12-devel`
 *   **Ubuntu/Debian**: `sudo apt install python3.12 python3.12-venv`
 *   **Arch**: `sudo pacman -S python312` (o el paquete equivalente en AUR según la versión exacta que necesites)
@@ -25,18 +27,23 @@ Para que `faster-whisper` pueda procesar MP3, M4A o audio corrompido, necesitas 
 *   **Linux (CentOS/RHEL)**: habilita EPEL y RPM Fusion primero (`sudo dnf install epel-release`, luego el paquete RPM Fusion equivalente al de Fedora para tu versión de RHEL), después `sudo dnf install ffmpeg`
 *   **Linux (Arch)**: `sudo pacman -S ffmpeg`
 *   **Mac OS (Homebrew)**: `brew install ffmpeg`
-*   **Windows**: Instalar usando Chocolatey (`choco install ffmpeg`) o manual descargando los binarios agregándolos al directorio de tu variable `PATH`.
+*   **Windows**: `winget install Gyan.FFmpeg` (verificado 2026-09-04 — reinicia la terminal después para que reconozca el PATH nuevo) o manual descargando los binarios y agregándolos a tu variable `PATH`.
 
 ### 2. Creación de un Entorno Aislado
 
 ```bash
-# Python venv — usa el binario 3.10-3.13 del paso 0 (ej. python3.12), no "python" a secas
-# si tu sistema ya trae 3.14+ por defecto.
+# Python venv (parte de la librería estándar, no requiere Conda) — usa el
+# binario 3.10-3.12 del paso 0 (ej. python3.12), no "python" a secas si tu
+# sistema ya trae 3.13+ por defecto.
 python3.12 -m venv transcriptor-env
 source transcriptor-env/bin/activate
-# (En Windows powershell): .\transcriptor-env\Scripts\Activate.ps1
+# En Windows powershell — "py -3.12" si tienes más de una versión de Python instalada:
+py -3.12 -m venv transcriptor-env
+.\transcriptor-env\Scripts\Activate.ps1
 ```
-*(Alternativamente puedes crear un `conda create -n transcriptor python=3.12`)*
+En Windows, si no tienes ningún Python 3.10-3.12 instalado: `winget install --id Python.Python.3.12 -e --scope user` lo instala sin permisos de administrador (verificado 2026-09-05).
+
+*(Si prefieres Conda, `conda create -n transcriptor-env python=3.12 -y` funciona igual — ver `Guia_Instalacion_Windows.md` para esa variante completa.)*
 
 ### 3. PyTorch Base (CPU, NVIDIA o AMD)
 
@@ -107,10 +114,10 @@ OLLAMA_MODEL=qwen2.5:7b docker compose -f docker/docker-compose.yml up --build
 
 ```mermaid
 flowchart LR
-    U(["Navegador"]) -- "http://localhost:7862" --> APP["🐳 app<br/>(Gradio + faster-whisper)"]
-    APP -- "OLLAMA_URL=http://ollama-lb:11434" --> LB["🐳 ollama-lb<br/>(nginx, round-robin,<br/>timeout 600s)"]
-    LB --> O1["🐳 ollama-1"]
-    LB --> O2["🐳 ollama-2"]
+    U(["Navegador"]) -- "http://localhost:7862" --> APP["app<br/>(Gradio + faster-whisper)"]
+    APP -- "OLLAMA_URL=http://ollama-lb:11434" --> LB["ollama-lb<br/>(nginx, round-robin,<br/>timeout 600s)"]
+    LB --> O1["ollama-1"]
+    LB --> O2["ollama-2"]
     APP -.->|"bind mount"| DATA[("outputs/ · downloads/<br/>transcriptions_history.db<br/>transcriber_config.json")]
     O1 -.->|"volumen"| V1[("ollama_data_1")]
     O2 -.->|"volumen"| V2[("ollama_data_2")]
@@ -133,7 +140,7 @@ sudo apt-get install -y nvidia-container-toolkit
 sudo nvidia-ctk runtime configure --runtime=docker
 sudo systemctl restart docker
 ```
-⚠️ El último paso reinicia el daemon de Docker — tira abajo cualquier contenedor corriendo en ese momento (incluido este proyecto, si estaba levantado). Después de instalar, levanta el stack agregando el archivo `docker-compose.gpu-nvidia.yml`:
+El último paso reinicia el daemon de Docker — tira abajo cualquier contenedor corriendo en ese momento (incluido este proyecto, si estaba levantado). Después de instalar, levanta el stack agregando el archivo `docker-compose.gpu-nvidia.yml`:
 ```bash
 docker compose -f docker/docker-compose.yml -f docker/docker-compose.gpu-nvidia.yml up -d --build
 ```

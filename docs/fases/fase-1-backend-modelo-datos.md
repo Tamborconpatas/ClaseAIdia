@@ -1,4 +1,4 @@
-# Fase 1 — Backend FastAPI y modelo de datos ✅ Completada
+# Fase 1 — Backend FastAPI y modelo de datos (Completada)
 
 Requisito previo: Fase 0 (pipeline de IA funcional, pero sin modelo de datos ni backend real).
 
