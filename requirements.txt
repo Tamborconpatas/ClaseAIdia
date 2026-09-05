@@ -9,11 +9,14 @@
 # funcionando (CPU y GPU NVIDIA real). Si se sube alguna versión, probar
 # transcripción real en GPU antes de dar por bueno el cambio.
 #
-# Requiere Python 3.10 a 3.13. numpy==1.26.4 no tiene wheel para 3.14+ y
-# falla al compilar desde fuente si no está python3.1X-devel instalado
-# (confirmado 2026-09-03, ver QA.md). Si el `python3`/`python` del sistema
-# ya es 3.14+, crear el venv con un intérprete más viejo instalado aparte
-# (ej. `python3.12 -m venv transcriptor-env`), no con el del sistema.
+# Requiere Python 3.10 a 3.12 (no 3.13, no 3.14). numpy==1.26.4 no tiene
+# wheel prebuilt para 3.13+ en NINGÚN sistema operativo (verificado contra
+# PyPI: solo publica cp39-cp312) — falla al compilar desde fuente si no
+# está el paquete `-devel`/`-dev` de esa versión de Python (confirmado
+# 2026-09-03/04 en Linux y Windows, ver QA.md). Si el `python3`/`python`
+# del sistema ya es 3.13+, crear el entorno con un intérprete 3.10-3.12
+# instalado aparte (ej. `python3.12 -m venv transcriptor-env`, o
+# `conda create -n transcriptor-env python=3.12`), no con el del sistema.
 
 # 1. Interfaz de Usuario y Utilería
 gradio==6.26.0

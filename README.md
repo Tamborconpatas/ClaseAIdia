@@ -1,35 +1,40 @@
-# 🎙️ Universal Local Transcriber Pro
+# ClaseAIdia (Universal Local Transcriber)
 
-![ULT Banner](https://img.shields.io/badge/Status-Active-brightgreen) ![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue) ![Gradio](https://img.shields.io/badge/UI-Gradio-orange)
+![ULT Banner](https://img.shields.io/badge/Status-Active-brightgreen) ![Python 3.10--3.12](https://img.shields.io/badge/Python-3.10--3.12-blue) ![Gradio](https://img.shields.io/badge/UI-Gradio-orange)
 
 Una aplicación de Inteligencia Artificial alojada localmente, diseñada para transcribir audio y generar material de estudio (resumen y puntos clave) a partir de clases grabadas — pensada para correr en hardware modesto, **sin GPU**, y **completamente offline**.
 
-## 🚀 Características Principales
+## Características Principales
 
 * **Transcripción con `faster-whisper` (CTranslate2)**: Motor único, liviano y cuantizado (tiny/base/small) — corre en CPU en tiempo razonable, sin depender de GPU.
 * **Filtrado de Audio Avanzado**: Kit de limpieza de ruido integrado por software para purificar el audio antes de transcribir (Filtros auto-ajustables Wiener, Inteligencia Artificial DeepFilterNet local, ecualización y compresores dinámicos).
 * **Historial de Transcripciones**: Base de datos SQLite integrada que mantiene un historial visual persistente de sesiones anteriores, interconectada con un sistema de carpetas `outputs/` para descargar tus `.txt` y `.srt` generados al instante desde la interfaz.
 * **Post-Procesamiento con LLM**: Conexión directa con *OLLAMA* para generar resumen y puntos clave de la clase con modelos textuales puramente locales.
 
-## ⚙️ Instalación
+## Instalación
 
-### 0. Versión de Python
-Requiere **Python 3.10 a 3.13**. `numpy==1.26.4` (fijado en `requirements.txt`) no tiene wheel para Python 3.14+ y falla al compilar desde fuente (confirmado 2026-09-03 en un sistema con solo Python 3.14 instalado — ver `QA.md`). Si `python3 --version` ya te da 3.14 o más, instala una versión más vieja aparte (ej. `sudo apt install python3.12` / `sudo dnf install python3.12`) y usa ese binario para crear el entorno virtual del paso 2, no el del sistema.
+### 0. Versión de Python (Prohibido Python 3.13+)
+Requiere estrictamente **Python 3.10 a 3.12** (recomendado **Python 3.12**). No hace falta Conda ni Anaconda — con el Python normal de [python.org](https://www.python.org/downloads/) (o `winget`) alcanza; el módulo `venv` que se usa abajo es parte de la librería estándar.
+> **NO USAR Python 3.13 ni 3.14**: `numpy==1.26.4` (fijado en `requirements.txt`) no tiene wheel precompilado para 3.13+ en **ningún sistema operativo** (verificado contra PyPI: solo publica para cp39-cp312) — `pip` cae a compilar desde fuente, lo que falla sin un compilador C configurado. Confirmado en Linux (2026-09-03) y Windows (2026-09-04), ver `QA.md`.
+> **Windows**: `winget install --id Python.Python.3.12 -e --scope user` instala Python 3.12 sin admin (verificado 2026-09-05). Si ya tienes otra versión de Python instalada (ej. 3.14 desde la Microsoft Store), esto no la reemplaza — usa `py -3.12` en vez de `python` a secas en el paso 2 para apuntar a la versión correcta.
+> Para una guía completa paso a paso en Windows con Conda, consulta la [Guía de Instalación en Windows](docs/Guia_Instalacion_Windows.md).
 
 ### 1. Requisitos de FFMPEG (Necesario para procesar audio)
-* **Windows**: Descarga el ejecutable desde [Gyan.dev](https://www.gyan.dev/ffmpeg/builds/) y agrégalo a tus variables de entorno, o usa Chocolatey: `choco install ffmpeg`.
+* **Windows**: `winget install Gyan.FFmpeg` o descarga desde [Gyan.dev](https://www.gyan.dev/ffmpeg/builds/) y agrégalo a tu PATH.
 * **Mac OS**: Usa Homebrew: `brew install ffmpeg`
 * **Linux (Ubuntu)**: `sudo apt install ffmpeg`
 
-### 2. Configuración del Entorno Python (Recomendado)
-Crea un entorno virtual y actívalo (usa el binario de Python 3.10-3.13 del paso 0, ej. `python3.12`):
+### 2. Configuración del Entorno Python
+Crea un entorno virtual con `venv` (viene incluido con Python, no requiere instalar nada más) y actívalo:
 ```bash
 python3.12 -m venv transcriptor-env
 # En Linux/Mac:
 source transcriptor-env/bin/activate
-# En Windows (Powershell):
+# En Windows (Powershell) — usa "py -3.12" en vez de "python3.12" si tienes más de una versión de Python instalada:
+py -3.12 -m venv transcriptor-env
 .\transcriptor-env\Scripts\Activate.ps1
 ```
+*(Si ya usas Conda y prefieres seguir con eso, `conda create -n transcriptor-env python=3.12 -y` funciona igual de bien — ver la [Guía de Instalación en Windows](docs/Guia_Instalacion_Windows.md) para esa variante paso a paso.)*
 
 ### 3. Instalación de Dependencias
 El hardware objetivo de este proyecto no tiene GPU — `faster-whisper` corre bien en CPU con modelos livianos (tiny/base/small). La app detecta el hardware disponible y elige el motor sola, sin configuración manual:
@@ -60,7 +65,7 @@ El hardware objetivo de este proyecto no tiene GPU — `faster-whisper` corre bi
 pip install -r requirements-deepfilter.txt
 ```
 
-## 🖥️ Uso
+## Uso
 
 Simplemente ejecuta la raíz:
 ```bash
@@ -68,7 +73,7 @@ python app.py
 ```
 Abre tu navegador web en la URL Local proporcionada por la consola (generalmente `http://127.0.0.1:7862`).
 
-## 🐳 Despliegue con Docker (opción alternativa)
+## Despliegue con Docker (opción alternativa)
 
 Instalación con un solo comando, incluyendo un **cluster local de Ollama** (varias instancias en la misma máquina, balanceadas con nginx) para acelerar la generación de material de estudio cuando hay varias clases en cola. **Requiere Docker instalado** (en Windows implica admin + WSL2/Hyper-V) — es una alternativa para colegios con soporte técnico, no reemplaza el objetivo de instalación portátil sin admin (pendiente vía PyInstaller).
 
@@ -92,10 +97,10 @@ OLLAMA_MODEL=qwen2.5:7b docker compose -f docker/docker-compose.yml up --build
 
 ```mermaid
 flowchart LR
-    U(["Navegador"]) -- "http://localhost:7862" --> APP["🐳 app<br/>(Gradio + faster-whisper)"]
-    APP -- "OLLAMA_URL=http://ollama-lb:11434" --> LB["🐳 ollama-lb<br/>(nginx, round-robin,<br/>timeout 600s)"]
-    LB --> O1["🐳 ollama-1"]
-    LB --> O2["🐳 ollama-2"]
+    U(["Navegador"]) -- "http://localhost:7862" --> APP["app<br/>(Gradio + faster-whisper)"]
+    APP -- "OLLAMA_URL=http://ollama-lb:11434" --> LB["ollama-lb<br/>(nginx, round-robin,<br/>timeout 600s)"]
+    LB --> O1["ollama-1"]
+    LB --> O2["ollama-2"]
     APP -.->|"bind mount"| DATA[("outputs/ · downloads/<br/>transcriptions_history.db<br/>transcriber_config.json")]
     O1 -.->|"volumen"| V1[("ollama_data_1")]
     O2 -.->|"volumen"| V2[("ollama_data_2")]
@@ -103,16 +108,16 @@ flowchart LR
 
 Cada instancia de Ollama es un contenedor completo con su propio modelo cargado en memoria — el balanceador solo reparte peticiones entre las que ya están levantadas, no coordina memoria entre ellas. Hoy este cluster no acelera nada por sí solo (la app procesa una clase a la vez, sin cola concurrente) — es capacidad lista para cuando exista la cola de procesamiento EDF planificada en `CLAUDE.md`.
 
-### 📂 Arquitectura en Capas
+### Arquitectura en Capas
 
 El proyecto está organizado en capas, cada una dependiendo solo de las de abajo (`interfaz → servicios → infraestructura → nucleo`). Los nombres de carpetas y archivos están en español — el proyecto es para colegios chilenos, no tiene sentido que el código base asuma inglés:
 
 ```mermaid
 flowchart TD
-    UI["📱 interfaz/<br/>app_gradio.py"]
-    SVC["⚙️ servicios/<br/>servicio_transcripcion.py<br/>servicio_material_estudio.py<br/>servicio_historial.py"]
-    INFRA["🔌 infraestructura/<br/>motor_whisper.py · motor_transformers.py<br/>herramientas_ffmpeg.py · mejorador_audio.py<br/>cliente_ollama.py · repositorio_historial.py<br/>hardware.py · youtube.py"]
-    CORE["🧱 nucleo/<br/>configuracion.py · subtitulos.py"]
+    UI["interfaz/<br/>app_gradio.py"]
+    SVC["servicios/<br/>servicio_transcripcion.py<br/>servicio_material_estudio.py<br/>servicio_historial.py"]
+    INFRA["infraestructura/<br/>motor_whisper.py · motor_transformers.py<br/>herramientas_ffmpeg.py · mejorador_audio.py<br/>cliente_ollama.py · repositorio_historial.py<br/>hardware.py · youtube.py"]
+    CORE["nucleo/<br/>configuracion.py · subtitulos.py"]
 
     UI -->|"casos de uso"| SVC
     SVC -->|"adaptadores externos"| INFRA
@@ -127,7 +132,7 @@ flowchart TD
 - `nucleo/`: Configuración (`configuracion.py`) y utilidades puras sin dependencias externas (`subtitulos.py`).
 - `/outputs`: La carpeta segura generada automáticamente adonde irán a parar todos tus registros `.srt` y `.txt`.
 
-### 🔄 Flujo de Procesamiento
+### Flujo de Procesamiento
 
 De principio a fin: cómo una grabación de clase se convierte en transcripción y material de estudio.
 

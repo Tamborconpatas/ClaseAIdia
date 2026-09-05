@@ -1,4 +1,4 @@
-# Fase 0 — Origen: pipeline de IA ✅ Completada
+# Fase 0 — Origen: pipeline de IA (Completada)
 
 A diferencia de las demás fases, esta no viene de un roadmap planificado de antemano — es el punto de partida real del proyecto: un proyecto personal preexistente que se adoptó y adaptó como base para la memoria de título.
 
