@@ -8,7 +8,8 @@ Esta es la fase que conecta el backend real (Fases 1-2) con el pipeline de IA qu
 - **Corte automático**: pasado un tiempo del término programado del `Bloque` (por si el profesor olvida terminar la grabación) — necesita leer la hora de término del `Bloque` correspondiente a la `Clase` en curso.
 - **Disparo del pipeline real**: al terminar una grabación, el backend llama a `TranscriptionService.transcribe_file(...)` y luego a `generate_study_material(...)` (los mismos servicios de siempre, ya probados en `QA.md` con datos reales) — pero ahora el resultado se guarda en `ContenidoClase` de la `Clase` real (bloque_id + fecha), no en `transcriptions_history.db`.
 - **Marcador de "clase prioritaria"**: botón que el profesor puede activar antes/durante la clase — ya existe el campo `Clase.prioritaria` en el modelo (Fase 1), esta fase lo hace usable desde la UI de control.
-- **Borrado de audio tras procesar**: ya implementado en el pipeline existente — confirmar que se mantiene igual en el flujo nuevo (el audio nunca debe sobrevivir más allá del procesamiento, sea cual sea la ruta que lo dispara).
+- **Subida de audio**: validar tipo y tamaño, y el nombre del archivo lo genera el servidor (nunca el que manda el cliente).
+- **Borrado de audio tras procesar**: ya implementado en el pipeline existente, pero en `interfaz/app_gradio.py` el `os.remove` va después del bucle y no en un `finally` (si se cancela a mitad, el audio queda en disco — ver `QA.md`, 2026-09-29). En el flujo nuevo, borrar siempre en `finally`. Confirmar que se mantiene igual en el flujo nuevo (el audio nunca debe sobrevivir más allá del procesamiento, sea cual sea la ruta que lo dispara).
 
 ## Decisión pendiente a tomar en esta fase
 
