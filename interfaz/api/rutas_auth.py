@@ -17,7 +17,7 @@ from interfaz.api.esquemas import BootstrapUtpIn, LoginAlumnoIn, LoginStaffIn, T
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
-def _verificar_bloqueo(usuario: Usuario):
+def verificar_bloqueo(usuario: Usuario):
     if usuario.bloqueado_hasta and usuario.bloqueado_hasta > ahora_utc():
         raise HTTPException(
             status_code=429,
@@ -25,7 +25,7 @@ def _verificar_bloqueo(usuario: Usuario):
         )
 
 
-def _registrar_resultado_intento(usuario: Usuario, exitoso: bool, db: Session):
+def registrar_resultado_intento(usuario: Usuario, exitoso: bool, db: Session):
     if exitoso:
         usuario.intentos_fallidos = 0
         usuario.bloqueado_hasta = None
@@ -70,13 +70,13 @@ def login_staff(datos: LoginStaffIn, db: Session = Depends(obtener_db)):
     if usuario is None or usuario.password_hash is None:
         raise HTTPException(status_code=401, detail="Credenciales inválidas")
 
-    _verificar_bloqueo(usuario)
+    verificar_bloqueo(usuario)
 
     if not verificar_secreto(datos.password, usuario.password_hash):
-        _registrar_resultado_intento(usuario, exitoso=False, db=db)
+        registrar_resultado_intento(usuario, exitoso=False, db=db)
         raise HTTPException(status_code=401, detail="Credenciales inválidas")
 
-    _registrar_resultado_intento(usuario, exitoso=True, db=db)
+    registrar_resultado_intento(usuario, exitoso=True, db=db)
     return emitir_token(usuario)
 
 
@@ -86,11 +86,11 @@ def login_alumno(datos: LoginAlumnoIn, db: Session = Depends(obtener_db)):
     if usuario is None or usuario.pin_hash is None:
         raise HTTPException(status_code=401, detail="Credenciales inválidas")
 
-    _verificar_bloqueo(usuario)
+    verificar_bloqueo(usuario)
 
     if not verificar_secreto(datos.pin, usuario.pin_hash):
-        _registrar_resultado_intento(usuario, exitoso=False, db=db)
+        registrar_resultado_intento(usuario, exitoso=False, db=db)
         raise HTTPException(status_code=401, detail="Credenciales inválidas")
 
-    _registrar_resultado_intento(usuario, exitoso=True, db=db)
+    registrar_resultado_intento(usuario, exitoso=True, db=db)
     return emitir_token(usuario)

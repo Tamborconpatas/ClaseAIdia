@@ -37,9 +37,9 @@ def test_crear_curso_genera_codigo_invitacion(cliente, colegio_id, headers_utp):
     assert len(curso["codigo_invitacion"]) == 6
 
 
-def test_crear_curso_con_colegio_inexistente_falla(cliente, headers_utp):
+def test_crear_curso_en_otro_colegio_rechaza(cliente, headers_utp):
     r = cliente.post("/cursos", json={"nombre": "8A", "colegio_id": 9999}, headers=headers_utp)
-    assert r.status_code == 409
+    assert r.status_code == 403
 
 
 def test_crear_bloque_bajo_curso(cliente, colegio_id, headers_utp):
@@ -164,7 +164,7 @@ def test_crear_usuario_rut_duplicado_falla(cliente, colegio_id, rut_valido, head
     assert r.status_code == 409
 
 
-def test_crear_usuario_colegio_inexistente_falla(cliente, rut_valido, headers_utp):
+def test_crear_usuario_en_otro_colegio_rechaza(cliente, rut_valido, headers_utp):
     r = cliente.post(
         "/usuarios",
         json={
@@ -176,7 +176,7 @@ def test_crear_usuario_colegio_inexistente_falla(cliente, rut_valido, headers_ut
         },
         headers=headers_utp,
     )
-    assert r.status_code == 409
+    assert r.status_code == 403
 
 
 def test_obtener_usuario_sin_token_rechaza(cliente):

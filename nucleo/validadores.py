@@ -1,9 +1,14 @@
 import re
 
 
+def normalizar_rut(rut: str) -> str:
+    """Forma canónica para guardar y buscar: sin puntos ni espacios, DV en mayúscula."""
+    return re.sub(r"[.\s]", "", rut or "").upper()
+
+
 def validar_rut(rut: str) -> bool:
     """Valida el dígito verificador de un RUT chileno (ej. '12345678-5' o '12.345.678-5')."""
-    rut_limpio = re.sub(r"[.\s]", "", rut or "").upper()
+    rut_limpio = normalizar_rut(rut)
     if not re.fullmatch(r"\d{7,8}-[0-9K]", rut_limpio):
         return False
 

@@ -3,7 +3,19 @@ import datetime
 from pydantic import BaseModel, ConfigDict, field_validator
 
 from infraestructura.modelos_orm import RolNombre, TipoBloque
-from nucleo.validadores import validar_rut
+from nucleo.validadores import normalizar_rut, validar_rut
+
+
+def _rut_valido_normalizado(valor: str) -> str:
+    if not validar_rut(valor):
+        raise ValueError("RUT inválido (dígito verificador no corresponde)")
+    return normalizar_rut(valor)
+
+
+def _pin_6_digitos(valor: str) -> str:
+    if not (len(valor) == 6 and valor.isascii() and valor.isdigit()):
+        raise ValueError("El PIN debe tener exactamente 6 dígitos")
+    return valor
 
 
 class ColegioBase(BaseModel):
@@ -28,9 +40,7 @@ class UsuarioBase(BaseModel):
     @field_validator("rut")
     @classmethod
     def _validar_rut(cls, valor: str) -> str:
-        if not validar_rut(valor):
-            raise ValueError("RUT inválido (dígito verificador no corresponde)")
-        return valor
+        return _rut_valido_normalizado(valor)
 
 
 class UsuarioCrear(UsuarioBase):
@@ -75,8 +85,15 @@ class CursoCrear(CursoBase):
 
 
 class CursoOut(CursoBase):
+    """Vista pública: sin el código de invitación (con él cualquiera podría unirse)."""
+
     model_config = ConfigDict(from_attributes=True)
     id: int
+
+
+class CursoConCodigoOut(CursoOut):
+    """Solo para el UTP que crea el curso."""
+
     codigo_invitacion: str
 
 
@@ -123,19 +140,32 @@ class BootstrapUtpIn(BaseModel):
     @field_validator("rut")
     @classmethod
     def _validar_rut(cls, valor: str) -> str:
-        if not validar_rut(valor):
-            raise ValueError("RUT inválido (dígito verificador no corresponde)")
-        return valor
+        return _rut_valido_normalizado(valor)
 
 
 class LoginStaffIn(BaseModel):
     rut: str
     password: str
 
+    @field_validator("rut")
+    @classmethod
+    def _normalizar_rut(cls, valor: str) -> str:
+        return normalizar_rut(valor)
+
 
 class LoginAlumnoIn(BaseModel):
     rut: str
     pin: str
+
+    @field_validator("rut")
+    @classmethod
+    def _normalizar_rut(cls, valor: str) -> str:
+        return normalizar_rut(valor)
+
+    @field_validator("pin")
+    @classmethod
+    def _validar_pin(cls, valor: str) -> str:
+        return _pin_6_digitos(valor)
 
 
 class UnirseCursoIn(BaseModel):
@@ -144,9 +174,12 @@ class UnirseCursoIn(BaseModel):
     nombre: str
     pin: str
 
+    @field_validator("pin")
+    @classmethod
+    def _validar_pin(cls, valor: str) -> str:
+        return _pin_6_digitos(valor)
+
     @field_validator("rut")
     @classmethod
     def _validar_rut(cls, valor: str) -> str:
-        if not validar_rut(valor):
-            raise ValueError("RUT inválido (dígito verificador no corresponde)")
-        return valor
+        return _rut_valido_normalizado(valor)
