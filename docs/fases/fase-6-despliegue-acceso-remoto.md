@@ -15,6 +15,19 @@
 - Consentimiento informado de apoderados.
 - Respaldo simple y periódico de la base de datos (estructura/texto, no audio).
 
+## Pendientes detectados antes (ver `QA.md`, 2026-09-29)
+
+- [ ] La API no arranca con la salida redirigida en Windows (`UnicodeEncodeError` por el emoji del aviso de `JWT_SECRET_KEY` en `infraestructura/seguridad.py`) — va a romper el `.exe` sin consola. Quitar emojis de los `print` de arranque o reconfigurar stdout a UTF-8.
+- [ ] Agregar `.env` a `.dockerignore` (hoy `COPY . .` lo metería en la imagen).
+
+## Checklist antes de la demo
+
+- `pip-audit` y `npm audit` sin vulnerabilidades pendientes.
+- Revisar enlaces rotos y velocidad de carga en celular.
+- Flujo completo de punta a punta: grabar → procesar → aprobar → ver como alumno.
+- Probar en el hardware modesto de referencia (VM con pocos núcleos y poca RAM).
+- Repo sin datos reales de alumnos ni audios de prueba commiteados, y privado mientras contenga cualquier dato del piloto.
+
 ## Fuera de esta fase
 
 - Modo universidad con servidor centralizado multi-sala — fuera de alcance explícito.

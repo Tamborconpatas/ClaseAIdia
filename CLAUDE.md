@@ -46,6 +46,7 @@ En este orden de prioridad si hay que elegir:
 - Banco de preguntas acumulativo por curso (FAQ del semestre).
 - Cola de procesamiento distribuida entre múltiples máquinas.
 - Registro de auditoría avanzado.
+- Elementos de sitio web público que no aplican a una app privada con login: sitemap.xml, meta títulos/descripciones SEO, imagen Open Graph, banner de cookies (la sesión va por header, no cookies), página de "Gracias", Google Analytics, botones CTA. Página 404 personalizada: opcional, baja prioridad.
 
 ## Arquitectura
 
@@ -64,7 +65,11 @@ En este orden de prioridad si hay que elegir:
 **Base de datos:** SQLite local (servidor del colegio) sincronizado vía Turso/libSQL con réplica en la nube (capa de acceso remoto).
 **Frontend:** React + TypeScript + Vite, Tailwind CSS, shadcn/ui, lucide-react (íconos).
 **Empaquetado:** PyInstaller (ejecutable portable, sin instalador) como vía principal; Docker Compose como alternativa para colegios con soporte técnico (ver decisión más abajo).
-**Seguridad:** `passlib` con bcrypt o argon2 (hash de contraseñas/PIN), `PyJWT` (tokens de sesión, vía header `Authorization`, no cookies — reduce riesgo CSRF), límite de intentos con bloqueo temporal creciente (recomendado: 5 intentos) en login de alumno y de staff, CORS configurado explícitamente (nunca `*` en producción), validación de tipo/tamaño en subida de audio, secretos solo en variables de entorno (`.env` en `.gitignore` desde el primer commit), validación de dígito verificador de RUT en el backend, nunca SQL crudo con concatenación de strings (siempre vía ORM).
+**Seguridad:** `passlib` con bcrypt o argon2 (hash de contraseñas/PIN), `PyJWT` (tokens de sesión, vía header `Authorization`, no cookies — reduce riesgo CSRF), límite de intentos con bloqueo temporal creciente (recomendado: 5 intentos) en login de alumno y de staff, CORS configurado explícitamente (nunca `*` en producción), validación de tipo/tamaño en subida de audio, secretos solo en variables de entorno (`.env` en `.gitignore` desde el primer commit), validación de dígito verificador de RUT en el backend, nunca SQL crudo con concatenación de strings (siempre vía ORM). Además: JWT siempre con expiración; nombre de archivo de audio subido generado por el servidor (nunca el que manda el cliente); `.env.example` sin valores reales junto al `.env`; ninguna clave/token/credencial escrita en el código; nunca PIN ni contraseñas en los logs; `pip-audit` y `npm audit` antes de la entrega final.
+
+**Privacidad en el frontend y la web:** sin Google Analytics ni trackers externos (si se miden cosas, analíticas propias guardadas en la base de datos); `robots.txt` con `Disallow: /` y `noindex` en las páginas de la app (es privada, no se indexa); sin `dangerouslySetInnerHTML` salvo justificado y sanitizado.
+
+**Repositorio:** sin datos reales de alumnos ni audios de prueba commiteados; el repo se mantiene privado mientras contenga cualquier dato del piloto.
 
 ## Modelo de datos (resumen)
 
@@ -87,7 +92,7 @@ En colegio, un Curso agrupa varios Bloques (toda la semana de un grupo fijo de a
 - **No se guarda audio, bajo ninguna circunstancia** — decisión de espacio (900MB/bloque x muchos bloques es inviable) y de privacidad.
 - **No se usa importación automática de Excel para el horario** — los formatos varían demasiado entre colegios; se prioriza la grilla editable por el UTP como fuente de verdad, con exportación a Excel disponible.
 - **La cola de procesamiento es de una sola máquina para el prototipo** — la versión multi-servidor coordinada por carpeta compartida queda documentada pero no se construye este semestre.
-- **El PIN del alumno lo elige el alumno**, no lo asigna el UTP (evita carga operativa de distribución segura de PINs).
+- **El PIN del alumno lo elige el alumno**, no lo asigna el UTP (evita carga operativa de distribución segura de PINs). Si lo olvida, un profesor o UTP puede resetearlo, y el alumno vuelve a elegir uno en su siguiente ingreso.
 - **Vercel u otro hosting de terceros para el frontend no aplica** — rompería la decisión de que el propio servidor del colegio sirva todo sin intermediarios.
 - **Selección de motor de transcripción automática por hardware, nunca manual** — CPU o GPU NVIDIA usan `faster-whisper`; GPU AMD (ROCm, solo Linux) usa `transformers` + PyTorch porque CTranslate2 no soporta ROCm. Sin toggle en la UI: la app detecta y elige sola.
 - **Docker Compose se agrega como opción de despliegue adicional** (app + cluster local de Ollama en la misma máquina, balanceado con nginx) para colegios con soporte técnico — excepción consciente a la restricción de "instalación portátil sin admin", que sigue siendo el objetivo principal vía PyInstaller para el resto de los casos. El "cluster" de Ollama son varias instancias en un solo PC, no un despliegue distribuido entre servidores (eso sigue fuera de alcance, ver más abajo).

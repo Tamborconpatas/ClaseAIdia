@@ -12,6 +12,11 @@ Requisito previo: Fase 2 (login y JWT funcionando en el backend) — el frontend
   - Ver su horario personal automático (derivado de los cursos a los que pertenece).
   - Ver el contenido ya procesado de cada clase (transcripción, resumen, puntos clave, hoja de repaso, tarjetas) — solo el contenido con `aprobado = True`.
 - **Vista Profesor**: revisar y aprobar/editar el contenido generado antes de que se publique al alumno (flag `aprobado` en `ContenidoClase`).
+- **Formularios**: validación también en el cliente (RUT, PIN de 6 dígitos, horas de bloque), con mensajes de error claros. Es solo para comodidad del usuario; la validación que cuenta sigue en el backend.
+- **Accesibilidad y diseño**: contraste de colores revisado al definir la paleta de Tailwind, texto alternativo en imágenes, diseño responsivo probado en celular y PC.
+- **Seguridad del cliente**: sin `dangerouslySetInnerHTML` (el contenido generado por la IA se renderiza como texto; si alguna vez hace falta HTML, justificarlo y sanitizarlo).
+- **Páginas y archivos estáticos**: política de privacidad, términos y condiciones, medio de contacto real del equipo, favicon con el logo de ClaseAIdia, `robots.txt` con `Disallow: /` y `<meta name="robots" content="noindex">` en la app.
+- **Sin trackers externos**: nada de Google Analytics; si se miden cosas, analíticas propias guardadas en la base de datos.
 - **CORS**: ya configurado en el backend para `http://localhost:5173` (Fase 1) — ampliar cuando exista el dominio real del túnel (Fase 6).
 
 ## Fuera de esta fase
