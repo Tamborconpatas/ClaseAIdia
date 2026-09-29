@@ -15,6 +15,9 @@ router = APIRouter(prefix="/usuarios", tags=["usuarios"])
 def crear_usuario(
     datos: UsuarioCrear, db: Session = Depends(obtener_db), _utp: Usuario = Depends(requiere_rol(RolNombre.UTP))
 ):
+    if datos.colegio_id != _utp.colegio_id:
+        raise HTTPException(status_code=403, detail="Solo puedes crear usuarios en tu propio colegio")
+
     usuario = Usuario(
         rut=datos.rut,
         nombre=datos.nombre,
@@ -34,12 +37,17 @@ def crear_usuario(
 
 @router.get("", response_model=list[UsuarioOut])
 def listar_usuarios(db: Session = Depends(obtener_db), _utp: Usuario = Depends(requiere_rol(RolNombre.UTP))):
-    return db.query(Usuario).all()
+    return db.query(Usuario).filter_by(colegio_id=_utp.colegio_id).all()
 
 
 @router.get("/{usuario_id}", response_model=UsuarioOut)
-def obtener_usuario(usuario_id: int, db: Session = Depends(obtener_db), _actual: Usuario = Depends(usuario_actual)):
+def obtener_usuario(usuario_id: int, db: Session = Depends(obtener_db), actual: Usuario = Depends(usuario_actual)):
     usuario = db.get(Usuario, usuario_id)
-    if usuario is None:
+    es_staff = {r.rol for r in actual.roles} & {RolNombre.PROFESOR, RolNombre.UTP}
+    visible = usuario is not None and (
+        usuario.id == actual.id or (es_staff and usuario.colegio_id == actual.colegio_id)
+    )
+    # 404 también cuando no es visible: no revela si el id existe.
+    if not visible:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
     return usuario

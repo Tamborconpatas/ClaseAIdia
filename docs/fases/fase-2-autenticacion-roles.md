@@ -17,7 +17,7 @@ Requisito previo cumplido: modelo de datos y backend FastAPI (`Fase 1`, ver `QA.
 ## Fuera de esta fase
 
 - Frontend de login (Fase 3) — esta fase es solo backend/API.
-- Recuperación de contraseña/PIN olvidado — no está en el alcance del proyecto, evaluar solo si se pide explícitamente.
+- Recuperación de contraseña olvidada por correo/autoservicio — no está en el alcance del proyecto, evaluar solo si se pide explícitamente.
 
 ## Verificación esperada (hecha, ver `QA.md`)
 
@@ -30,3 +30,17 @@ Requisito previo cumplido: modelo de datos y backend FastAPI (`Fase 1`, ver `QA.
 - Alta de alumno: combinada con "unirse a curso" (`POST /cursos/unirse`) — no hay paso separado de registro.
 - Hash: `argon2` vía `passlib`.
 - `POST /colegios` y los `GET` de colegios/cursos/bloques quedaron sin autenticación a propósito en esta fase (ver el plan de implementación para el razonamiento) — no es una omisión.
+
+## Pendiente agregado después de cerrar la fase
+
+- **Arreglos de seguridad de la auditoría del 2026-09-29** (detalle y reproducción en `QA.md`) — **hechos el mismo día**, con un test de regresión por cada uno en `tests/test_auth.py`:
+  - [x] `/cursos/unirse` no debe fijar PIN a un usuario sin rol ALUMNO (hoy permite tomar la cuenta de un UTP) y debe aplicar el mismo contador/bloqueo de intentos que el login.
+  - [x] `GET /cursos` sin auth no debe devolver `codigo_invitacion`.
+  - [x] Aislamiento por colegio: `crear_usuario`/`crear_curso`/`crear_bloque` (y `profesor_id` del bloque) solo dentro del `colegio_id` del UTP autenticado.
+  - [x] PIN exactamente 6 dígitos en `LoginAlumnoIn` y `UnirseCursoIn`.
+  - [x] Normalizar RUT (sin puntos, DV en mayúscula) antes de guardar y de buscar.
+  - [x] `GET /usuarios/{id}`: solo el propio usuario o staff de su colegio.
+  - [x] Sacar `allow_credentials=True` de CORS.
+- **Reseteo de PIN por profesor o UTP**: endpoint protegido por rol que borra el `pin_hash` del alumno, para que vuelva a elegir su PIN en el siguiente ingreso (mismo flujo de "primer ingreso"). No existe todavía en el código.
+- **Nunca PIN ni contraseñas en los logs** del servidor (revisar logging de requests y errores de validación).
+- **`.env.example`** sin valores reales junto al `.env` (que ya está en `.gitignore`).
