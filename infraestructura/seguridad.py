@@ -10,6 +10,7 @@ _contexto_hash = CryptContext(schemes=["argon2"], deprecated="auto")
 ALGORITMO = "HS256"
 EXPIRACION_HORAS = 12
 LIMITE_INTENTOS = 5
+VIGENCIA_CODIGO_RESET_MINUTOS = 15
 
 JWT_SECRET_KEY = os.environ.get("JWT_SECRET_KEY")
 if not JWT_SECRET_KEY:

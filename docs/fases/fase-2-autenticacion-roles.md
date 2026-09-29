@@ -41,6 +41,6 @@ Requisito previo cumplido: modelo de datos y backend FastAPI (`Fase 1`, ver `QA.
   - [x] Normalizar RUT (sin puntos, DV en mayúscula) antes de guardar y de buscar.
   - [x] `GET /usuarios/{id}`: solo el propio usuario o staff de su colegio.
   - [x] Sacar `allow_credentials=True` de CORS.
-- **Reseteo de PIN por profesor o UTP**: endpoint protegido por rol que borra el `pin_hash` del alumno, para que vuelva a elegir su PIN en el siguiente ingreso (mismo flujo de "primer ingreso"). No existe todavía en el código.
+- [x] **Reseteo de PIN por profesor o UTP** (hecho 2026-09-29): `POST /usuarios/{id}/reset-pin` (profesor o UTP del mismo colegio, solo sobre cuentas con rol ALUMNO) invalida el PIN, desbloquea la cuenta y devuelve un **código de un solo uso que vence en 15 minutos** (`VIGENCIA_CODIGO_RESET_MINUTOS`), guardado hasheado. El staff se lo entrega al alumno en persona, y el alumno fija su PIN nuevo en `POST /auth/restablecer-pin` (RUT + código + PIN), que cuenta intentos igual que el login. Conocer el RUT o el código del curso no alcanza para quedarse con la cuenta: login y `/cursos/unirse` rechazan una cuenta con PIN reseteado. Migración `a7e3c91d2b40` (columnas `codigo_reset_hash`, `codigo_reset_vence`).
 - **Nunca PIN ni contraseñas en los logs** del servidor (revisar logging de requests y errores de validación).
 - **`.env.example`** sin valores reales junto al `.env` (que ya está en `.gitignore`).
