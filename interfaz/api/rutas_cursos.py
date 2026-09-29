@@ -78,16 +78,18 @@ def unirse_curso(datos: UnirseCursoIn, db: Session = Depends(obtener_db)):
         if RolNombre.ALUMNO not in {r.rol for r in usuario.roles}:
             raise HTTPException(status_code=409, detail="Este RUT pertenece a una cuenta de personal del colegio")
 
+        # Sin PIN = reseteado por staff: se restablece solo con el código de un solo
+        # uso (/auth/restablecer-pin), no con el código del curso, que conoce todo el curso.
         if usuario.pin_hash is None:
-            usuario.pin_hash = hashear_secreto(datos.pin)
-        else:
-            # Mismo límite de intentos que /auth/login/alumno — si no, esta ruta
-            # serviría para adivinar el PIN sin bloqueo.
-            verificar_bloqueo(usuario)
-            if not verificar_secreto(datos.pin, usuario.pin_hash):
-                registrar_resultado_intento(usuario, exitoso=False, db=db)
-                raise HTTPException(status_code=401, detail="PIN incorrecto para este RUT")
-            registrar_resultado_intento(usuario, exitoso=True, db=db)
+            raise HTTPException(status_code=409, detail="PIN reseteado: usa el código que te dio tu profesor")
+
+        # Mismo límite de intentos que /auth/login/alumno — si no, esta ruta
+        # serviría para adivinar el PIN sin bloqueo.
+        verificar_bloqueo(usuario)
+        if not verificar_secreto(datos.pin, usuario.pin_hash):
+            registrar_resultado_intento(usuario, exitoso=False, db=db)
+            raise HTTPException(status_code=401, detail="PIN incorrecto para este RUT")
+        registrar_resultado_intento(usuario, exitoso=True, db=db)
 
     ya_inscrito = db.query(AlumnoCurso).filter_by(usuario_id=usuario.id, curso_id=curso.id).first()
     if ya_inscrito is None:

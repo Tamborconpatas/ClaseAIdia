@@ -168,6 +168,34 @@ class LoginAlumnoIn(BaseModel):
         return _pin_6_digitos(valor)
 
 
+class ResetPinOut(BaseModel):
+    """Se muestra una sola vez al staff, que se lo entrega al alumno en persona."""
+
+    codigo: str
+    vence: datetime.datetime
+
+
+class RestablecerPinIn(BaseModel):
+    rut: str
+    codigo: str
+    pin: str
+
+    @field_validator("rut")
+    @classmethod
+    def _normalizar_rut(cls, valor: str) -> str:
+        return normalizar_rut(valor)
+
+    @field_validator("codigo")
+    @classmethod
+    def _normalizar_codigo(cls, valor: str) -> str:
+        return valor.strip().upper()
+
+    @field_validator("pin")
+    @classmethod
+    def _validar_pin(cls, valor: str) -> str:
+        return _pin_6_digitos(valor)
+
+
 class UnirseCursoIn(BaseModel):
     codigo_invitacion: str
     rut: str

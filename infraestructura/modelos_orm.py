@@ -52,6 +52,9 @@ class Usuario(Base):
     pin_hash: Mapped[str | None] = mapped_column(String, nullable=True)
     intentos_fallidos: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     bloqueado_hasta: Mapped[datetime.datetime | None] = mapped_column(DateTime, nullable=True)
+    # Código de un solo uso que entrega el staff al resetear el PIN de un alumno.
+    codigo_reset_hash: Mapped[str | None] = mapped_column(String, nullable=True)
+    codigo_reset_vence: Mapped[datetime.datetime | None] = mapped_column(DateTime, nullable=True)
     colegio_id: Mapped[int] = mapped_column(ForeignKey("colegios.id"), nullable=False)
 
     colegio: Mapped["Colegio"] = relationship(back_populates="usuarios")

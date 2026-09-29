@@ -1,12 +1,15 @@
+import datetime
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from infraestructura.basedatos import obtener_db
 from infraestructura.modelos_orm import RolNombre, Usuario, UsuarioRol
-from infraestructura.seguridad import hashear_secreto
+from infraestructura.seguridad import VIGENCIA_CODIGO_RESET_MINUTOS, ahora_utc, hashear_secreto
 from interfaz.api.dependencias_auth import requiere_rol, usuario_actual
-from interfaz.api.esquemas import UsuarioCrear, UsuarioOut
+from interfaz.api.esquemas import ResetPinOut, UsuarioCrear, UsuarioOut
+from nucleo.codigos import generar_codigo_invitacion
 
 router = APIRouter(prefix="/usuarios", tags=["usuarios"])
 
@@ -51,3 +54,29 @@ def obtener_usuario(usuario_id: int, db: Session = Depends(obtener_db), actual: 
     if not visible:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
     return usuario
+
+
+@router.post("/{usuario_id}/reset-pin", response_model=ResetPinOut)
+def resetear_pin(
+    usuario_id: int,
+    db: Session = Depends(obtener_db),
+    staff: Usuario = Depends(requiere_rol(RolNombre.PROFESOR, RolNombre.UTP)),
+):
+    """Invalida el PIN del alumno y devuelve un código de un solo uso, con vencimiento.
+    El alumno elige su PIN nuevo en POST /auth/restablecer-pin con ese código:
+    conocer el RUT (o el código del curso) no alcanza para quedarse con la cuenta."""
+    usuario = db.get(Usuario, usuario_id)
+    if usuario is None or usuario.colegio_id != staff.colegio_id:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    if RolNombre.ALUMNO not in {r.rol for r in usuario.roles}:
+        raise HTTPException(status_code=409, detail="Solo se puede resetear el PIN de un alumno")
+
+    codigo = generar_codigo_invitacion()
+    vence = ahora_utc() + datetime.timedelta(minutes=VIGENCIA_CODIGO_RESET_MINUTOS)
+    usuario.pin_hash = None
+    usuario.codigo_reset_hash = hashear_secreto(codigo)
+    usuario.codigo_reset_vence = vence
+    usuario.intentos_fallidos = 0
+    usuario.bloqueado_hasta = None
+    db.commit()
+    return ResetPinOut(codigo=codigo, vence=vence)

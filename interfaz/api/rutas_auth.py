@@ -12,7 +12,7 @@ from infraestructura.seguridad import (
     verificar_secreto,
 )
 from interfaz.api.dependencias_auth import emitir_token
-from interfaz.api.esquemas import BootstrapUtpIn, LoginAlumnoIn, LoginStaffIn, TokenOut
+from interfaz.api.esquemas import BootstrapUtpIn, LoginAlumnoIn, LoginStaffIn, RestablecerPinIn, TokenOut
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -92,5 +92,26 @@ def login_alumno(datos: LoginAlumnoIn, db: Session = Depends(obtener_db)):
         registrar_resultado_intento(usuario, exitoso=False, db=db)
         raise HTTPException(status_code=401, detail="Credenciales inválidas")
 
+    registrar_resultado_intento(usuario, exitoso=True, db=db)
+    return emitir_token(usuario)
+
+
+@router.post("/restablecer-pin", response_model=TokenOut)
+def restablecer_pin(datos: RestablecerPinIn, db: Session = Depends(obtener_db)):
+    """El alumno fija su PIN nuevo con el código de un solo uso que le dio el staff
+    (POST /usuarios/{id}/reset-pin). Cuenta intentos igual que el login."""
+    usuario = db.query(Usuario).filter_by(rut=datos.rut).first()
+    if usuario is None or usuario.codigo_reset_hash is None:
+        raise HTTPException(status_code=401, detail="Código inválido o vencido")
+
+    verificar_bloqueo(usuario)
+
+    if usuario.codigo_reset_vence < ahora_utc() or not verificar_secreto(datos.codigo, usuario.codigo_reset_hash):
+        registrar_resultado_intento(usuario, exitoso=False, db=db)
+        raise HTTPException(status_code=401, detail="Código inválido o vencido")
+
+    usuario.pin_hash = hashear_secreto(datos.pin)
+    usuario.codigo_reset_hash = None
+    usuario.codigo_reset_vence = None
     registrar_resultado_intento(usuario, exitoso=True, db=db)
     return emitir_token(usuario)
