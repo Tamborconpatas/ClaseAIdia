@@ -73,6 +73,15 @@ python app.py
 ```
 Abre tu navegador web en la URL Local proporcionada por la consola (generalmente `http://127.0.0.1:7862`).
 
+### Backend (API FastAPI)
+
+```bash
+cp .env.example .env    # y completar JWT_SECRET_KEY (el archivo explica cómo generarla)
+alembic upgrade head    # crea/actualiza escuela.db
+uvicorn api:app --port 8000
+```
+Sin `JWT_SECRET_KEY` la API arranca igual, pero con una clave temporal: todas las sesiones se cierran en cada reinicio.
+
 ## Despliegue con Docker (opción alternativa)
 
 Instalación con un solo comando, incluyendo un **cluster local de Ollama** (varias instancias en la misma máquina, balanceadas con nginx) para acelerar la generación de material de estudio cuando hay varias clases en cola. **Requiere Docker instalado** (en Windows implica admin + WSL2/Hyper-V) — es una alternativa para colegios con soporte técnico, no reemplaza el objetivo de instalación portátil sin admin (pendiente vía PyInstaller).

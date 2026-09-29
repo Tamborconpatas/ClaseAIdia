@@ -3,6 +3,19 @@ import json
 
 CONFIG_FILE = "transcriber_config.json"
 
+
+def cargar_env(ruta=".env"):
+    """Carga KEY=valor de `.env` (ver .env.example) a os.environ, sin pisar
+    variables ya definidas en el sistema. Sin .env no hace nada."""
+    if not os.path.exists(ruta):
+        return
+    with open(ruta, encoding="utf-8") as f:
+        for linea in f:
+            linea = linea.strip()
+            if linea and not linea.startswith("#") and "=" in linea:
+                clave, valor = linea.split("=", 1)
+                os.environ.setdefault(clave.strip(), valor.strip().strip("\"'"))
+
 DEFAULT_CONFIG = {
     "language": "es",
     "beam_size": 5,

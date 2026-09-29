@@ -278,3 +278,28 @@ def test_reset_pin_no_aplica_a_staff(cliente, rut_utp, headers_utp):
     assert cliente.post(f"/usuarios/{id_utp}/reset-pin", headers=headers_utp).status_code == 409
     # Y el staff (sin PIN) no puede fijarse uno vía login alumno.
     assert cliente.post("/auth/login/alumno", json={"rut": rut_utp, "pin": "123456"}).status_code == 401
+
+
+# --- Secretos fuera de respuestas y configuración ---
+
+
+def test_422_no_devuelve_el_valor_recibido(cliente):
+    r = cliente.post("/auth/login/alumno", json={"rut": "11222333-9", "pin": "55831"})
+    assert r.status_code == 422
+    assert "55831" not in r.text
+    assert r.json()["detail"][0]["loc"] == ["body", "pin"]
+
+
+def test_cargar_env_no_pisa_variables_del_sistema(tmp_path, monkeypatch):
+    from nucleo.configuracion import cargar_env
+
+    env = tmp_path / ".env"
+    env.write_text('# comentario\nCLASEAIDIA_A="desde_archivo"\nCLASEAIDIA_B=desde_archivo\n\n', encoding="utf-8")
+    monkeypatch.setenv("CLASEAIDIA_B", "desde_sistema")
+    monkeypatch.delenv("CLASEAIDIA_A", raising=False)
+    cargar_env(str(env))
+    import os
+
+    assert os.environ["CLASEAIDIA_A"] == "desde_archivo"
+    assert os.environ["CLASEAIDIA_B"] == "desde_sistema"
+    monkeypatch.delenv("CLASEAIDIA_A")
