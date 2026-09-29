@@ -9,3 +9,4 @@ transcriptions_history.db
 transcriber_config.json
 .claude/
 CLAUDE.md
+.env

@@ -1,5 +1,8 @@
 from fastapi import FastAPI
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from interfaz.api import rutas_auth, rutas_colegios, rutas_cursos, rutas_usuarios
 
@@ -20,6 +23,13 @@ def crear_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    @app.exception_handler(RequestValidationError)
+    async def _validacion_sin_eco(_request, exc: RequestValidationError):
+        # Por defecto el 422 devuelve el valor recibido ("input"): un PIN o contraseña
+        # mal formado viajaría de vuelta y quedaría en cualquier proxy que guarde respuestas.
+        errores = [{k: v for k, v in e.items() if k not in ("input", "ctx")} for e in exc.errors()]
+        return JSONResponse(status_code=422, content={"detail": jsonable_encoder(errores)})
 
     @app.get("/salud")
     def salud():

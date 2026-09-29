@@ -18,7 +18,7 @@
 ## Pendientes detectados antes (ver `QA.md`, 2026-09-29)
 
 - [ ] La API no arranca con la salida redirigida en Windows (`UnicodeEncodeError` por el emoji del aviso de `JWT_SECRET_KEY` en `infraestructura/seguridad.py`) — va a romper el `.exe` sin consola. Quitar emojis de los `print` de arranque o reconfigurar stdout a UTF-8.
-- [ ] Agregar `.env` a `.dockerignore` (hoy `COPY . .` lo metería en la imagen).
+- [x] Agregar `.env` a `.dockerignore` (hecho 2026-09-29, junto con el `.env.example` de la Fase 2).
 
 ## Checklist antes de la demo
 

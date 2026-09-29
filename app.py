@@ -3,6 +3,10 @@ import os
 # Debe fijarse ANTES de cualquier import que arrastre torch.
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True,max_split_size_mb:128"
 
+from nucleo.configuracion import cargar_env
+
+cargar_env()
+
 from interfaz.app_gradio import create_ui
 
 if __name__ == "__main__":
