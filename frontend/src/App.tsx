@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { BookOpen, CalendarDays, Sparkles } from 'lucide-react'
+import { BookOpen, CalendarDays, Sparkles, Users } from 'lucide-react'
 import { AppShell, type ItemNav } from '@/components/AppShell'
 import { Cargando } from '@/components/comunes'
 import { api, type Curso, type Rol, type Usuario } from '@/lib/api'
@@ -9,16 +9,18 @@ import { Clases } from '@/views/Clases'
 import { Cursos } from '@/views/Cursos'
 import { Entrada } from '@/views/Entrada'
 import { Horario } from '@/views/Horario'
+import { Profesores } from '@/views/Profesores'
 
 const HORARIO: ItemNav = { id: 'horario', etiqueta: 'Horario', icono: CalendarDays }
 const CURSOS: ItemNav = { id: 'cursos', etiqueta: 'Cursos', icono: BookOpen }
 const CLASES: ItemNav = { id: 'clases', etiqueta: 'Clases', icono: Sparkles }
+const PROFESORES: ItemNav = { id: 'profesores', etiqueta: 'Profesores', icono: Users }
 
 // El alumno tiene un solo curso, así que no hay pestaña de cursos: su curso se muestra junto a su nombre.
 const NAV: Record<Rol, ItemNav[]> = {
   ALUMNO: [HORARIO, CLASES],
   PROFESOR: [{ ...HORARIO, etiqueta: 'Mi horario' }, CURSOS, CLASES],
-  UTP: [CURSOS, HORARIO, CLASES],
+  UTP: [CURSOS, HORARIO, CLASES, PROFESORES],
 }
 const ETIQUETA_ROL: Record<Rol, string> = { ALUMNO: 'Alumno', PROFESOR: 'Profesor', UTP: 'UTP' }
 
@@ -56,7 +58,8 @@ function Principal({ usuario, rol, onSalir }: { usuario: Usuario; rol: Rol; onSa
   return (
     <AppShell items={items} activo={id} onCambiar={cambiar} usuario={usuario} etiquetaRol={etiquetaRol} onSalir={onSalir}>
       {id === 'horario' && <Horario onAbrirClase={abrirClase} />}
-      {id === 'cursos' && <Cursos puedeCrear={rol === 'UTP'} esProfesor={rol === 'PROFESOR'} onVerClases={verClases} />}
+      {id === 'cursos' && <Cursos esUtp={rol === 'UTP'} esProfesor={rol === 'PROFESOR'} onVerClases={verClases} />}
+      {id === 'profesores' && <Profesores />}
       {id === 'clases' && <Clases key={`${cursoClases}-${claseInicial}`} cursoInicial={cursoClases} claseInicial={claseInicial} />}
     </AppShell>
   )
