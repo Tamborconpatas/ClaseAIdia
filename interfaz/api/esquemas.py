@@ -1,4 +1,5 @@
 import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -145,6 +146,20 @@ class BloqueBase(BaseModel):
             raise ValueError("dia_semana debe estar entre 0 (lunes) y 6 (domingo)")
         return valor
 
+    @model_validator(mode="after")
+    def _coherente(self):
+        if self.hora_fin <= self.hora_inicio:
+            raise ValueError("La hora de término debe ser posterior a la de inicio")
+        self.asignatura = (self.asignatura or "").strip() or None
+        self.sala = (self.sala or "").strip() or None
+        if self.tipo == TipoBloque.CLASE:
+            if not self.asignatura:
+                raise ValueError("Una clase necesita asignatura")
+        else:
+            # Recreo y almuerzo no tienen asignatura ni profesor: si no, aparecerían en el horario del profesor.
+            self.asignatura = self.profesor_id = None
+        return self
+
 
 class BloqueCrear(BloqueBase):
     pass
@@ -154,6 +169,8 @@ class BloqueOut(BloqueBase):
     model_config = ConfigDict(from_attributes=True)
     id: int
     curso_id: int
+    # Un alumno no puede consultar usuarios, así que el nombre viaja en el propio bloque.
+    profesor_nombre: str | None = None
 
 
 class TokenOut(BaseModel):
@@ -256,3 +273,43 @@ class UnirseCursoIn(BaseModel):
     @classmethod
     def _validar_rut(cls, valor: str) -> str:
         return _rut_valido_normalizado(valor)
+
+
+EstadoClase = Literal["procesando", "por_aprobar", "provisoria", "publicada", "retirada"]
+
+
+class ClaseOut(BaseModel):
+    id: int
+    bloque_id: int  # el bloque del horario del que es una instancia (el bloque se repite cada semana)
+    fecha: datetime.date
+    curso_id: int
+    curso_nombre: str
+    asignatura: str | None
+    sala: str | None
+    hora_inicio: datetime.time
+    hora_fin: datetime.time
+    profesor_id: int | None
+    # procesando = aún sin material; por_aprobar = el profesor está a tiempo de revisarlo (los alumnos aún no lo ven);
+    # provisoria = pasó el plazo sin revisión y los alumnos lo ven con una advertencia; publicada = aprobada por el
+    # profesor; retirada = el profesor la ocultó.
+    estado: EstadoClase
+    # Hasta cuándo puede revisarla el profesor antes de que se publique como provisoria (solo en por_aprobar).
+    revision_vence: datetime.datetime | None
+    prioritaria: bool
+
+
+class TarjetaOut(BaseModel):
+    pregunta: str
+    respuesta: str
+
+
+class ContenidoOut(BaseModel):
+    resumen: str | None
+    puntos_clave: str | None
+    hoja_repaso: str | None
+    tarjetas: list[TarjetaOut]
+    transcripcion_texto: str | None
+
+
+class ClaseDetalleOut(ClaseOut):
+    contenido: ContenidoOut | None
