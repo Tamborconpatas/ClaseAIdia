@@ -80,6 +80,7 @@ cp .env.example .env    # y completar JWT_SECRET_KEY (el archivo explica cómo g
 alembic upgrade head    # crea/actualiza escuela.db
 uvicorn api:app --port 8000
 ```
+La primera vez, el servidor no tiene colegio: se crea junto con su primer UTP con `POST /auth/setup` (se puede hacer desde `http://127.0.0.1:8000/docs`). Después de eso ese endpoint se cierra solo — hacerlo **antes** de exponer el servidor a internet.
 Sin `JWT_SECRET_KEY` la API arranca igual, pero con una clave temporal: todas las sesiones se cierran en cada reinicio.
 
 ## Despliegue con Docker (opción alternativa)

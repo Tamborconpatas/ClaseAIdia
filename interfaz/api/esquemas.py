@@ -1,6 +1,6 @@
 import datetime
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from infraestructura.modelos_orm import RolNombre, TipoBloque
 from nucleo.validadores import normalizar_rut, validar_rut
@@ -12,23 +12,41 @@ def _rut_valido_normalizado(valor: str) -> str:
     return normalizar_rut(valor)
 
 
+LARGO_MIN_PASSWORD = 10
+# Tope: argon2 con textos enormes es una forma barata de saturar el servidor.
+LARGO_MAX_SECRETO = 128
+
+
+def _password_valida(valor: str) -> str:
+    if len(valor) < LARGO_MIN_PASSWORD:
+        raise ValueError(f"La contraseña debe tener al menos {LARGO_MIN_PASSWORD} caracteres")
+    if len(valor) > LARGO_MAX_SECRETO:
+        raise ValueError(f"La contraseña no puede superar {LARGO_MAX_SECRETO} caracteres")
+    if len(set(valor)) < 4:
+        raise ValueError("La contraseña es demasiado repetitiva (usa al menos 4 caracteres distintos)")
+    return valor
+
+
+def _password_sin_rut(rut: str, password: str) -> None:
+    if normalizar_rut(rut).split("-")[0] in password.replace(".", ""):
+        raise ValueError("La contraseña no puede contener el RUT")
+
+
+def pin_es_facil(pin: str) -> bool:
+    """Repetido (111111) o secuencia (123456, 654321). El alumno elige su PIN, así que se filtra al elegirlo."""
+    return len(set(pin)) == 1 or pin in "0123456789" or pin in "9876543210"
+
+
 def _pin_6_digitos(valor: str) -> str:
     if not (len(valor) == 6 and valor.isascii() and valor.isdigit()):
         raise ValueError("El PIN debe tener exactamente 6 dígitos")
     return valor
 
 
-class ColegioBase(BaseModel):
-    nombre: str
-
-
-class ColegioCrear(ColegioBase):
-    pass
-
-
-class ColegioOut(ColegioBase):
+class ColegioOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int
+    nombre: str
 
 
 class UsuarioBase(BaseModel):
@@ -48,6 +66,16 @@ class UsuarioCrear(UsuarioBase):
     El alumno se da de alta vía POST /cursos/unirse, no por acá."""
 
     password: str
+
+    @field_validator("password")
+    @classmethod
+    def _validar_password(cls, valor: str) -> str:
+        return _password_valida(valor)
+
+    @model_validator(mode="after")
+    def _password_no_contiene_rut(self):
+        _password_sin_rut(self.rut, self.password)
+        return self
 
     @field_validator("roles")
     @classmethod
@@ -97,6 +125,10 @@ class CursoConCodigoOut(CursoOut):
     codigo_invitacion: str
 
 
+class CodigoCursoOut(BaseModel):
+    codigo_invitacion: str
+
+
 class BloqueBase(BaseModel):
     tipo: TipoBloque
     asignatura: str | None = None
@@ -131,11 +163,23 @@ class TokenOut(BaseModel):
     colegio_id: int
 
 
-class BootstrapUtpIn(BaseModel):
+class SetupIn(BaseModel):
+    """Primera ejecución del servidor: crea el colegio y su primer UTP."""
+
+    colegio_nombre: str
     rut: str
     nombre: str
     password: str
-    colegio_id: int
+
+    @field_validator("password")
+    @classmethod
+    def _validar_password(cls, valor: str) -> str:
+        return _password_valida(valor)
+
+    @model_validator(mode="after")
+    def _password_no_contiene_rut(self):
+        _password_sin_rut(self.rut, self.password)
+        return self
 
     @field_validator("rut")
     @classmethod
@@ -145,7 +189,8 @@ class BootstrapUtpIn(BaseModel):
 
 class LoginStaffIn(BaseModel):
     rut: str
-    password: str
+    # Sin mínimo (no se delata la política en el login), pero con tope.
+    password: str = Field(max_length=LARGO_MAX_SECRETO)
 
     @field_validator("rut")
     @classmethod

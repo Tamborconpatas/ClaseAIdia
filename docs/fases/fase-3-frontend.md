@@ -5,6 +5,7 @@ Requisito previo: Fase 2 (login y JWT funcionando en el backend) — el frontend
 ## Qué debe tener
 
 - **Setup**: proyecto Vite + React + TypeScript, Tailwind CSS, `shadcn/ui`, `lucide-react`. Servido eventualmente por el propio servidor del colegio (build estático), nunca por un hosting de terceros (decisión ya tomada).
+- **Primera ejecución**: si el servidor no tiene colegio (`POST /auth/setup` todavía abierto), mostrar la pantalla para crear el colegio y el primer UTP en vez del login. Se detecta con `GET /auth/estado` (público, devuelve solo `{"configurado": bool}`).
 - **Login**: pantalla con los dos flujos — RUT+PIN (alumno) y RUT+contraseña (profesor/UTP) — guardando el JWT (ej. `localStorage` o memoria, a decidir) y mandándolo en cada request subsiguiente.
 - **Vista UTP**: grilla de horario editable (bloques de clase + no lectivos: recreo, almuerzo), CRUD de Curso/Bloque/Usuario contra la API ya existente (Fase 1) — ahora protegida por rol (Fase 2).
 - **Vista Alumno**:
@@ -12,7 +13,7 @@ Requisito previo: Fase 2 (login y JWT funcionando en el backend) — el frontend
   - Ver su horario personal automático (derivado de los cursos a los que pertenece).
   - Ver el contenido ya procesado de cada clase (transcripción, resumen, puntos clave, hoja de repaso, tarjetas) — solo el contenido con `aprobado = True`.
 - **Vista Profesor**: revisar y aprobar/editar el contenido generado antes de que se publique al alumno (flag `aprobado` en `ContenidoClase`).
-- **Formularios**: validación también en el cliente (RUT, PIN de 6 dígitos, horas de bloque), con mensajes de error claros. Es solo para comodidad del usuario; la validación que cuenta sigue en el backend.
+- **Formularios**: validación también en el cliente (RUT; contraseña de staff de 10 a 128 caracteres, sin el RUT y con al menos 4 caracteres distintos; PIN de 6 dígitos que no sea repetido ni secuencia; horas de bloque), con mensajes de error claros. Es solo para comodidad del usuario; la validación que cuenta sigue en el backend.
 - **Accesibilidad y diseño**: contraste de colores revisado al definir la paleta de Tailwind, texto alternativo en imágenes, diseño responsivo probado en celular y PC.
 - **Seguridad del cliente**: sin `dangerouslySetInnerHTML` (el contenido generado por la IA se renderiza como texto; si alguna vez hace falta HTML, justificarlo y sanitizarlo).
 - **Páginas y archivos estáticos**: política de privacidad, términos y condiciones, medio de contacto real del equipo, favicon con el logo de ClaseAIdia, `robots.txt` con `Disallow: /` y `<meta name="robots" content="noindex">` en la app.

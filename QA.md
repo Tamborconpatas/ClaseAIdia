@@ -122,4 +122,26 @@ El usuario pidió explícitamente que la instalación fuera fácil para alguien 
 
 **Logs y `.env` (mismo día)**: API levantada con uvicorn en `--log-level debug` sobre una copia de `escuela.db`, con bootstrap, logins de staff (contraseña buena y mala), unirse a curso, login de alumno (PIN bueno, malo y mal formado): **0 apariciones** de contraseñas, PINs o el token en el log — uvicorn solo registra método, ruta y código. Lo único encontrado: el 422 devolvía el PIN mal formado en `"input"` → handler en `aplicacion.py` que quita `input`/`ctx` de los errores de validación. Además se descubrió que **nada cargaba el `.env`** (no está `python-dotenv`): se agregó `cargar_env()` (stdlib) en `api.py`/`app.py`, `.env.example` en la raíz, y `.env` a `.dockerignore`. Probado de punta a punta: con un `.env` en el directorio de trabajo, `import api` con la salida redirigida carga `JWT_SECRET_KEY` y no se cae. 2 tests nuevos → `pytest tests/` **57 passed**.
 
+**Decisiones de acceso (2026-10-01)**, tomadas antes de la Fase 3 (detalle en `docs/fases/fase-2-autenticacion-roles.md`): `POST /auth/setup` crea el primer colegio + UTP y se cierra solo (409 después), reemplazando `POST /colegios` y `/auth/bootstrap-utp`; `GET /auth/estado` dice si ya está configurado; toda lectura de colegios/cursos/bloques exige login (alumno: solo sus cursos; ajeno → 404); `GET /cursos/{id}/codigo` para staff del colegio. Verificado con un cliente anónimo contra la app: `/colegios/1`, `/cursos`, `/cursos/1`, `/cursos/1/bloques`, `/usuarios`, `/usuarios/1` → 401, segundo setup → 409. Tests: fixtures reescritos sobre `/auth/setup` + un fixture `otro_colegio` que crea el segundo colegio directo en la base (la API ya no lo permite); 11 tests nuevos → `pytest tests/` **64 passed**.
+
 Con esto la Fase 2 queda sin pendientes. Siguen abiertos en la Fase 6: el `UnicodeEncodeError` al arrancar sin `JWT_SECRET_KEY` con salida redirigida (con `.env` completo ya no se dispara, pero el aviso sigue teniendo el emoji)., `fase-4` (borrado de audio en `finally`), `fase-6` (encoding y `.dockerignore`).
+
+## Endurecimiento de contraseñas, inyección SQL y tokens (2026-10-01)
+
+Pedido: que las contraseñas sean sólidas y que no sea posible la inyección SQL ni otras vulnerabilidades. Detalle de qué se hizo y los límites que quedan: `docs/fases/fase-2-autenticacion-roles.md`, sección "Endurecimiento".
+
+**Inyección SQL — auditoría**: se buscó SQL armado a mano en `interfaz/`, `infraestructura/`, `servicios/` y `nucleo/`. Solo hay `PRAGMA foreign_keys=ON` (constante) en `basedatos.py` y el historial del prototipo Gradio, cuyas tres sentencias son constantes o usan `?`. Todo lo demás es ORM. Se dejó un test que lo vigila (`test_no_hay_sql_armado_a_mano_en_el_backend`) y otro que envía 10 payloads clásicos (`' OR '1'='1`, `'; DROP TABLE usuarios; --`, `UNION SELECT`, byte nulo...) a login de staff y alumno, restablecer PIN, setup y unirse (con y sin código válido): ninguno entrega un token ni causa un 500, y los mismos textos guardados como nombre de curso vuelven idénticos (se tratan como datos).
+
+**Hallazgos corregidos**
+1. **Sin política de contraseñas**: se aceptaba cualquier contraseña de personal, incluso `x`. Ahora 10-128 caracteres, ≥ 4 distintos y sin el RUT.
+2. **Sin tope de largo**: un login con 100 000 caracteres iba a argon2. Ahora 422 antes de hashear.
+3. **PIN trivial**: `111111`, `123456`, etc. se podían elegir. Ahora se rechazan al elegir el PIN.
+4. **Enumeración de RUT por tiempo de respuesta**: login con RUT inexistente respondía en 3 ms contra 57 ms con un RUT real (mediana de 7, base en memoria). Ahora 59 ms.
+5. **`JWT_SECRET_KEY` corta aceptada** sin aviso: ahora impide arrancar con menos de 32 caracteres.
+6. **Tokens sin `exp`/`sub` aceptados** si estaban bien firmados: ahora se exigen.
+7. El aviso de arranque sin `JWT_SECRET_KEY` llevaba un emoji que hacía fallar la API con la salida redirigida en Windows (pendiente de la Fase 6, cerrado acá).
+
+**Verificación**: `pytest tests/` → **93 passed** (29 tests nuevos en `tests/test_seguridad.py`). Para comprobar que los tests no pasan "en vacío" se revirtió una defensa a la vez (largo mínimo, PIN fácil, `exp` obligatorio, algoritmos permitidos, clave corta, PIN fácil en `/cursos/unirse`): cada reversión hizo fallar exactamente su test, y restaurado vuelve a 93 passed. Tokens probados: otro algoritmo, `alg: none`, clave ajena, sin `exp`, vencido, sin `sub`, basura y firma alterada → todos 401.
+
+**No cubierto** (documentado como límites en la Fase 2): revocación de tokens, bloqueo que delata cuentas existentes, límite por IP, `/docs` abierto. `pip-audit` y `npm audit` siguen pendientes para la entrega final.
+

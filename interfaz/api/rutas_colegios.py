@@ -2,29 +2,17 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from infraestructura.basedatos import obtener_db
-from infraestructura.modelos_orm import Colegio
-from interfaz.api.esquemas import ColegioCrear, ColegioOut
+from infraestructura.modelos_orm import Colegio, Usuario
+from interfaz.api.dependencias_auth import usuario_actual
+from interfaz.api.esquemas import ColegioOut
 
 router = APIRouter(prefix="/colegios", tags=["colegios"])
 
 
-@router.post("", response_model=ColegioOut, status_code=201)
-def crear_colegio(datos: ColegioCrear, db: Session = Depends(obtener_db)):
-    colegio = Colegio(nombre=datos.nombre)
-    db.add(colegio)
-    db.commit()
-    db.refresh(colegio)
-    return colegio
-
-
-@router.get("", response_model=list[ColegioOut])
-def listar_colegios(db: Session = Depends(obtener_db)):
-    return db.query(Colegio).all()
-
-
+# El colegio se crea una sola vez en POST /auth/setup; acá solo se lee el propio.
 @router.get("/{colegio_id}", response_model=ColegioOut)
-def obtener_colegio(colegio_id: int, db: Session = Depends(obtener_db)):
-    colegio = db.get(Colegio, colegio_id)
-    if colegio is None:
+def obtener_colegio(colegio_id: int, db: Session = Depends(obtener_db), actual: Usuario = Depends(usuario_actual)):
+    # 404 también si es de otro colegio: no revela si el id existe.
+    if colegio_id != actual.colegio_id:
         raise HTTPException(status_code=404, detail="Colegio no encontrado")
-    return colegio
+    return db.get(Colegio, colegio_id)

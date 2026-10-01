@@ -1,20 +1,30 @@
-def test_bootstrap_utp_crea_primer_usuario(cliente, colegio_id, rut_utp):
+def test_setup_crea_colegio_y_primer_utp(cliente, rut_utp):
     r = cliente.post(
-        "/auth/bootstrap-utp",
-        json={"rut": rut_utp, "nombre": "UTP Test", "password": "clave-segura-123", "colegio_id": colegio_id},
+        "/auth/setup",
+        json={"colegio_nombre": "Liceo Nuevo", "rut": rut_utp, "nombre": "UTP Test", "password": "clave-segura-123"},
     )
     assert r.status_code == 201
     body = r.json()
     assert body["roles"] == ["UTP"]
-    assert "access_token" in body
+    headers = {"Authorization": f"Bearer {body['access_token']}"}
+    assert cliente.get(f"/colegios/{body['colegio_id']}", headers=headers).json()["nombre"] == "Liceo Nuevo"
 
 
-def test_bootstrap_utp_segunda_vez_falla(cliente, colegio_id, rut_utp, token_utp):
+def test_setup_se_cierra_tras_la_primera_vez(cliente, setup_inicial):
     r = cliente.post(
-        "/auth/bootstrap-utp",
-        json={"rut": "1000005-K", "nombre": "Otro UTP", "password": "clave-segura-123", "colegio_id": colegio_id},
+        "/auth/setup",
+        json={"colegio_nombre": "Otro", "rut": "1000005-K", "nombre": "Intruso", "password": "clave-segura-123"},
     )
     assert r.status_code == 409
+    assert cliente.post("/auth/login/staff", json={"rut": "1000005-K", "password": "clave-segura-123"}).status_code == 401
+
+
+def test_setup_valida_rut(cliente):
+    r = cliente.post(
+        "/auth/setup",
+        json={"colegio_nombre": "L", "rut": "12345678-9", "nombre": "U", "password": "clave-segura-123"},
+    )
+    assert r.status_code == 422
 
 
 def test_login_staff_exitoso(cliente, colegio_id, rut_utp, token_utp):
@@ -48,7 +58,7 @@ def test_unirse_curso_crea_alumno_nuevo(cliente, colegio_id, headers_utp):
 
     r = cliente.post(
         "/cursos/unirse",
-        json={"codigo_invitacion": curso["codigo_invitacion"], "rut": "11222333-9", "nombre": "Alumno Uno", "pin": "123456"},
+        json={"codigo_invitacion": curso["codigo_invitacion"], "rut": "11222333-9", "nombre": "Alumno Uno", "pin": "482915"},
     )
     assert r.status_code == 200
     body = r.json()
@@ -59,7 +69,7 @@ def test_unirse_a_segundo_curso_con_pin_correcto(cliente, colegio_id, headers_ut
     curso1 = cliente.post("/cursos", json={"nombre": "8A", "colegio_id": colegio_id}, headers=headers_utp).json()
     curso2 = cliente.post("/cursos", json={"nombre": "8B", "colegio_id": colegio_id}, headers=headers_utp).json()
 
-    datos = {"rut": "11222333-9", "nombre": "Alumno Uno", "pin": "123456"}
+    datos = {"rut": "11222333-9", "nombre": "Alumno Uno", "pin": "482915"}
     r1 = cliente.post("/cursos/unirse", json={**datos, "codigo_invitacion": curso1["codigo_invitacion"]})
     assert r1.status_code == 200
 
@@ -73,7 +83,7 @@ def test_unirse_con_pin_incorrecto_sobre_cuenta_existente_falla(cliente, colegio
 
     cliente.post(
         "/cursos/unirse",
-        json={"codigo_invitacion": curso1["codigo_invitacion"], "rut": "11222333-9", "nombre": "Alumno Uno", "pin": "123456"},
+        json={"codigo_invitacion": curso1["codigo_invitacion"], "rut": "11222333-9", "nombre": "Alumno Uno", "pin": "482915"},
     )
     r = cliente.post(
         "/cursos/unirse",
@@ -85,7 +95,7 @@ def test_unirse_con_pin_incorrecto_sobre_cuenta_existente_falla(cliente, colegio
 def test_unirse_con_codigo_invalido_falla(cliente):
     r = cliente.post(
         "/cursos/unirse",
-        json={"codigo_invitacion": "NOEXISTE", "rut": "11222333-9", "nombre": "Alumno Uno", "pin": "123456"},
+        json={"codigo_invitacion": "NOEXISTE", "rut": "11222333-9", "nombre": "Alumno Uno", "pin": "482915"},
     )
     assert r.status_code == 404
 
@@ -94,7 +104,7 @@ def test_alumno_no_puede_crear_curso(cliente, colegio_id, headers_utp):
     curso = cliente.post("/cursos", json={"nombre": "8A", "colegio_id": colegio_id}, headers=headers_utp).json()
     ingreso = cliente.post(
         "/cursos/unirse",
-        json={"codigo_invitacion": curso["codigo_invitacion"], "rut": "11222333-9", "nombre": "Alumno Uno", "pin": "123456"},
+        json={"codigo_invitacion": curso["codigo_invitacion"], "rut": "11222333-9", "nombre": "Alumno Uno", "pin": "482915"},
     )
     headers_alumno = {"Authorization": f"Bearer {ingreso.json()['access_token']}"}
 
@@ -111,7 +121,7 @@ def _crear_curso(cliente, colegio_id, headers_utp):
 
 def test_listar_cursos_no_expone_codigo(cliente, colegio_id, headers_utp):
     _crear_curso(cliente, colegio_id, headers_utp)
-    cursos = cliente.get("/cursos").json()
+    cursos = cliente.get("/cursos", headers=headers_utp).json()
     assert cursos and "codigo_invitacion" not in cursos[0]
 
 
@@ -119,35 +129,31 @@ def test_unirse_con_rut_de_staff_no_toma_la_cuenta(cliente, colegio_id, rut_utp,
     curso = _crear_curso(cliente, colegio_id, headers_utp)
     r = cliente.post(
         "/cursos/unirse",
-        json={"codigo_invitacion": curso["codigo_invitacion"], "rut": rut_utp, "nombre": "x", "pin": "123456"},
+        json={"codigo_invitacion": curso["codigo_invitacion"], "rut": rut_utp, "nombre": "x", "pin": "482915"},
     )
     assert r.status_code == 409
-    assert cliente.post("/auth/login/alumno", json={"rut": rut_utp, "pin": "123456"}).status_code == 401
+    assert cliente.post("/auth/login/alumno", json={"rut": rut_utp, "pin": "482915"}).status_code == 401
 
 
 def test_unirse_aplica_bloqueo_de_intentos(cliente, colegio_id, headers_utp):
     curso = _crear_curso(cliente, colegio_id, headers_utp)
-    datos = {"codigo_invitacion": curso["codigo_invitacion"], "rut": "11222333-9", "nombre": "A", "pin": "123456"}
+    datos = {"codigo_invitacion": curso["codigo_invitacion"], "rut": "11222333-9", "nombre": "A", "pin": "482915"}
     assert cliente.post("/cursos/unirse", json=datos).status_code == 200
 
     for _ in range(5):
         assert cliente.post("/cursos/unirse", json={**datos, "pin": "000000"}).status_code == 401
     # Bloqueado: ni el PIN correcto entra, ni por unirse ni por login.
     assert cliente.post("/cursos/unirse", json=datos).status_code == 429
-    assert cliente.post("/auth/login/alumno", json={"rut": "11222333-9", "pin": "123456"}).status_code == 429
+    assert cliente.post("/auth/login/alumno", json={"rut": "11222333-9", "pin": "482915"}).status_code == 429
 
 
-def test_utp_no_puede_escribir_en_otro_colegio(cliente, colegio_id, headers_utp):
+def test_utp_no_puede_escribir_en_otro_colegio(cliente, colegio_id, headers_utp, otro_colegio):
     curso_a = _crear_curso(cliente, colegio_id, headers_utp)
-    otro = cliente.post("/colegios", json={"nombre": "Otro"}).json()["id"]
-    token_b = cliente.post(
-        "/auth/bootstrap-utp", json={"rut": "1000005-K", "nombre": "UTP B", "password": "x", "colegio_id": otro}
-    ).json()["access_token"]
-    hb = {"Authorization": f"Bearer {token_b}"}
+    otro, hb = otro_colegio
 
     r = cliente.post(
         "/usuarios",
-        json={"rut": "11222333-9", "nombre": "i", "colegio_id": colegio_id, "roles": ["UTP"], "password": "x"},
+        json={"rut": "11222333-9", "nombre": "i", "colegio_id": colegio_id, "roles": ["UTP"], "password": "clave-segura-123"},
         headers=hb,
     )
     assert r.status_code == 403
@@ -169,17 +175,17 @@ def test_pin_debe_tener_6_digitos(cliente, colegio_id, headers_utp):
 
 def test_rut_con_puntos_es_la_misma_cuenta(cliente, colegio_id, headers_utp):
     curso = _crear_curso(cliente, colegio_id, headers_utp)
-    datos = {"codigo_invitacion": curso["codigo_invitacion"], "nombre": "A", "pin": "123456"}
+    datos = {"codigo_invitacion": curso["codigo_invitacion"], "nombre": "A", "pin": "482915"}
     cliente.post("/cursos/unirse", json={**datos, "rut": "11222333-9"})
     assert cliente.post("/cursos/unirse", json={**datos, "rut": "11.222.333-9", "pin": "999999"}).status_code == 401
-    assert cliente.post("/auth/login/alumno", json={"rut": "11.222.333-9", "pin": "123456"}).status_code == 200
+    assert cliente.post("/auth/login/alumno", json={"rut": "11.222.333-9", "pin": "482915"}).status_code == 200
 
 
 def test_alumno_no_ve_a_otros_usuarios(cliente, colegio_id, headers_utp):
     curso = _crear_curso(cliente, colegio_id, headers_utp)
     token = cliente.post(
         "/cursos/unirse",
-        json={"codigo_invitacion": curso["codigo_invitacion"], "rut": "11222333-9", "nombre": "A", "pin": "123456"},
+        json={"codigo_invitacion": curso["codigo_invitacion"], "rut": "11222333-9", "nombre": "A", "pin": "482915"},
     ).json()["access_token"]
     h = {"Authorization": f"Bearer {token}"}
     yo = cliente.get("/usuarios", headers=headers_utp).json()
@@ -192,7 +198,7 @@ def test_alumno_no_ve_a_otros_usuarios(cliente, colegio_id, headers_utp):
 # --- Reseteo de PIN por staff ---
 
 
-def _alumno_con_id(cliente, colegio_id, headers_utp, pin="123456"):
+def _alumno_con_id(cliente, colegio_id, headers_utp, pin="482915"):
     curso = _crear_curso(cliente, colegio_id, headers_utp)
     cliente.post(
         "/cursos/unirse",
@@ -214,10 +220,10 @@ def test_reset_pin_con_codigo_de_un_solo_uso(cliente, colegio_id, headers_utp):
         cliente.post("/auth/login/alumno", json={"rut": "11222333-9", "pin": "000000"})
 
     codigo = _resetear(cliente, id_alumno, headers_utp)
-    datos = {"rut": "11.222.333-9", "codigo": codigo.lower(), "pin": "654321"}
+    datos = {"rut": "11.222.333-9", "codigo": codigo.lower(), "pin": "730164"}
     assert cliente.post("/auth/restablecer-pin", json=datos).status_code == 200
-    assert cliente.post("/auth/login/alumno", json={"rut": "11222333-9", "pin": "654321"}).status_code == 200
-    assert cliente.post("/auth/login/alumno", json={"rut": "11222333-9", "pin": "123456"}).status_code == 401
+    assert cliente.post("/auth/login/alumno", json={"rut": "11222333-9", "pin": "730164"}).status_code == 200
+    assert cliente.post("/auth/login/alumno", json={"rut": "11222333-9", "pin": "482915"}).status_code == 401
     # Un solo uso.
     assert cliente.post("/auth/restablecer-pin", json={**datos, "pin": "111111"}).status_code == 401
 
@@ -228,7 +234,7 @@ def test_tras_reset_saber_el_rut_no_alcanza(cliente, colegio_id, headers_utp):
     curso = _crear_curso(cliente, colegio_id, headers_utp)
     cliente.post(
         "/cursos/unirse",
-        json={"codigo_invitacion": curso["codigo_invitacion"], "rut": "11222333-9", "nombre": "A", "pin": "123456"},
+        json={"codigo_invitacion": curso["codigo_invitacion"], "rut": "11222333-9", "nombre": "A", "pin": "482915"},
     )
     id_alumno = next(u["id"] for u in cliente.get("/usuarios", headers=headers_utp).json() if u["rut"] == "11222333-9")
     codigo = _resetear(cliente, id_alumno, headers_utp)
@@ -255,21 +261,17 @@ def test_codigo_reset_vencido(cliente, colegio_id, headers_utp, monkeypatch):
     codigo = _resetear(cliente, id_alumno, headers_utp)
     en_16_min = rutas_auth.ahora_utc() + datetime.timedelta(minutes=16)
     monkeypatch.setattr(rutas_auth, "ahora_utc", lambda: en_16_min)
-    r = cliente.post("/auth/restablecer-pin", json={"rut": "11222333-9", "codigo": codigo, "pin": "654321"})
+    r = cliente.post("/auth/restablecer-pin", json={"rut": "11222333-9", "codigo": codigo, "pin": "730164"})
     assert r.status_code == 401
 
 
-def test_reset_pin_solo_staff_del_mismo_colegio(cliente, colegio_id, headers_utp):
+def test_reset_pin_solo_staff_del_mismo_colegio(cliente, colegio_id, headers_utp, otro_colegio):
     id_alumno = _alumno_con_id(cliente, colegio_id, headers_utp)
-    token_alumno = cliente.post("/auth/login/alumno", json={"rut": "11222333-9", "pin": "123456"}).json()["access_token"]
+    token_alumno = cliente.post("/auth/login/alumno", json={"rut": "11222333-9", "pin": "482915"}).json()["access_token"]
     r = cliente.post(f"/usuarios/{id_alumno}/reset-pin", headers={"Authorization": f"Bearer {token_alumno}"})
     assert r.status_code == 403
 
-    otro = cliente.post("/colegios", json={"nombre": "Otro"}).json()["id"]
-    token_b = cliente.post(
-        "/auth/bootstrap-utp", json={"rut": "1000005-K", "nombre": "UTP B", "password": "x", "colegio_id": otro}
-    ).json()["access_token"]
-    r = cliente.post(f"/usuarios/{id_alumno}/reset-pin", headers={"Authorization": f"Bearer {token_b}"})
+    r = cliente.post(f"/usuarios/{id_alumno}/reset-pin", headers=otro_colegio[1])
     assert r.status_code == 404
 
 
@@ -277,7 +279,7 @@ def test_reset_pin_no_aplica_a_staff(cliente, rut_utp, headers_utp):
     id_utp = cliente.get("/usuarios", headers=headers_utp).json()[0]["id"]
     assert cliente.post(f"/usuarios/{id_utp}/reset-pin", headers=headers_utp).status_code == 409
     # Y el staff (sin PIN) no puede fijarse uno vía login alumno.
-    assert cliente.post("/auth/login/alumno", json={"rut": rut_utp, "pin": "123456"}).status_code == 401
+    assert cliente.post("/auth/login/alumno", json={"rut": rut_utp, "pin": "482915"}).status_code == 401
 
 
 # --- Secretos fuera de respuestas y configuración ---
@@ -303,3 +305,70 @@ def test_cargar_env_no_pisa_variables_del_sistema(tmp_path, monkeypatch):
     assert os.environ["CLASEAIDIA_A"] == "desde_archivo"
     assert os.environ["CLASEAIDIA_B"] == "desde_sistema"
     monkeypatch.delenv("CLASEAIDIA_A")
+
+
+# --- Lecturas con login, visibilidad por rol y código del curso ---
+
+
+def _alumno_en_curso(cliente, curso, rut="11222333-9"):
+    token = cliente.post(
+        "/cursos/unirse",
+        json={"codigo_invitacion": curso["codigo_invitacion"], "rut": rut, "nombre": "A", "pin": "482915"},
+    ).json()["access_token"]
+    return {"Authorization": f"Bearer {token}"}
+
+
+def test_lecturas_de_cursos_requieren_login(cliente, colegio_id, headers_utp):
+    curso = _crear_curso(cliente, colegio_id, headers_utp)
+    for ruta in ["/cursos", f"/cursos/{curso['id']}", f"/cursos/{curso['id']}/bloques", f"/cursos/{curso['id']}/codigo"]:
+        assert cliente.get(ruta).status_code == 401, ruta
+
+
+def test_alumno_solo_ve_sus_cursos(cliente, colegio_id, headers_utp):
+    curso_a = _crear_curso(cliente, colegio_id, headers_utp)
+    curso_b = cliente.post("/cursos", json={"nombre": "8B", "colegio_id": colegio_id}, headers=headers_utp).json()
+    h = _alumno_en_curso(cliente, curso_a)
+
+    assert [c["id"] for c in cliente.get("/cursos", headers=h).json()] == [curso_a["id"]]
+    assert cliente.get(f"/cursos/{curso_a['id']}/bloques", headers=h).status_code == 200
+    assert cliente.get(f"/cursos/{curso_b['id']}", headers=h).status_code == 404
+    assert cliente.get(f"/cursos/{curso_b['id']}/bloques", headers=h).status_code == 404
+    # El staff ve todos los de su colegio.
+    assert len(cliente.get("/cursos", headers=headers_utp).json()) == 2
+
+
+def test_cursos_de_otro_colegio_no_se_ven(cliente, colegio_id, headers_utp, otro_colegio):
+    curso = _crear_curso(cliente, colegio_id, headers_utp)
+    _, hb = otro_colegio
+    assert cliente.get("/cursos", headers=hb).json() == []
+    assert cliente.get(f"/cursos/{curso['id']}", headers=hb).status_code == 404
+    assert cliente.get(f"/cursos/{curso['id']}/codigo", headers=hb).status_code == 404
+
+
+def test_codigo_del_curso_solo_para_staff_del_colegio(cliente, colegio_id, headers_utp):
+    curso = _crear_curso(cliente, colegio_id, headers_utp)
+    r = cliente.get(f"/cursos/{curso['id']}/codigo", headers=headers_utp)
+    assert r.status_code == 200
+    assert r.json() == {"codigo_invitacion": curso["codigo_invitacion"]}
+
+    # Un profesor del colegio también puede mostrarlo en clase.
+    cliente.post(
+        "/usuarios",
+        json={"rut": "5126663-3", "nombre": "Profe", "colegio_id": colegio_id, "roles": ["PROFESOR"], "password": "clave-segura-123"},
+        headers=headers_utp,
+    )
+    tp = cliente.post("/auth/login/staff", json={"rut": "5126663-3", "password": "clave-segura-123"}).json()["access_token"]
+    assert cliente.get(f"/cursos/{curso['id']}/codigo", headers={"Authorization": f"Bearer {tp}"}).status_code == 200
+
+    # Un alumno, aunque esté inscrito, no.
+    h = _alumno_en_curso(cliente, curso)
+    assert cliente.get(f"/cursos/{curso['id']}/codigo", headers=h).status_code == 403
+
+
+def test_estado_indica_si_el_servidor_ya_fue_configurado(cliente, rut_utp):
+    assert cliente.get("/auth/estado").json() == {"configurado": False}
+    cliente.post(
+        "/auth/setup",
+        json={"colegio_nombre": "L", "rut": rut_utp, "nombre": "U", "password": "clave-segura-123"},
+    )
+    assert cliente.get("/auth/estado").json() == {"configurado": True}

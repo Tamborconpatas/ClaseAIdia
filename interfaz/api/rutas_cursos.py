@@ -5,15 +5,17 @@ from sqlalchemy.orm import Session
 from infraestructura.basedatos import obtener_db
 from infraestructura.modelos_orm import AlumnoCurso, Bloque, Curso, RolNombre, Usuario, UsuarioRol
 from infraestructura.seguridad import hashear_secreto, verificar_secreto
-from interfaz.api.dependencias_auth import emitir_token, requiere_rol
+from interfaz.api.dependencias_auth import emitir_token, requiere_rol, usuario_actual
 from interfaz.api.esquemas import (
     BloqueCrear,
     BloqueOut,
+    CodigoCursoOut,
     CursoConCodigoOut,
     CursoCrear,
     CursoOut,
     TokenOut,
     UnirseCursoIn,
+    pin_es_facil,
 )
 from interfaz.api.rutas_auth import registrar_resultado_intento, verificar_bloqueo
 from nucleo.codigos import generar_codigo_invitacion
@@ -24,6 +26,21 @@ router = APIRouter(prefix="/cursos", tags=["cursos"])
 def _obtener_curso_o_404(curso_id: int, db: Session) -> Curso:
     curso = db.get(Curso, curso_id)
     if curso is None:
+        raise HTTPException(status_code=404, detail="Curso no encontrado")
+    return curso
+
+
+def _es_staff(usuario: Usuario) -> bool:
+    return bool({r.rol for r in usuario.roles} & {RolNombre.PROFESOR, RolNombre.UTP})
+
+
+def _curso_visible_o_404(curso_id: int, usuario: Usuario, db: Session) -> Curso:
+    """Staff ve los cursos de su colegio; un alumno solo aquellos a los que está inscrito.
+    404 en ambos casos: no revela si el id existe."""
+    curso = db.get(Curso, curso_id)
+    if curso is None or curso.colegio_id != usuario.colegio_id:
+        raise HTTPException(status_code=404, detail="Curso no encontrado")
+    if not _es_staff(usuario) and db.query(AlumnoCurso).filter_by(usuario_id=usuario.id, curso_id=curso.id).first() is None:
         raise HTTPException(status_code=404, detail="Curso no encontrado")
     return curso
 
@@ -51,8 +68,11 @@ def crear_curso(
 
 
 @router.get("", response_model=list[CursoOut])
-def listar_cursos(db: Session = Depends(obtener_db)):
-    return db.query(Curso).all()
+def listar_cursos(db: Session = Depends(obtener_db), actual: Usuario = Depends(usuario_actual)):
+    consulta = db.query(Curso).filter_by(colegio_id=actual.colegio_id)
+    if not _es_staff(actual):
+        consulta = consulta.join(AlumnoCurso).filter(AlumnoCurso.usuario_id == actual.id)
+    return consulta.all()
 
 
 @router.post("/unirse", response_model=TokenOut)
@@ -63,6 +83,8 @@ def unirse_curso(datos: UnirseCursoIn, db: Session = Depends(obtener_db)):
 
     usuario = db.query(Usuario).filter_by(rut=datos.rut).first()
     if usuario is None:
+        if pin_es_facil(datos.pin):
+            raise HTTPException(status_code=422, detail="PIN demasiado fácil de adivinar (repetido o secuencia)")
         usuario = Usuario(
             rut=datos.rut,
             nombre=datos.nombre,
@@ -101,8 +123,18 @@ def unirse_curso(datos: UnirseCursoIn, db: Session = Depends(obtener_db)):
 
 
 @router.get("/{curso_id}", response_model=CursoOut)
-def obtener_curso(curso_id: int, db: Session = Depends(obtener_db)):
-    return _obtener_curso_o_404(curso_id, db)
+def obtener_curso(curso_id: int, db: Session = Depends(obtener_db), actual: Usuario = Depends(usuario_actual)):
+    return _curso_visible_o_404(curso_id, actual, db)
+
+
+@router.get("/{curso_id}/codigo", response_model=CodigoCursoOut)
+def codigo_curso(
+    curso_id: int,
+    db: Session = Depends(obtener_db),
+    staff: Usuario = Depends(requiere_rol(RolNombre.PROFESOR, RolNombre.UTP)),
+):
+    """Para mostrar el código/QR del curso en clase: solo staff de ese colegio."""
+    return _curso_visible_o_404(curso_id, staff, db)
 
 
 @router.post("/{curso_id}/bloques", response_model=BloqueOut, status_code=201)
@@ -132,6 +164,6 @@ def crear_bloque(
 
 
 @router.get("/{curso_id}/bloques", response_model=list[BloqueOut])
-def listar_bloques(curso_id: int, db: Session = Depends(obtener_db)):
-    _obtener_curso_o_404(curso_id, db)
+def listar_bloques(curso_id: int, db: Session = Depends(obtener_db), actual: Usuario = Depends(usuario_actual)):
+    _curso_visible_o_404(curso_id, actual, db)
     return db.query(Bloque).filter_by(curso_id=curso_id).all()
