@@ -1,10 +1,11 @@
 import { useMemo, useState, type FormEvent } from 'react'
 import { QRCodeSVG } from 'qrcode.react'
-import { BookOpen, Check, Copy, KeyRound, Loader2, Pencil, Plus, QrCode, Sparkles, Trash2, Users } from 'lucide-react'
+import { BookOpen, Check, Copy, Loader2, Pencil, Plus, QrCode, Sparkles, Trash2, Users } from 'lucide-react'
 import { Cargando, ErrorForm, Vacio } from '@/components/comunes'
+import { FilaConReset } from '@/components/FilaConReset'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { api, type AlumnoDeCurso, type Curso, type ResetPin } from '@/lib/api'
+import { api, type AlumnoDeCurso, type Curso } from '@/lib/api'
 import { cargarBloques } from '@/lib/datos'
 import { useSesion } from '@/lib/sesion'
 import { useCarga } from '@/lib/usar'
@@ -245,8 +246,6 @@ function BorrarCurso({ curso, onListo, onCancelar }: { curso: Curso; onListo: ()
   )
 }
 
-const hora = (iso: string) => new Date(iso).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })
-
 /** Alumnos inscritos, con el reseteo de PIN: da un código de un solo uso que se entrega en persona. */
 function AlumnosDelCurso({ cursoId }: { cursoId: number }) {
   const alumnos = useCarga(() => api<AlumnoDeCurso[]>(`/cursos/${cursoId}/alumnos`), [cursoId])
@@ -259,88 +258,20 @@ function AlumnosDelCurso({ cursoId }: { cursoId: number }) {
   return (
     <ul className="mt-4 divide-y rounded-xl bg-muted/40" aria-label="Alumnos del curso">
       {lista.map((a) => (
-        <FilaAlumno key={a.id} alumno={a} />
+        <FilaConReset
+          key={a.id}
+          usuarioId={a.id}
+          nombre={a.nombre}
+          tipo="pin"
+          info={
+            <>
+              <p className="truncate font-medium">{a.nombre}</p>
+              <p className="text-xs tabular-nums text-muted-foreground">{a.rut}</p>
+            </>
+          }
+        />
       ))}
     </ul>
-  )
-}
-
-function FilaAlumno({ alumno }: { alumno: AlumnoDeCurso }) {
-  const [paso, setPaso] = useState<'inicio' | 'confirmando' | 'enviando'>('inicio')
-  const [resultado, setResultado] = useState<ResetPin | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [copiado, setCopiado] = useState(false)
-
-  const resetear = async () => {
-    setPaso('enviando')
-    setError(null)
-    try {
-      setResultado(await api<ResetPin>(`/usuarios/${alumno.id}/reset-pin`, { metodo: 'POST' }))
-      setPaso('inicio')
-    } catch (e) {
-      setError((e as Error).message)
-      setPaso('inicio')
-    }
-  }
-  const copiar = async () => {
-    if (!resultado) return
-    try {
-      await navigator.clipboard.writeText(resultado.codigo)
-      setCopiado(true)
-      setTimeout(() => setCopiado(false), 1800)
-    } catch {
-      /* sin permiso de portapapeles: el código está a la vista */
-    }
-  }
-
-  return (
-    <li className="space-y-2 p-3.5">
-      <div className="flex items-center justify-between gap-3">
-        <div className="min-w-0">
-          <p className="truncate font-medium">{alumno.nombre}</p>
-          <p className="text-xs tabular-nums text-muted-foreground">{alumno.rut}</p>
-        </div>
-        {paso === 'inicio' && !resultado && (
-          <Button variant="outline" className="h-10 shrink-0 desk:h-8" onClick={() => setPaso('confirmando')} aria-label={`Resetear el PIN de ${alumno.nombre}`}>
-            <KeyRound /> Resetear PIN
-          </Button>
-        )}
-      </div>
-
-      {paso !== 'inicio' && (
-        <div className="space-y-2 rounded-lg bg-background p-3 text-sm ring-1 ring-border">
-          <p>¿Resetear el PIN de {alumno.nombre}? Dejará de entrar con el PIN actual hasta que elija uno nuevo con el código.</p>
-          <div className="flex gap-2">
-            <Button className="h-10 flex-1 desk:h-8 desk:flex-none" disabled={paso === 'enviando'} onClick={resetear}>
-              {paso === 'enviando' && <Loader2 className="animate-spin" />} Sí, resetear
-            </Button>
-            <Button variant="ghost" className="h-10 desk:h-8" onClick={() => setPaso('inicio')}>
-              No
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {resultado && (
-        <div className="space-y-2 rounded-lg bg-emerald-50 p-3.5 text-emerald-950 ring-1 ring-emerald-200" role="status">
-          <p className="text-sm">
-            Código para {alumno.nombre}: <strong className="font-mono text-xl tracking-[0.2em]">{resultado.codigo}</strong>
-          </p>
-          <p className="text-xs">
-            Sirve una sola vez y vence a las <strong>{hora(resultado.vence)}</strong>. Entrégaselo en persona: con él elige su PIN nuevo en «Olvidé mi PIN».
-          </p>
-          <div className="flex gap-2">
-            <Button variant="outline" className="h-9 desk:h-8" onClick={copiar}>
-              {copiado ? <Check /> : <Copy />} {copiado ? 'Copiado' : 'Copiar código'}
-            </Button>
-            <Button variant="ghost" className="h-9 desk:h-8" onClick={() => setResultado(null)}>
-              Listo
-            </Button>
-          </div>
-        </div>
-      )}
-      <ErrorForm mensaje={error} />
-    </li>
   )
 }
 
