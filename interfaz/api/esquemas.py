@@ -104,9 +104,41 @@ class UsuarioOut(BaseModel):
         return valor
 
 
+def _nombre_de_curso(valor: str) -> str:
+    valor = valor.strip()
+    if not valor:
+        raise ValueError("El curso necesita un nombre")
+    if len(valor) > 60:
+        raise ValueError("El nombre del curso no puede superar los 60 caracteres")
+    return valor
+
+
 class CursoBase(BaseModel):
     nombre: str
     colegio_id: int
+
+    @field_validator("nombre")
+    @classmethod
+    def _validar_nombre(cls, valor: str) -> str:
+        return _nombre_de_curso(valor)
+
+
+class CursoRenombrar(BaseModel):
+    nombre: str
+
+    @field_validator("nombre")
+    @classmethod
+    def _validar_nombre(cls, valor: str) -> str:
+        return _nombre_de_curso(valor)
+
+
+class AlumnoOut(BaseModel):
+    """Lo que un profesor o el UTP ve de un alumno de un curso."""
+
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    nombre: str
+    rut: str
 
 
 class CursoCrear(CursoBase):

@@ -10,10 +10,12 @@ from interfaz.api.dependencias_auth import emitir_token, requiere_rol, rol_princ
 from interfaz.api.esquemas import (
     BloqueCrear,
     BloqueOut,
+    AlumnoOut,
     CodigoCursoOut,
     CursoConCodigoOut,
     CursoCrear,
     CursoOut,
+    CursoRenombrar,
     TokenOut,
     UnirseCursoIn,
     pin_es_facil,
@@ -133,6 +135,51 @@ def unirse_curso(datos: UnirseCursoIn, db: Session = Depends(obtener_db)):
 @router.get("/{curso_id}", response_model=CursoOut)
 def obtener_curso(curso_id: int, db: Session = Depends(obtener_db), actual: Usuario = Depends(usuario_actual)):
     return _curso_visible_o_404(curso_id, actual, db)
+
+
+@router.put("/{curso_id}", response_model=CursoOut)
+def renombrar_curso(
+    curso_id: int,
+    datos: CursoRenombrar,
+    db: Session = Depends(obtener_db),
+    utp: Usuario = Depends(requiere_rol(RolNombre.UTP)),
+):
+    curso = _curso_visible_o_404(curso_id, utp, db)
+    curso.nombre = datos.nombre
+    db.commit()
+    db.refresh(curso)
+    return curso
+
+
+@router.delete("/{curso_id}", status_code=204)
+def borrar_curso(
+    curso_id: int, db: Session = Depends(obtener_db), utp: Usuario = Depends(requiere_rol(RolNombre.UTP))
+):
+    """Solo un curso vacío: el borrado en cascada se llevaría su horario, sus clases y su material."""
+    curso = _curso_visible_o_404(curso_id, utp, db)
+    if db.query(Bloque.id).filter_by(curso_id=curso.id).first() is not None:
+        raise HTTPException(status_code=409, detail="El curso todavía tiene bloques en su horario: elimínalos primero")
+    if db.query(AlumnoCurso.id).filter_by(curso_id=curso.id).first() is not None:
+        raise HTTPException(status_code=409, detail="El curso todavía tiene alumnos inscritos")
+    db.delete(curso)
+    db.commit()
+
+
+@router.get("/{curso_id}/alumnos", response_model=list[AlumnoOut])
+def alumnos_del_curso(
+    curso_id: int,
+    db: Session = Depends(obtener_db),
+    staff: Usuario = Depends(requiere_rol(RolNombre.PROFESOR, RolNombre.UTP)),
+):
+    """Los alumnos inscritos, para que el profesor (de ese curso) o el UTP les resetee el PIN."""
+    curso = _curso_visible_o_404(curso_id, staff, db)
+    return (
+        db.query(Usuario)
+        .join(AlumnoCurso, AlumnoCurso.usuario_id == Usuario.id)
+        .filter(AlumnoCurso.curso_id == curso.id)
+        .order_by(Usuario.nombre)
+        .all()
+    )
 
 
 @router.get("/{curso_id}/codigo", response_model=CodigoCursoOut)
