@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { LogOut, type LucideIcon } from 'lucide-react'
 import { Logo } from '@/components/comunes'
+import { PieLegal } from '@/views/Legal'
 import { Button } from '@/components/ui/button'
 import type { Usuario } from '@/lib/api'
 import { cn } from '@/lib/utils'
@@ -94,6 +95,7 @@ export function AppShell({ items, activo, onCambiar, usuario, etiquetaRol, onSal
             {usuario && <p className="text-sm text-muted-foreground">Hola, {usuario.nombre.split(' ')[0]}</p>}
           </div>
           {children}
+          <PieLegal className="mt-10" />
         </div>
       </main>
 
