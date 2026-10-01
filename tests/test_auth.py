@@ -351,14 +351,18 @@ def test_codigo_del_curso_solo_para_staff_del_colegio(cliente, colegio_id, heade
     assert r.status_code == 200
     assert r.json() == {"codigo_invitacion": curso["codigo_invitacion"]}
 
-    # Un profesor del colegio también puede mostrarlo en clase.
-    cliente.post(
+    # Un profesor puede mostrarlo en clase, pero solo el de los cursos donde dicta.
+    profe = cliente.post(
         "/usuarios",
         json={"rut": "5126663-3", "nombre": "Profe", "colegio_id": colegio_id, "roles": ["PROFESOR"], "password": "clave-segura-123"},
         headers=headers_utp,
-    )
+    ).json()
     tp = cliente.post("/auth/login/staff", json={"rut": "5126663-3", "password": "clave-segura-123"}).json()["access_token"]
-    assert cliente.get(f"/cursos/{curso['id']}/codigo", headers={"Authorization": f"Bearer {tp}"}).status_code == 200
+    hp = {"Authorization": f"Bearer {tp}"}
+    assert cliente.get(f"/cursos/{curso['id']}/codigo", headers=hp).status_code == 404  # aún no dicta ahí
+    bloque = {"tipo": "CLASE", "asignatura": "Matemática", "profesor_id": profe["id"], "dia_semana": 0, "hora_inicio": "08:00", "hora_fin": "08:45"}
+    assert cliente.post(f"/cursos/{curso['id']}/bloques", json=bloque, headers=headers_utp).status_code == 201
+    assert cliente.get(f"/cursos/{curso['id']}/codigo", headers=hp).status_code == 200
 
     # Un alumno, aunque esté inscrito, no.
     h = _alumno_en_curso(cliente, curso)
@@ -372,3 +376,10 @@ def test_estado_indica_si_el_servidor_ya_fue_configurado(cliente, rut_utp):
         json={"colegio_nombre": "L", "rut": rut_utp, "nombre": "U", "password": "clave-segura-123"},
     )
     assert cliente.get("/auth/estado").json() == {"configurado": True}
+
+
+def test_me_devuelve_al_usuario_de_la_sesion(cliente, rut_utp, headers_utp, colegio_id):
+    assert cliente.get("/auth/me").status_code == 401
+    r = cliente.get("/auth/me", headers=headers_utp)
+    assert r.status_code == 200
+    assert r.json()["rut"] == rut_utp and r.json()["roles"] == ["UTP"] and r.json()["colegio_id"] == colegio_id

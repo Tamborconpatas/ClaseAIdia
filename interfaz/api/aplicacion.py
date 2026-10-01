@@ -4,7 +4,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from interfaz.api import rutas_auth, rutas_colegios, rutas_cursos, rutas_usuarios
+from interfaz.api import rutas_auth, rutas_bloques, rutas_clases, rutas_colegios, rutas_cursos, rutas_usuarios
 
 # Orígenes explícitos de desarrollo (nunca "*" en producción, por CLAUDE.md).
 # Se amplía cuando exista el frontend real (Vite) y el dominio del túnel.
@@ -39,5 +39,7 @@ def crear_app() -> FastAPI:
     app.include_router(rutas_colegios.router)
     app.include_router(rutas_usuarios.router)
     app.include_router(rutas_cursos.router)
+    app.include_router(rutas_bloques.router)
+    app.include_router(rutas_clases.router)
 
     return app

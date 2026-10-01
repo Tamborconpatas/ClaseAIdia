@@ -1,7 +1,10 @@
+import os
+
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import declarative_base, sessionmaker
 
-DATABASE_URL = "sqlite:///./escuela.db"
+# Variable de entorno solo para apuntar a otra base (p. ej. la de demostración).
+DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./escuela.db")
 
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 

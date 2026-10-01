@@ -34,6 +34,16 @@ def usuario_actual(
     return usuario
 
 
+def rol_principal(usuario: Usuario) -> RolNombre:
+    """Rol con el que se filtra lo que ve un usuario con varios: UTP > PROFESOR > ALUMNO.
+    Es el mismo orden que usa el frontend para elegir la vista."""
+    roles = {r.rol for r in usuario.roles}
+    for rol in (RolNombre.UTP, RolNombre.PROFESOR):
+        if rol in roles:
+            return rol
+    return RolNombre.ALUMNO
+
+
 def requiere_rol(*roles_permitidos: RolNombre):
     def _verificar(usuario: Usuario = Depends(usuario_actual)) -> Usuario:
         roles_usuario = {r.rol for r in usuario.roles}

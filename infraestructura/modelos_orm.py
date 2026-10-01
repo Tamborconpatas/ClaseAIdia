@@ -18,6 +18,10 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from infraestructura.basedatos import Base
 
 
+def _ahora_utc() -> datetime.datetime:
+    return datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+
+
 class RolNombre(str, enum.Enum):
     ALUMNO = "ALUMNO"
     PROFESOR = "PROFESOR"
@@ -114,6 +118,11 @@ class Bloque(Base):
 
     curso: Mapped["Curso"] = relationship(back_populates="bloques")
     profesor: Mapped["Usuario | None"] = relationship()
+
+    @property
+    def profesor_nombre(self) -> str | None:
+        """Solo el nombre (nunca el RUT): lo ven los alumnos del curso en su horario."""
+        return self.profesor.nombre if self.profesor else None
     clases: Mapped[list["Clase"]] = relationship(back_populates="bloque", cascade="all, delete-orphan")
 
 
@@ -144,7 +153,12 @@ class ContenidoClase(Base):
     hoja_repaso: Mapped[str | None] = mapped_column(String, nullable=True)
     tarjetas: Mapped[list | None] = mapped_column(JSON, nullable=True)
     preguntas_detectadas: Mapped[list | None] = mapped_column(JSON, nullable=True)
-    # El profesor debe aprobar antes de que el alumno vea el contenido.
+    # El profesor revisa el material: aprobado = lo ven los alumnos sin advertencia. Si pasa el plazo de
+    # revisión sin aprobarlo ni retirarlo, se publica como "provisorio" (con advertencia) — así un olvido
+    # del profesor no deja a los alumnos sin material. `retirado` lo oculta y evita esa publicación.
     aprobado: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    retirado: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # Cuándo quedó listo el material (UTC, sin zona): desde ahí corre el plazo de revisión.
+    generado_en: Mapped[datetime.datetime | None] = mapped_column(DateTime, nullable=True, default=_ahora_utc)
 
     clase: Mapped["Clase"] = relationship(back_populates="contenido")

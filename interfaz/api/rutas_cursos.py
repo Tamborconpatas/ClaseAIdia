@@ -1,11 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from infraestructura.basedatos import obtener_db
 from infraestructura.modelos_orm import AlumnoCurso, Bloque, Curso, RolNombre, Usuario, UsuarioRol
 from infraestructura.seguridad import hashear_secreto, verificar_secreto
-from interfaz.api.dependencias_auth import emitir_token, requiere_rol, usuario_actual
+from interfaz.api.dependencias_auth import emitir_token, requiere_rol, rol_principal, usuario_actual
 from interfaz.api.esquemas import (
     BloqueCrear,
     BloqueOut,
@@ -18,6 +19,7 @@ from interfaz.api.esquemas import (
     pin_es_facil,
 )
 from interfaz.api.rutas_auth import registrar_resultado_intento, verificar_bloqueo
+from interfaz.api.rutas_bloques import verificar_bloque
 from nucleo.codigos import generar_codigo_invitacion
 
 router = APIRouter(prefix="/cursos", tags=["cursos"])
@@ -30,17 +32,20 @@ def _obtener_curso_o_404(curso_id: int, db: Session) -> Curso:
     return curso
 
 
-def _es_staff(usuario: Usuario) -> bool:
-    return bool({r.rol for r in usuario.roles} & {RolNombre.PROFESOR, RolNombre.UTP})
-
-
 def _curso_visible_o_404(curso_id: int, usuario: Usuario, db: Session) -> Curso:
-    """Staff ve los cursos de su colegio; un alumno solo aquellos a los que está inscrito.
-    404 en ambos casos: no revela si el id existe."""
+    """UTP: los cursos de su colegio. Profesor: aquellos donde dicta alguna clase. Alumno: aquellos
+    en que está inscrito. 404 en todos los casos: no revela si el id existe."""
     curso = db.get(Curso, curso_id)
     if curso is None or curso.colegio_id != usuario.colegio_id:
         raise HTTPException(status_code=404, detail="Curso no encontrado")
-    if not _es_staff(usuario) and db.query(AlumnoCurso).filter_by(usuario_id=usuario.id, curso_id=curso.id).first() is None:
+    rol = rol_principal(usuario)
+    if rol == RolNombre.PROFESOR:
+        permitido = db.query(Bloque.id).filter_by(curso_id=curso.id, profesor_id=usuario.id).first()
+    elif rol == RolNombre.ALUMNO:
+        permitido = db.query(AlumnoCurso.id).filter_by(usuario_id=usuario.id, curso_id=curso.id).first()
+    else:
+        permitido = True
+    if not permitido:
         raise HTTPException(status_code=404, detail="Curso no encontrado")
     return curso
 
@@ -70,7 +75,10 @@ def crear_curso(
 @router.get("", response_model=list[CursoOut])
 def listar_cursos(db: Session = Depends(obtener_db), actual: Usuario = Depends(usuario_actual)):
     consulta = db.query(Curso).filter_by(colegio_id=actual.colegio_id)
-    if not _es_staff(actual):
+    rol = rol_principal(actual)
+    if rol == RolNombre.PROFESOR:
+        consulta = consulta.filter(Curso.id.in_(select(Bloque.curso_id).where(Bloque.profesor_id == actual.id)))
+    elif rol == RolNombre.ALUMNO:
         consulta = consulta.join(AlumnoCurso).filter(AlumnoCurso.usuario_id == actual.id)
     return consulta.all()
 
@@ -147,10 +155,7 @@ def crear_bloque(
     curso = _obtener_curso_o_404(curso_id, db)
     if curso.colegio_id != _utp.colegio_id:
         raise HTTPException(status_code=403, detail="Solo puedes crear bloques en cursos de tu propio colegio")
-    if datos.profesor_id is not None:
-        profesor = db.get(Usuario, datos.profesor_id)
-        if profesor is None or profesor.colegio_id != _utp.colegio_id:
-            raise HTTPException(status_code=409, detail="profesor_id inexistente")
+    verificar_bloque(db, _utp, curso, datos)
 
     bloque = Bloque(curso_id=curso_id, **datos.model_dump())
     db.add(bloque)
@@ -166,4 +171,4 @@ def crear_bloque(
 @router.get("/{curso_id}/bloques", response_model=list[BloqueOut])
 def listar_bloques(curso_id: int, db: Session = Depends(obtener_db), actual: Usuario = Depends(usuario_actual)):
     _curso_visible_o_404(curso_id, actual, db)
-    return db.query(Bloque).filter_by(curso_id=curso_id).all()
+    return db.query(Bloque).options(selectinload(Bloque.profesor)).filter_by(curso_id=curso_id).all()

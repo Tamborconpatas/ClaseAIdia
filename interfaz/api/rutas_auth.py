@@ -11,8 +11,16 @@ from infraestructura.seguridad import (
     verificar_secreto,
     verificar_secreto_falso,
 )
-from interfaz.api.dependencias_auth import emitir_token
-from interfaz.api.esquemas import LoginAlumnoIn, LoginStaffIn, RestablecerPinIn, SetupIn, TokenOut, pin_es_facil
+from interfaz.api.dependencias_auth import emitir_token, usuario_actual
+from interfaz.api.esquemas import (
+    LoginAlumnoIn,
+    LoginStaffIn,
+    RestablecerPinIn,
+    SetupIn,
+    TokenOut,
+    UsuarioOut,
+    pin_es_facil,
+)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -34,6 +42,11 @@ def registrar_resultado_intento(usuario: Usuario, exitoso: bool, db: Session):
         if usuario.intentos_fallidos >= LIMITE_INTENTOS:
             usuario.bloqueado_hasta = ahora_utc() + calcular_bloqueo(usuario.intentos_fallidos)
     db.commit()
+
+
+@router.get("/me", response_model=UsuarioOut)
+def quien_soy(actual: Usuario = Depends(usuario_actual)):
+    return actual
 
 
 @router.get("/estado")
