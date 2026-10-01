@@ -5,9 +5,9 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from infraestructura.basedatos import obtener_db
-from infraestructura.modelos_orm import RolNombre, Usuario, UsuarioRol
+from infraestructura.modelos_orm import AlumnoCurso, Bloque, RolNombre, Usuario, UsuarioRol
 from infraestructura.seguridad import VIGENCIA_CODIGO_RESET_MINUTOS, ahora_utc, hashear_secreto
-from interfaz.api.dependencias_auth import requiere_rol, usuario_actual
+from interfaz.api.dependencias_auth import requiere_rol, rol_principal, usuario_actual
 from interfaz.api.esquemas import ResetPinOut, UsuarioCrear, UsuarioOut
 from nucleo.codigos import generar_codigo_invitacion
 
@@ -70,6 +70,16 @@ def resetear_pin(
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
     if RolNombre.ALUMNO not in {r.rol for r in usuario.roles}:
         raise HTTPException(status_code=409, detail="Solo se puede resetear el PIN de un alumno")
+    if rol_principal(staff) == RolNombre.PROFESOR:
+        # Un profesor solo resetea el PIN de alumnos de los cursos donde dicta (el UTP, el de cualquiera).
+        dicta_ahi = (
+            db.query(AlumnoCurso.id)
+            .join(Bloque, Bloque.curso_id == AlumnoCurso.curso_id)
+            .filter(AlumnoCurso.usuario_id == usuario.id, Bloque.profesor_id == staff.id)
+            .first()
+        )
+        if dicta_ahi is None:
+            raise HTTPException(status_code=404, detail="Usuario no encontrado")
 
     codigo = generar_codigo_invitacion()
     vence = ahora_utc() + datetime.timedelta(minutes=VIGENCIA_CODIGO_RESET_MINUTOS)
