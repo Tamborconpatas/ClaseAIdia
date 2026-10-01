@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
-import { AlertTriangle, ArrowLeft, Check, CheckCircle2, ChevronRight, Clock, EyeOff, FileText, Layers, ListChecks, Loader2, MapPin, RotateCcw, Sparkles } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, Check, CheckCircle2, ChevronRight, Clock, EyeOff, FileText, Layers, ListChecks, Loader2, MapPin, Pencil, RotateCcw, Sparkles } from 'lucide-react'
 import { Cargando, ErrorForm, Vacio } from '@/components/comunes'
+import { EditorMaterial, type MaterialEditable } from '@/components/EditorMaterial'
 import { Button } from '@/components/ui/button'
 import { api, type ClaseDetalle, type ClaseResumen, type EstadoClase } from '@/lib/api'
 import { colorAsignatura, fechaCorta, hhmm } from '@/lib/horario'
@@ -154,6 +155,7 @@ function DetalleClase({ id, onVolver, onCambio }: { id: number; onVolver: () => 
   const { rol } = useSesion()
   const clase = useCarga(() => api<ClaseDetalle>(`/clases/${id}`), [id])
   const [trabajando, setTrabajando] = useState<'aprobar' | 'retirar' | null>(null)
+  const [editando, setEditando] = useState(false)
   const [errorAccion, setErrorAccion] = useState<string | null>(null)
 
   const revisar = async (accion: 'aprobar' | 'retirar') => {
@@ -168,6 +170,14 @@ function DetalleClase({ id, onVolver, onCambio }: { id: number; onVolver: () => 
     } finally {
       setTrabajando(null)
     }
+  }
+
+  // Guarda lo corregido por el profesor; el estado de la clase no cambia.
+  const guardarMaterial = async (m: MaterialEditable) => {
+    await api(`/clases/${id}/contenido`, { metodo: 'PUT', cuerpo: m })
+    setEditando(false)
+    clase.recargar()
+    onCambio()
   }
 
   if (clase.cargando && !clase.datos) return <Cargando />
@@ -240,12 +250,23 @@ function DetalleClase({ id, onVolver, onCambio }: { id: number; onVolver: () => 
                 {trabajando === 'retirar' ? <Loader2 className="animate-spin" /> : <EyeOff />} Retirar
               </Button>
             )}
+            {!editando && (
+              <Button variant="outline" className="h-11 flex-1 desk:h-9 desk:flex-none" onClick={() => setEditando(true)}>
+                <Pencil /> Editar material
+              </Button>
+            )}
           </div>
           <ErrorForm mensaje={errorAccion} />
         </div>
       )}
 
-      {!k ? (
+      {editando && k ? (
+        <EditorMaterial
+          inicial={{ resumen: k.resumen ?? '', puntos_clave: k.puntos_clave ?? '', hoja_repaso: k.hoja_repaso ?? '', tarjetas: k.tarjetas }}
+          onGuardar={guardarMaterial}
+          onCancelar={() => setEditando(false)}
+        />
+      ) : !k ? (
         <Vacio icono={Loader2} titulo="Preparando el material">Estamos transcribiendo y resumiendo esta clase. Vuelve en unos minutos.</Vacio>
       ) : (
         <>
