@@ -35,6 +35,16 @@ export interface Bloque {
   hora_fin: string
 }
 
+export interface AlumnoDeCurso {
+  id: number
+  nombre: string
+  rut: string
+}
+export interface ResetPin {
+  codigo: string
+  vence: string // ISO con zona (UTC)
+}
+
 export type EstadoClase = 'procesando' | 'por_aprobar' | 'provisoria' | 'publicada' | 'retirada'
 export interface ClaseResumen {
   id: number
