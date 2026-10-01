@@ -343,5 +343,27 @@ class ContenidoOut(BaseModel):
     transcripcion_texto: str | None
 
 
+class ContenidoEditar(BaseModel):
+    """Lo que el profesor puede corregir del material generado. La transcripción no se edita: es el registro de lo dicho."""
+
+    resumen: str = Field(max_length=20_000)
+    puntos_clave: str = Field(max_length=20_000)
+    hoja_repaso: str = Field(max_length=20_000)
+    tarjetas: list[TarjetaOut] = Field(max_length=40)
+
+    @field_validator("resumen", "puntos_clave", "hoja_repaso")
+    @classmethod
+    def _recortar(cls, valor: str) -> str:
+        return valor.strip()
+
+    @field_validator("tarjetas")
+    @classmethod
+    def _tarjetas_completas(cls, tarjetas: list[TarjetaOut]) -> list[TarjetaOut]:
+        limpias = [TarjetaOut(pregunta=t.pregunta.strip(), respuesta=t.respuesta.strip()) for t in tarjetas]
+        if any(not t.pregunta or not t.respuesta for t in limpias):
+            raise ValueError("Cada tarjeta necesita pregunta y respuesta")
+        return limpias
+
+
 class ClaseDetalleOut(ClaseOut):
     contenido: ContenidoOut | None

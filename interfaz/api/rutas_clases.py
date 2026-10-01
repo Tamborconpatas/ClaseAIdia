@@ -9,7 +9,7 @@ from infraestructura.basedatos import obtener_db
 from infraestructura.modelos_orm import AlumnoCurso, Bloque, Clase, ContenidoClase, Curso, RolNombre, Usuario
 from infraestructura.seguridad import ahora_utc
 from interfaz.api.dependencias_auth import requiere_rol, rol_principal, usuario_actual
-from interfaz.api.esquemas import ClaseDetalleOut, ClaseOut, ContenidoOut, TarjetaOut
+from interfaz.api.esquemas import ClaseDetalleOut, ClaseOut, ContenidoEditar, ContenidoOut, TarjetaOut
 
 router = APIRouter(prefix="/clases", tags=["clases"])
 
@@ -128,6 +128,28 @@ def _revisar(clase_id: int, aprobar: bool, db: Session, staff: Usuario) -> dict:
         raise HTTPException(status_code=409, detail="Esta clase todavía no tiene material para revisar")
     clase.contenido.aprobado = aprobar
     clase.contenido.retirado = not aprobar
+    db.commit()
+    db.refresh(clase)
+    return _detalle(clase)
+
+
+@router.put("/{clase_id}/contenido", response_model=ClaseDetalleOut)
+def editar_contenido(
+    clase_id: int,
+    datos: ContenidoEditar,
+    db: Session = Depends(obtener_db),
+    staff: Usuario = Depends(requiere_rol(RolNombre.PROFESOR, RolNombre.UTP)),
+):
+    """El profesor corrige el material generado (resumen, puntos clave, hoja de repaso y tarjetas).
+    No cambia su estado: si ya estaba publicada, los alumnos ven la versión corregida."""
+    clase = _clases_visibles(db, staff).filter(Clase.id == clase_id).first()
+    if clase is None:
+        raise HTTPException(status_code=404, detail="Clase no encontrada")
+    if clase.contenido is None:
+        raise HTTPException(status_code=409, detail="Esta clase todavía no tiene material para editar")
+    k = clase.contenido
+    k.resumen, k.puntos_clave, k.hoja_repaso = datos.resumen, datos.puntos_clave, datos.hoja_repaso
+    k.tarjetas = [t.model_dump() for t in datos.tarjetas]
     db.commit()
     db.refresh(clase)
     return _detalle(clase)
