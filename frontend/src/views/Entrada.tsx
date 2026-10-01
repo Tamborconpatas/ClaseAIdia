@@ -87,7 +87,7 @@ function Beneficio({ icono: Icono, titulo, children }: { icono: typeof Sparkles;
 
 // ---------------------------------------------------------------------------------------------
 
-type Modo = 'entrar' | 'unirse' | 'olvide'
+type Modo = 'entrar' | 'unirse' | 'olvide' | 'olvidePassword'
 
 function Acceso() {
   const codigoEnUrl = new URLSearchParams(window.location.search).get('unirse')
@@ -102,7 +102,7 @@ function Acceso() {
         >
           <ArrowLeft className="size-4" /> Volver
         </button>
-        {modo === 'unirse' ? <FormUnirse codigoInicial={codigoEnUrl ?? ''} /> : <FormOlvide />}
+        {modo === 'unirse' ? <FormUnirse codigoInicial={codigoEnUrl ?? ''} /> : modo === 'olvide' ? <FormOlvide /> : <FormOlvidePassword />}
       </div>
     )
   }
@@ -133,9 +133,12 @@ function Acceso() {
             Únete a tu curso
           </button>
         </p>
-        <p>
+        <p className="space-x-4">
           <button className="text-muted-foreground hover:text-foreground hover:underline" onClick={() => setModo('olvide')}>
             Olvidé mi PIN
+          </button>
+          <button className="text-muted-foreground hover:text-foreground hover:underline" onClick={() => setModo('olvidePassword')}>
+            Olvidé mi contraseña
           </button>
         </p>
       </div>
@@ -335,6 +338,58 @@ function FormOlvide() {
         autoComplete="new-password" onChange={(e) => setPin2(soloDigitos(e.target.value))} />
       <ErrorForm mensaje={envio.error} />
       <Enviar enviando={envio.enviando}>Guardar PIN y entrar</Enviar>
+    </form>
+  )
+}
+
+/** Profesor o UTP que olvidó su contraseña: la cambia con el código de un solo uso que le dio un UTP. */
+function FormOlvidePassword() {
+  const { entrar } = useSesion()
+  const [rut, setRut] = useState('')
+  const [codigo, setCodigo] = useState('')
+  const [password, setPassword] = useState('')
+  const [password2, setPassword2] = useState('')
+  const [errores, setErrores] = useState<Record<string, string | null>>({})
+  const envio = useEnvio(async () => {
+    entrar(
+      await api<Sesion>('/auth/restablecer-password', {
+        metodo: 'POST',
+        cuerpo: { rut: rutParaApi(rut), codigo: codigo.trim(), password },
+      }),
+    )
+  })
+
+  const validarYEnviar = (e: FormEvent) => {
+    const er = {
+      rut: errorRut(rut),
+      codigo: codigo.trim() ? null : 'Escribe el código que te dio tu UTP.',
+      password: errorPassword(password, rut),
+      password2: password === password2 ? null : 'Las contraseñas no coinciden.',
+    }
+    setErrores(er)
+    if (Object.values(er).some(Boolean)) return e.preventDefault()
+    return envio.enviar(e)
+  }
+
+  return (
+    <form onSubmit={validarYEnviar} className="space-y-4" noValidate>
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight">Olvidé mi contraseña</h1>
+        <p className="text-sm text-muted-foreground">
+          Pídele a un UTP que te genere un código (en Personal, «Resetear contraseña»): sirve una sola vez y vence en 15
+          minutos. Si eres el único UTP, quien administra el servidor puede restablecerla desde su consola.
+        </p>
+      </div>
+      <Campo etiqueta="RUT" value={rut} error={errores.rut} placeholder="12.345.678-5" autoComplete="username"
+        onChange={(e) => setRut(formatearRut(e.target.value))} />
+      <Campo etiqueta="Código de restablecimiento" value={codigo} error={errores.codigo} autoCapitalize="characters"
+        onChange={(e) => setCodigo(e.target.value.toUpperCase())} />
+      <Campo etiqueta="Contraseña nueva" type="password" value={password} error={errores.password}
+        ayuda="Mínimo 10 caracteres, sin tu RUT." autoComplete="new-password" onChange={(e) => setPassword(e.target.value)} />
+      <Campo etiqueta="Repite la contraseña" type="password" value={password2} error={errores.password2}
+        autoComplete="new-password" onChange={(e) => setPassword2(e.target.value)} />
+      <ErrorForm mensaje={envio.error} />
+      <Enviar enviando={envio.enviando}>Guardar contraseña y entrar</Enviar>
     </form>
   )
 }
