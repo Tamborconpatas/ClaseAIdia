@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { BookOpen, CalendarDays, Sparkles, Users } from 'lucide-react'
 import { AppShell, type ItemNav } from '@/components/AppShell'
 import { Cargando } from '@/components/comunes'
@@ -9,6 +9,7 @@ import { Clases } from '@/views/Clases'
 import { Cursos } from '@/views/Cursos'
 import { Entrada } from '@/views/Entrada'
 import { Horario } from '@/views/Horario'
+import { Legal, type PaginaLegal } from '@/views/Legal'
 import { Personal } from '@/views/Personal'
 
 const HORARIO: ItemNav = { id: 'horario', etiqueta: 'Horario', icono: CalendarDays }
@@ -72,7 +73,24 @@ function Aplicacion() {
   return <Principal key={usuario.id} usuario={usuario} rol={rol} onSalir={salir} />
 }
 
+/** Páginas públicas: #/privacidad y #/terminos (con hash, para no depender de cómo se sirva el sitio). */
+function paginaLegalActual(): PaginaLegal | null {
+  const h = window.location.hash
+  return h === '#/privacidad' ? 'privacidad' : h === '#/terminos' ? 'terminos' : null
+}
+
 export default function App() {
+  const [legal, setLegal] = useState(paginaLegalActual)
+  useEffect(() => {
+    const alCambiar = () => {
+      setLegal(paginaLegalActual())
+      window.scrollTo(0, 0)
+    }
+    window.addEventListener('hashchange', alCambiar)
+    return () => window.removeEventListener('hashchange', alCambiar)
+  }, [])
+
+  if (legal) return <Legal pagina={legal} onVolver={() => window.history.back()} />
   return (
     <SesionProvider>
       <Aplicacion />

@@ -7,6 +7,7 @@ import { api, type Sesion } from '@/lib/api'
 import { formatearRut, rutParaApi } from '@/lib/rut'
 import { useSesion } from '@/lib/sesion'
 import { useCarga } from '@/lib/usar'
+import { PieLegal } from '@/views/Legal'
 import { errorPassword, errorPin, errorRut, soloDigitos } from '@/lib/validar'
 
 /** Pantalla previa a la sesión: primer arranque del servidor o acceso. */
@@ -64,7 +65,7 @@ function Marco({ children }: { children: ReactNode }) {
           <p className="mt-5 text-2xl font-semibold leading-snug short:hidden">Que ninguna clase se te pase.</p>
         </header>
         <div className="-mt-5 flex-1 rounded-t-3xl bg-background px-6 pb-10 pt-7 desk:mt-0 desk:w-full desk:max-w-md desk:flex-none desk:rounded-none desk:bg-transparent desk:p-0">
-          <div className="mx-auto w-full max-w-md">{children}</div>
+          <div className="mx-auto w-full max-w-md">{children}<PieLegal className="mt-8" /></div>
         </div>
       </div>
     </div>
