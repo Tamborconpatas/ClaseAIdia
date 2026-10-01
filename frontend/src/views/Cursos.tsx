@@ -298,7 +298,7 @@ function CodigoCurso({ cursoId }: { cursoId: number }) {
   return (
     <div className="mt-4 flex flex-col items-center gap-5 rounded-xl bg-muted/50 p-5 desk:flex-row desk:items-center desk:gap-8 desk:p-6">
       <div className="rounded-2xl bg-white p-3 shadow-sm ring-1 ring-border">
-        <QRCodeSVG value={enlace} size={168} />
+        <QRCodeSVG value={enlace} size={168} title="Código QR para unirse al curso" />
       </div>
       <div className="space-y-3 text-center desk:text-left">
         <div>
