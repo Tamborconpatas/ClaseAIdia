@@ -269,6 +269,34 @@ class ResetPinOut(BaseModel):
     vence: datetime.datetime
 
 
+class RestablecerPasswordIn(BaseModel):
+    """El personal fija una contraseña nueva con el código de un solo uso que le dio un UTP."""
+
+    rut: str
+    codigo: str
+    password: str
+
+    @field_validator("rut")
+    @classmethod
+    def _normalizar_rut(cls, valor: str) -> str:
+        return normalizar_rut(valor)
+
+    @field_validator("codigo")
+    @classmethod
+    def _normalizar_codigo(cls, valor: str) -> str:
+        return valor.strip().upper()
+
+    @field_validator("password")
+    @classmethod
+    def _validar_password(cls, valor: str) -> str:
+        return _password_valida(valor)
+
+    @model_validator(mode="after")
+    def _password_no_contiene_rut(self):
+        _password_sin_rut(self.rut, self.password)
+        return self
+
+
 class RestablecerPinIn(BaseModel):
     rut: str
     codigo: str

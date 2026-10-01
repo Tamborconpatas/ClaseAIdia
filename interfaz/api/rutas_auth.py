@@ -15,6 +15,7 @@ from interfaz.api.dependencias_auth import emitir_token, usuario_actual
 from interfaz.api.esquemas import (
     LoginAlumnoIn,
     LoginStaffIn,
+    RestablecerPasswordIn,
     RestablecerPinIn,
     SetupIn,
     TokenOut,
@@ -23,6 +24,10 @@ from interfaz.api.esquemas import (
 )
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+
+def _tiene_rol(usuario: Usuario, *roles: RolNombre) -> bool:
+    return bool({r.rol for r in usuario.roles} & set(roles))
 
 
 def verificar_bloqueo(usuario: Usuario):
@@ -96,7 +101,8 @@ def login_staff(datos: LoginStaffIn, db: Session = Depends(obtener_db)):
 @router.post("/login/alumno", response_model=TokenOut)
 def login_alumno(datos: LoginAlumnoIn, db: Session = Depends(obtener_db)):
     usuario = db.query(Usuario).filter_by(rut=datos.rut).first()
-    if usuario is None or usuario.pin_hash is None:
+    # El PIN es solo de alumnos: una cuenta de personal no entra por acá aunque tuviera uno.
+    if usuario is None or usuario.pin_hash is None or not _tiene_rol(usuario, RolNombre.ALUMNO):
         verificar_secreto_falso(datos.pin)
         raise HTTPException(status_code=401, detail="Credenciales inválidas")
 
@@ -115,7 +121,8 @@ def restablecer_pin(datos: RestablecerPinIn, db: Session = Depends(obtener_db)):
     """El alumno fija su PIN nuevo con el código de un solo uso que le dio el staff
     (POST /usuarios/{id}/reset-pin). Cuenta intentos igual que el login."""
     usuario = db.query(Usuario).filter_by(rut=datos.rut).first()
-    if usuario is None or usuario.codigo_reset_hash is None:
+    # El código de un alumno es para su PIN; el del personal, para su contraseña (no se pueden cruzar).
+    if usuario is None or usuario.codigo_reset_hash is None or not _tiene_rol(usuario, RolNombre.ALUMNO):
         verificar_secreto_falso(datos.codigo)
         raise HTTPException(status_code=401, detail="Código inválido o vencido")
 
@@ -134,3 +141,27 @@ def restablecer_pin(datos: RestablecerPinIn, db: Session = Depends(obtener_db)):
     usuario.codigo_reset_vence = None
     registrar_resultado_intento(usuario, exitoso=True, db=db)
     return emitir_token(usuario)
+
+
+@router.post("/restablecer-password", response_model=TokenOut)
+def restablecer_password(datos: RestablecerPasswordIn, db: Session = Depends(obtener_db)):
+    """El personal (profesor o UTP) fija su contraseña nueva con el código de un solo uso que le dio un UTP
+    (POST /usuarios/{id}/reset-password). Cuenta intentos igual que el login. Si el único UTP olvidó la suya,
+    se restablece desde la consola del servidor: `python -m scripts.restablecer_utp <RUT>`."""
+    usuario = db.query(Usuario).filter_by(rut=datos.rut).first()
+    if usuario is None or usuario.codigo_reset_hash is None or not _tiene_rol(usuario, RolNombre.PROFESOR, RolNombre.UTP):
+        verificar_secreto_falso(datos.codigo)
+        raise HTTPException(status_code=401, detail="Código inválido o vencido")
+
+    verificar_bloqueo(usuario)
+
+    if usuario.codigo_reset_vence < ahora_utc() or not verificar_secreto(datos.codigo, usuario.codigo_reset_hash):
+        registrar_resultado_intento(usuario, exitoso=False, db=db)
+        raise HTTPException(status_code=401, detail="Código inválido o vencido")
+
+    usuario.password_hash = hashear_secreto(datos.password)
+    usuario.codigo_reset_hash = None
+    usuario.codigo_reset_vence = None
+    registrar_resultado_intento(usuario, exitoso=True, db=db)
+    return emitir_token(usuario)
+
