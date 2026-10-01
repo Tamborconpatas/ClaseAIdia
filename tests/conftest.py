@@ -44,6 +44,7 @@ def cliente():
     app.dependency_overrides[obtener_db] = _obtener_db_prueba
 
     with TestClient(app) as c:
+        c.sesion = SesionPrueba  # para armar datos que la API ya no permite crear (otro colegio)
         yield c
 
 
@@ -73,22 +74,45 @@ def rut_utp():
 
 
 @pytest.fixture()
-def colegio_id(cliente):
-    r = cliente.post("/colegios", json={"nombre": "Liceo de Prueba"})
+def setup_inicial(cliente, rut_utp):
+    """Primera ejecución del servidor: crea el colegio y su UTP vía POST /auth/setup."""
+    r = cliente.post(
+        "/auth/setup",
+        json={"colegio_nombre": "Liceo de Prueba", "rut": rut_utp, "nombre": "UTP Test", "password": "clave-segura-123"},
+    )
     assert r.status_code == 201
-    return r.json()["id"]
+    return r.json()
 
 
 @pytest.fixture()
-def token_utp(cliente, colegio_id, rut_utp):
-    r = cliente.post(
-        "/auth/bootstrap-utp",
-        json={"rut": rut_utp, "nombre": "UTP Test", "password": "clave-segura-123", "colegio_id": colegio_id},
-    )
-    assert r.status_code == 201
-    return r.json()["access_token"]
+def colegio_id(setup_inicial):
+    return setup_inicial["colegio_id"]
+
+
+@pytest.fixture()
+def token_utp(setup_inicial):
+    return setup_inicial["access_token"]
 
 
 @pytest.fixture()
 def headers_utp(token_utp):
     return {"Authorization": f"Bearer {token_utp}"}
+
+
+@pytest.fixture()
+def otro_colegio(cliente, setup_inicial):
+    """Segundo colegio con su propio UTP, creado directo en la base (la API solo
+    permite crear el primero). Devuelve (colegio_id, headers del UTP)."""
+    from infraestructura.modelos_orm import Colegio, RolNombre, Usuario, UsuarioRol
+    from infraestructura.seguridad import hashear_secreto
+
+    with cliente.sesion() as db:
+        colegio = Colegio(nombre="Otro Colegio")
+        utp = Usuario(rut="1000005-K", nombre="UTP B", colegio=colegio, password_hash=hashear_secreto("clave-segura-123"))
+        utp.roles = [UsuarioRol(rol=RolNombre.UTP)]
+        db.add(utp)
+        db.commit()
+        colegio_id = colegio.id
+    r = cliente.post("/auth/login/staff", json={"rut": "1000005-K", "password": "clave-segura-123"})
+    assert r.status_code == 200
+    return colegio_id, {"Authorization": f"Bearer {r.json()['access_token']}"}

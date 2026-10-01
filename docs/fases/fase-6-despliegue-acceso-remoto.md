@@ -17,7 +17,12 @@
 
 ## Pendientes detectados antes (ver `QA.md`, 2026-09-29)
 
-- [ ] La API no arranca con la salida redirigida en Windows (`UnicodeEncodeError` por el emoji del aviso de `JWT_SECRET_KEY` en `infraestructura/seguridad.py`) — va a romper el `.exe` sin consola. Quitar emojis de los `print` de arranque o reconfigurar stdout a UTF-8.
+- [x] La API no arrancaba con la salida redirigida en Windows (`UnicodeEncodeError` por el emoji del aviso de `JWT_SECRET_KEY`) — corregido el 2026-10-01: el aviso es solo ASCII. Si se agregan otros `print` de arranque, mantenerlos ASCII hasta empaquetar el `.exe`.
+- [ ] Límites de seguridad conocidos que hay que cerrar antes de exponer el servidor (ver Fase 2, "Endurecimiento"; decidido el 2026-10-01 dejarlos para esta fase):
+  - **Revocación de tokens**: hoy un token robado vale hasta 12 h aunque se resetee el PIN o se bloquee la cuenta. Requiere una columna de "sesiones válidas desde" en `Usuario` + migración, y que `usuario_actual` compare con el `iat` del token.
+  - Límite de intentos por IP/global (mejor en el túnel/proxy) y bloqueo que no delate qué cuentas existen.
+  - Deshabilitar `/docs` y `/openapi.json` en producción.
+  - `pip-audit` y `npm audit`.
 - [x] Agregar `.env` a `.dockerignore` (hecho 2026-09-29, junto con el `.env.example` de la Fase 2).
 
 ## Checklist antes de la demo

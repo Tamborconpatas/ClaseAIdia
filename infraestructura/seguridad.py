@@ -12,13 +12,25 @@ EXPIRACION_HORAS = 12
 LIMITE_INTENTOS = 5
 VIGENCIA_CODIGO_RESET_MINUTOS = 15
 
-JWT_SECRET_KEY = os.environ.get("JWT_SECRET_KEY")
-if not JWT_SECRET_KEY:
-    JWT_SECRET_KEY = secrets.token_hex(32)
-    print(
-        "⚠️  JWT_SECRET_KEY no definido — usando una clave temporal generada en memoria. "
-        "Los tokens emitidos no sobrevivirán un reinicio. Definir JWT_SECRET_KEY en producción."
-    )
+LARGO_MIN_CLAVE_JWT = 32
+
+
+def cargar_clave_jwt(valor: str | None) -> str:
+    """Sin clave: una temporal en memoria (las sesiones no sobreviven un reinicio).
+    Con clave corta: error — una clave adivinable permite falsificar cualquier token."""
+    if not valor:
+        # Solo ASCII: con la salida redirigida en Windows (cp1252) un emoji haría fallar el arranque.
+        print(
+            "AVISO: JWT_SECRET_KEY no definido - usando una clave temporal generada en memoria. "
+            "Los tokens emitidos no sobreviviran un reinicio. Definir JWT_SECRET_KEY en produccion."
+        )
+        return secrets.token_hex(32)
+    if len(valor) < LARGO_MIN_CLAVE_JWT:
+        raise RuntimeError(f"JWT_SECRET_KEY demasiado corta: minimo {LARGO_MIN_CLAVE_JWT} caracteres (ver .env.example)")
+    return valor
+
+
+JWT_SECRET_KEY = cargar_clave_jwt(os.environ.get("JWT_SECRET_KEY"))
 
 
 def hashear_secreto(secreto: str) -> str:
@@ -29,6 +41,15 @@ def verificar_secreto(secreto: str, hash_guardado: str) -> bool:
     return _contexto_hash.verify(secreto, hash_guardado)
 
 
+_HASH_FALSO = hashear_secreto("relleno-para-igualar-tiempos")
+
+
+def verificar_secreto_falso(secreto: str) -> None:
+    """Gasta lo mismo que una verificación real. Se llama cuando el RUT no existe,
+    para que el tiempo de respuesta no delate qué RUT están registrados."""
+    _contexto_hash.verify(secreto, _HASH_FALSO)
+
+
 def crear_token(payload: dict) -> str:
     datos = payload.copy()
     datos["exp"] = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=EXPIRACION_HORAS)
@@ -36,7 +57,7 @@ def crear_token(payload: dict) -> str:
 
 
 def decodificar_token(token: str) -> dict:
-    return jwt.decode(token, JWT_SECRET_KEY, algorithms=[ALGORITMO])
+    return jwt.decode(token, JWT_SECRET_KEY, algorithms=[ALGORITMO], options={"require": ["exp", "sub"]})
 
 
 def calcular_bloqueo(intentos_fallidos: int) -> datetime.timedelta:

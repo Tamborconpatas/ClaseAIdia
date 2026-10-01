@@ -9,20 +9,22 @@ def test_docs_disponible(cliente):
     assert r.status_code == 200
 
 
-def test_crear_y_listar_colegio(cliente):
-    r = cliente.post("/colegios", json={"nombre": "Liceo A"})
-    assert r.status_code == 201
-    colegio = r.json()
-    assert colegio["nombre"] == "Liceo A"
-
-    r = cliente.get("/colegios")
+def test_obtener_colegio_propio(cliente, colegio_id, headers_utp):
+    r = cliente.get(f"/colegios/{colegio_id}", headers=headers_utp)
     assert r.status_code == 200
-    assert any(c["id"] == colegio["id"] for c in r.json())
+    assert r.json() == {"id": colegio_id, "nombre": "Liceo de Prueba"}
 
 
-def test_obtener_colegio_inexistente(cliente):
-    r = cliente.get("/colegios/9999")
-    assert r.status_code == 404
+def test_colegio_requiere_login_y_es_solo_el_propio(cliente, colegio_id, otro_colegio, headers_utp):
+    assert cliente.get(f"/colegios/{colegio_id}").status_code == 401
+    # Ajeno e inexistente dan lo mismo: no se revela qué ids existen.
+    assert cliente.get(f"/colegios/{otro_colegio[0]}", headers=headers_utp).status_code == 404
+    assert cliente.get("/colegios/9999", headers=headers_utp).status_code == 404
+
+
+def test_ya_no_se_puede_crear_ni_listar_colegios_por_api(cliente, headers_utp):
+    assert cliente.post("/colegios", json={"nombre": "X"}, headers=headers_utp).status_code == 404
+    assert cliente.get("/colegios", headers=headers_utp).status_code == 404
 
 
 def test_crear_curso_sin_token_rechaza(cliente, colegio_id):
@@ -60,7 +62,7 @@ def test_crear_bloque_bajo_curso(cliente, colegio_id, headers_utp):
     bloque = r.json()
     assert bloque["curso_id"] == curso["id"]
 
-    r = cliente.get(f"/cursos/{curso['id']}/bloques")
+    r = cliente.get(f"/cursos/{curso['id']}/bloques", headers=headers_utp)
     assert r.status_code == 200
     assert len(r.json()) == 1
 
@@ -97,7 +99,7 @@ def test_crear_bloque_dia_semana_invalido(cliente, colegio_id, headers_utp):
 def test_crear_usuario_sin_token_rechaza(cliente, colegio_id, rut_valido):
     r = cliente.post(
         "/usuarios",
-        json={"rut": rut_valido, "nombre": "Profe", "colegio_id": colegio_id, "roles": ["PROFESOR"], "password": "x"},
+        json={"rut": rut_valido, "nombre": "Profe", "colegio_id": colegio_id, "roles": ["PROFESOR"], "password": "clave-segura-123"},
     )
     assert r.status_code == 401
 
