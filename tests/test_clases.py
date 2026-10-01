@@ -256,3 +256,60 @@ def test_un_bloque_sin_profesor_no_trae_nombre(cliente, colegio_id, headers_utp)
     recreo = {"tipo": "RECREO", "dia_semana": 0, "hora_inicio": "10:00", "hora_fin": "10:15"}
     r = cliente.post(f"/cursos/{curso['id']}/bloques", json=recreo, headers=headers_utp)
     assert r.status_code == 201 and r.json()["profesor_nombre"] is None
+
+
+# --- Edición del material por el profesor ---------------------------------------------------------
+
+EDICION = {
+    "resumen": "  Resumen corregido por el profesor  ",
+    "puntos_clave": "- uno corregido\n- dos",
+    "hoja_repaso": "Repaso corregido",
+    "tarjetas": [{"pregunta": " ¿Nueva? ", "respuesta": " Sí "}, {"pregunta": "¿Otra?", "respuesta": "No"}],
+}
+
+
+def _editar(cliente, headers, clase_id, **cambios):
+    return cliente.put(f"/clases/{clase_id}/contenido", json={**EDICION, **cambios}, headers=headers)
+
+
+def test_el_profesor_edita_el_material_y_lo_ve_el_alumno_si_esta_publicado(cliente, esc):
+    cid = esc["ids"]["publicada"]
+    r = _editar(cliente, esc["ana"], cid)
+    assert r.status_code == 200
+    k = r.json()["contenido"]
+    assert k["resumen"] == "Resumen corregido por el profesor"  # recortado
+    assert k["tarjetas"] == [{"pregunta": "¿Nueva?", "respuesta": "Sí"}, {"pregunta": "¿Otra?", "respuesta": "No"}]
+    assert k["transcripcion_texto"] == "texto"  # la transcripción no se toca
+    assert r.json()["estado"] == "publicada"  # editar no cambia el estado
+    visto = cliente.get(f"/clases/{cid}", headers=esc["alumno"]).json()["contenido"]
+    assert visto["resumen"] == "Resumen corregido por el profesor" and len(visto["tarjetas"]) == 2
+
+
+def test_editar_antes_de_aprobar_no_publica_el_material(cliente, esc):
+    cid = esc["ids"]["por_aprobar"]
+    assert _editar(cliente, esc["ana"], cid).json()["estado"] == "por_aprobar"
+    assert cliente.get(f"/clases/{cid}", headers=esc["alumno"]).status_code == 404  # sigue sin verlo el alumno
+    assert cliente.post(f"/clases/{cid}/aprobar", headers=esc["ana"]).json()["contenido"]["resumen"] == "Resumen corregido por el profesor"
+
+
+def test_quien_puede_editar_el_material(cliente, esc, otro_colegio):
+    cid = esc["ids"]["por_aprobar"]  # clase de Ana
+    assert cliente.put(f"/clases/{cid}/contenido", json=EDICION).status_code == 401
+    assert _editar(cliente, esc["alumno"], cid).status_code == 403
+    assert _editar(cliente, esc["beto"], cid).status_code == 404  # otro profesor
+    assert _editar(cliente, otro_colegio[1], cid).status_code == 404
+    assert _editar(cliente, esc["utp"], cid).status_code == 200
+
+
+def test_validaciones_de_la_edicion(cliente, esc):
+    cid = esc["ids"]["publicada"]
+    assert _editar(cliente, esc["ana"], cid, tarjetas=[{"pregunta": "¿Sin respuesta?", "respuesta": "   "}]).status_code == 422
+    assert _editar(cliente, esc["ana"], cid, tarjetas=[{"pregunta": f"P{i}", "respuesta": "R"} for i in range(41)]).status_code == 422
+    assert _editar(cliente, esc["ana"], cid, resumen="x" * 20_001).status_code == 422
+    # Lo rechazado no cambió nada: el material sigue como estaba (resumen original "Resumen X").
+    assert cliente.get(f"/clases/{cid}", headers=esc["alumno"]).json()["contenido"]["resumen"] == "Resumen X"
+    assert _editar(cliente, esc["ana"], cid, tarjetas=[]).status_code == 200  # sin tarjetas es válido
+
+
+def test_no_se_edita_una_clase_sin_material(cliente, esc):
+    assert _editar(cliente, esc["beto"], esc["ids"]["procesando"]).status_code == 409
