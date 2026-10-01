@@ -1,31 +1,53 @@
 # Fase 3 — Frontend (React + TypeScript + Vite + Tailwind + shadcn/ui)
 
-Requisito previo: Fase 2 (login y JWT funcionando en el backend) — el frontend real necesita endpoints de auth para tener sentido; sin eso solo se podría maquetar sin conectar.
+**Estado (2026-10-01): en curso, con lo central hecho y probado en navegador.** Falta probarlo en un teléfono real y algunas piezas listadas al final.
 
-## Qué debe tener
+Requisito previo: Fase 2 (login y JWT funcionando en el backend). El código vive en `frontend/` (ver `frontend/README.md` para correrlo).
 
-- **Setup**: proyecto Vite + React + TypeScript, Tailwind CSS, `shadcn/ui`, `lucide-react`. Servido eventualmente por el propio servidor del colegio (build estático), nunca por un hosting de terceros (decisión ya tomada).
-- **Primera ejecución**: si el servidor no tiene colegio (`POST /auth/setup` todavía abierto), mostrar la pantalla para crear el colegio y el primer UTP en vez del login. Se detecta con `GET /auth/estado` (público, devuelve solo `{"configurado": bool}`).
-- **Login**: pantalla con los dos flujos — RUT+PIN (alumno) y RUT+contraseña (profesor/UTP) — guardando el JWT (ej. `localStorage` o memoria, a decidir) y mandándolo en cada request subsiguiente.
-- **Vista UTP**: grilla de horario editable (bloques de clase + no lectivos: recreo, almuerzo), CRUD de Curso/Bloque/Usuario contra la API ya existente (Fase 1) — ahora protegida por rol (Fase 2).
-- **Vista Alumno**:
-  - Unirse a un curso vía código/QR (usa `codigo_invitacion` de `Curso`, ya generado en Fase 1).
-  - Ver su horario personal automático (derivado de los cursos a los que pertenece).
-  - Ver el contenido ya procesado de cada clase (transcripción, resumen, puntos clave, hoja de repaso, tarjetas) — solo el contenido con `aprobado = True`.
-- **Vista Profesor**: revisar y aprobar/editar el contenido generado antes de que se publique al alumno (flag `aprobado` en `ContenidoClase`).
-- **Formularios**: validación también en el cliente (RUT; contraseña de staff de 10 a 128 caracteres, sin el RUT y con al menos 4 caracteres distintos; PIN de 6 dígitos que no sea repetido ni secuencia; horas de bloque), con mensajes de error claros. Es solo para comodidad del usuario; la validación que cuenta sigue en el backend.
-- **Accesibilidad y diseño**: contraste de colores revisado al definir la paleta de Tailwind, texto alternativo en imágenes, diseño responsivo probado en celular y PC.
-- **Seguridad del cliente**: sin `dangerouslySetInnerHTML` (el contenido generado por la IA se renderiza como texto; si alguna vez hace falta HTML, justificarlo y sanitizarlo).
-- **Páginas y archivos estáticos**: política de privacidad, términos y condiciones, medio de contacto real del equipo, favicon con el logo de ClaseAIdia, `robots.txt` con `Disallow: /` y `<meta name="robots" content="noindex">` en la app.
-- **Sin trackers externos**: nada de Google Analytics; si se miden cosas, analíticas propias guardadas en la base de datos.
-- **CORS**: ya configurado en el backend para `http://localhost:5173` (Fase 1) — ampliar cuando exista el dominio real del túnel (Fase 6).
+## Qué debe tener, y cómo va
+
+- [x] **Setup**: Vite + React + TypeScript, Tailwind CSS, `shadcn/ui`, `lucide-react`. `npm run build` genera el sitio estático. *Falta*: que el propio servidor del colegio lo sirva (Fase 6; nunca hosting de terceros, decisión ya tomada).
+- [x] **Primera ejecución**: si el servidor no tiene colegio se muestra la pantalla para crear el colegio y el primer UTP en vez del login (`GET /auth/estado` → `{"configurado": bool}`, y `POST /auth/setup`, que se cierra sola).
+- [x] **Login**: dos flujos — RUT + PIN (alumno) y RUT + contraseña (profesor/UTP). El JWT se guarda en `localStorage` (vence a las 12 h; es razonable porque la app no usa `dangerouslySetInnerHTML`: un token ahí solo se roba con XSS) y se manda por el header `Authorization`.
+- [x] **Alumno**: unirse a un curso con código o QR; recuperar el PIN con el código que da el profesor; horario personal; lista de clases de su curso con el detalle (resumen, puntos clave, hoja de repaso, tarjetas con "ver respuesta", transcripción). No tiene pestaña de cursos: tiene uno solo, que se muestra junto a su nombre ("Alumno · 8°A").
+- [x] **Profesor**: "Mi horario" (solo sus bloques), Cursos (solo donde dicta, con sus asignaturas y un acceso a sus clases y al código/QR), Clases agrupadas por curso, y **aprobar / retirar** el material.
+- [x] **UTP**: Cursos (crear y ver el código/QR), Clases de todo el colegio, y la **grilla de horario editable**.
+- [ ] **UTP**: editar/borrar cursos y gestionar usuarios (crear profesores, **resetear el PIN de un alumno** — el endpoint ya existe, falta la pantalla).
+- [ ] **Profesor**: editar el contenido del material antes de aprobarlo (hoy solo aprueba o retira).
+- [x] **Formularios**: validación también en el cliente (RUT; contraseña de staff de 10 a 128 caracteres, sin el RUT y con ≥ 4 caracteres distintos; PIN de 6 dígitos que no sea repetido ni secuencia; horas de bloque), con mensajes claros. Es comodidad: la validación que cuenta es la del backend.
+- [x] **Seguridad del cliente**: sin `dangerouslySetInnerHTML` ni `innerHTML` (el contenido generado por la IA se renderiza como texto), sin llamadas a servicios externos ni trackers, `npm audit` sin vulnerabilidades.
+- [x] **Archivos estáticos**: favicon con el logo, `robots.txt` con `Disallow: /` y `<meta name="robots" content="noindex, nofollow">`.
+- [ ] **Páginas**: política de privacidad, términos y condiciones, y un medio de contacto real del equipo.
+- [ ] **Accesibilidad**: hay etiquetas `aria`, foco visible, navegación por teclado en el cuadro del editor (elemento `<dialog>`) y campos de 16 px en teléfono, pero falta una revisión formal de contraste y de lector de pantalla.
+- [ ] **Teléfono real**: lo probado fue un marco del tamaño de un teléfono, no un aparato (ver "Verificación").
+
+## Decisiones de diseño
+
+- **PC o teléfono se decide por ancho *y* alto**, no solo por ancho. `desk` = al menos 768 × 480 px; `short` = menos de 480 px de alto (definidos en `frontend/src/index.css`). Un teléfono en horizontal mide ~800 px de ancho pero <430 de alto: con el diseño de PC (barra lateral + dos paneles) quedaba apretado. En horizontal conserva el diseño de teléfono con barras compactas, agenda en dos columnas, contenido de ancho acotado y márgenes para la muesca.
+  - **PC**: barra lateral, horario como grilla semanal, Clases con lista + detalle en dos paneles.
+  - **Teléfono**: barra superior mínima y pestañas abajo (al alcance del pulgar), horario como agenda de un día con chips, detalle de clase a pantalla completa, editor del horario como hoja desde abajo. Botones y campos de 44 px.
+- **Revisión del material con publicación provisoria** (ver `CLAUDE.md`): estados `procesando`, `por_aprobar`, `provisoria`, `publicada`, `retirada`. Pasado el plazo (24 h; `HORAS_REVISION_PROFESOR`) sin que el profesor revise, el alumno ve el material con la advertencia "Sin revisar". Lo retirado nunca se publica solo.
+- **Jornadas de cualquier largo**: ni el backend ni la pantalla fijan una hora mínima o máxima (hay colegios de 8:30 a 18:15, o más). Con más de 10 filas la grilla se hace más densa (profesor y sala en una línea, menos relleno), de modo que 8:30–18:15 cabe en una pantalla (735 px en vez de ~1100), y el encabezado de los días queda fijo.
+- **Editor del horario** (`PUT`/`DELETE /bloques/{id}`, solo UTP): un bloque no puede cruzarse con otro del mismo curso, un profesor no puede estar en dos cursos a la vez, la hora de término debe ser posterior, una clase necesita asignatura, el profesor debe tener rol PROFESOR, y **un bloque con clases registradas no se puede borrar** (el borrado en cascada se llevaría el material).
+- **Desde el horario a la clase**: alumno y profesor tocan un bloque y se abre la clase más reciente de ese bloque que pueden ver; si no hay ninguna, un aviso lo explica (`GET /clases` devuelve el `bloque_id`).
+- **QR del curso**: codifica `<dirección con que se abrió la app>/?unirse=<código>` (verificado decodificándolo). Si se abrió como `localhost`, un teléfono no puede usarlo y la pantalla lo avisa: en uso real hay que abrir la app con la dirección del servidor en la red del colegio (Fase 6: la del túnel).
+- **Misma origen**: el frontend llama a `/api/...`; en desarrollo Vite lo reenvía al backend (`API_URL` cambia el destino), así no hay CORS y se puede abrir desde un teléfono en la red.
+- **Al iniciar sesión** se limpia `?unirse=` de la dirección, y el estado de pestañas vive en un componente que solo existe con sesión (cada persona empieza en su primera pestaña).
+
+## Datos de prueba
+
+`python -m scripts.sembrar_demo` crea `escuela_demo.db` (no toca `escuela.db`) con un colegio, 1 UTP, 7 profesores, 4 alumnos y 3 cursos: 8°A y 8°B (jornada de 8:00 a 13:45) y 3°M (de 8:30 a 18:15, viernes hasta las 15:45), más 9 clases de ejemplo en los 5 estados. Imprime las cuentas al terminar. El script comprueba que ningún profesor quede en dos lugares a la vez. Para usarla: `DATABASE_URL=sqlite:///./escuela_demo.db uvicorn api:app --port 8000`.
 
 ## Fuera de esta fase
 
-- Pantalla de control de clase en vivo — es Fase 4, y tiene una restricción de red distinta (solo red local del colegio, no accesible remoto).
-- Cola de procesamiento / estado de "clase prioritaria" visible al profesor — es Fase 5.
+- Pantalla de control de clase en vivo — Fase 4 (restricción de red distinta: solo red local del colegio).
+- Cola de procesamiento y "clase prioritaria" visible al profesor — Fase 5.
 
-## Verificación esperada
+## Verificación
 
-- Cada vista de rol solo muestra lo que ese rol puede ver/hacer, pero el enforcement real ya está en el backend (Fase 2) — el frontend es una conveniencia, no la barrera de seguridad.
-- Flujo completo probado a mano en navegador: crear curso como UTP → unirse como alumno con el código → ver horario → ver contenido aprobado por el profesor.
+Detalle, hallazgos y mediciones en `QA.md` (entradas del 2026-10-01).
+
+- **Backend**: 125 tests (`pytest tests/`).
+- **Frontend, en navegador** (PC y un marco del tamaño de un teléfono vertical 390 × 780 y horizontal 820 × 380): login de los tres roles, primer arranque (validaciones, alta y cierre automático), horario por rol, jornada larga, editor del horario completo (editar, rechazo por cruce, eliminar, crear con profesor), clases, aprobar y retirar (también con toques en el marco de teléfono), unirse con QR, y el QR decodificado.
+- **No hay tests automatizados del frontend** (solo `tsc`, `oxlint` y `npm run build`).
+- **Pendiente**: un teléfono físico (teclado, muesca, toques reales).
