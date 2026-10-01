@@ -56,6 +56,34 @@ def obtener_usuario(usuario_id: int, db: Session = Depends(obtener_db), actual: 
     return usuario
 
 
+@router.post("/{usuario_id}/reset-password", response_model=ResetPinOut)
+def resetear_password(
+    usuario_id: int,
+    db: Session = Depends(obtener_db),
+    utp: Usuario = Depends(requiere_rol(RolNombre.UTP)),
+):
+    """Un UTP invalida la contraseña de un profesor u otro UTP y le da un código de un solo uso, con vencimiento,
+    para que elija una nueva en POST /auth/restablecer-password. Un UTP no resetea la suya: se lo pide a otro UTP
+    o, si es el único, a quien administra el servidor (`python -m scripts.restablecer_utp <RUT>`)."""
+    usuario = db.get(Usuario, usuario_id)
+    if usuario is None or usuario.colegio_id != utp.colegio_id:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    if usuario.id == utp.id:
+        raise HTTPException(status_code=409, detail="No puedes resetear tu propia contraseña: pídeselo a otro UTP o a quien administra el servidor")
+    if not {r.rol for r in usuario.roles} & {RolNombre.PROFESOR, RolNombre.UTP}:
+        raise HTTPException(status_code=409, detail="Solo se puede resetear la contraseña de personal del colegio")
+
+    codigo = generar_codigo_invitacion()
+    vence = ahora_utc() + datetime.timedelta(minutes=VIGENCIA_CODIGO_RESET_MINUTOS)
+    usuario.password_hash = None
+    usuario.codigo_reset_hash = hashear_secreto(codigo)
+    usuario.codigo_reset_vence = vence
+    usuario.intentos_fallidos = 0
+    usuario.bloqueado_hasta = None
+    db.commit()
+    return ResetPinOut(codigo=codigo, vence=vence)
+
+
 @router.post("/{usuario_id}/reset-pin", response_model=ResetPinOut)
 def resetear_pin(
     usuario_id: int,
