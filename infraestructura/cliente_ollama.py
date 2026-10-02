@@ -6,6 +6,21 @@ import requests
 _REQUEST_TIMEOUT_SECONDS = 600
 
 
+# Ollama usa por defecto una ventana de contexto de 4096 tokens (aunque el modelo soporte mucho más) y, si el
+# prompt no cabe, recorta el principio: justo donde están las instrucciones. Con una clase larga el modelo dejaba
+# de producir la hoja de repaso y las tarjetas sin avisar. Por eso la ventana se fija según el tamaño del prompt.
+_CARACTERES_POR_TOKEN = 3  # el español ronda 3,5; se redondea hacia abajo para no quedar corto
+_MARGEN_TOKENS = 256
+_VENTANA_MINIMA = 4096
+_VENTANA_MAXIMA = 16384  # más allá, el caché de contexto no cabe en una GPU de 4 GB junto al modelo
+
+
+def ventana_necesaria(prompt: str, max_tokens: int) -> int:
+    """Tokens de contexto que hacen falta para el prompt y la respuesta, en múltiplos de 1024."""
+    tokens = len(prompt) // _CARACTERES_POR_TOKEN + max_tokens + _MARGEN_TOKENS
+    return min(_VENTANA_MAXIMA, max(_VENTANA_MINIMA, -(-tokens // 1024) * 1024))
+
+
 def generate(prompt: str, model: str, max_tokens: int, ollama_url: str = "http://localhost:11434") -> str:
     """Transporte puro hacia la API de Ollama: envía un prompt y devuelve el
     texto crudo de la respuesta. No sabe nada de prompts de dominio ni de
@@ -15,7 +30,8 @@ def generate(prompt: str, model: str, max_tokens: int, ollama_url: str = "http:/
         "prompt": prompt,
         "stream": False,
         "options": {
-            "num_predict": max_tokens
+            "num_predict": max_tokens,
+            "num_ctx": ventana_necesaria(prompt, max_tokens),
         }
     }
 
