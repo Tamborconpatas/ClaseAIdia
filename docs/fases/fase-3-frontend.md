@@ -1,6 +1,6 @@
 # Fase 3 — Frontend (React + TypeScript + Vite + Tailwind + shadcn/ui)
 
-**Estado (2026-10-01): casi completa, probada en navegador.** Faltan la prueba en un teléfono real, y que el equipo configure el contacto (ver los ítems sin marcar).
+**Estado (2026-10-01): completa y probada en navegador (PC y marco de teléfono).** Solo faltan dos cosas que no dependen del código: la prueba en un teléfono físico y que el equipo configure el contacto real (`VITE_CONTACTO`).
 
 Requisito previo: Fase 2 (login y JWT funcionando en el backend). El código vive en `frontend/` (ver `frontend/README.md` para correrlo).
 
