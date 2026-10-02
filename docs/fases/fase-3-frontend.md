@@ -21,7 +21,7 @@ Requisito previo: Fase 2 (login y JWT funcionando en el backend). El código viv
 - [x] **Archivos estáticos**: favicon con el logo, `robots.txt` con `Disallow: /` y `<meta name="robots" content="noindex, nofollow">`.
 - [x] **Páginas**: política de privacidad y términos y condiciones (`#/privacidad`, `#/terminos`), enlazadas en el pie. Son el **respaldo** del "Aviso para el colegio" del `README.md`, que el colegio acepta al instalar y usar la plataforma (esa es la versión que vale). Falta solo que el equipo ponga un contacto real en `frontend/.env` (`VITE_CONTACTO`, ver `.env.example`).
 - [x] **Accesibilidad automática**: `axe-core` (WCAG 2.0/2.1 A y AA) sin violaciones en entrada, alumno, profesor, UTP y páginas legales (se corrigió el texto alternativo del QR). *Falta* una prueba manual con lector de pantalla y revisión de contraste con ojos humanos: axe no lo cubre todo.
-- [ ] **Quedan pendientes de producto**: desactivar o borrar personal (hoy no se puede).
+- [x] **Desactivar personal** (pestaña Personal): `POST /usuarios/{id}/desactivar|activar` (solo UTP, no a uno mismo, así siempre queda un UTP activo). Una cuenta desactivada no entra y **su sesión abierta se corta de inmediato**; su nombre se conserva en horarios y clases y no se le asignan bloques nuevos. No se borra personal: borrarlo arrastraría su historial.
 - [ ] **Teléfono real**: lo probado fue un marco del tamaño de un teléfono, no un aparato (ver "Verificación").
 
 ## Decisiones de diseño

@@ -94,6 +94,7 @@ class UsuarioOut(BaseModel):
     rut: str
     nombre: str
     colegio_id: int
+    activo: bool = True
     roles: list[RolNombre] = []
 
     @field_validator("roles", mode="before")

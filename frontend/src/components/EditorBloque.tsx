@@ -137,9 +137,12 @@ function Formulario({ estado, profesores, onCerrar, onGuardado }: Omit<Props, 'e
             <label htmlFor="bloque-profesor" className="text-sm font-medium">Profesor</label>
             <select id="bloque-profesor" value={profesorId} onChange={(e) => setProfesorId(e.target.value)} className={SELECT}>
               <option value="">Sin asignar</option>
-              {profesores.map((p) => (
-                <option key={p.id} value={p.id}>{p.nombre}</option>
-              ))}
+              {/* Un profesor desactivado solo aparece si el bloque ya era suyo: el backend no deja asignarle bloques nuevos. */}
+              {profesores
+                .filter((p) => p.activo || String(p.id) === profesorId)
+                .map((p) => (
+                  <option key={p.id} value={p.id}>{p.nombre}{p.activo ? '' : ' (desactivado)'}</option>
+                ))}
             </select>
           </div>
           <Campo etiqueta="Sala" value={sala} onChange={(e) => setSala(e.target.value)} placeholder="Sala 12" />

@@ -59,6 +59,8 @@ class Usuario(Base):
     # Código de un solo uso que entrega el staff al resetear el PIN de un alumno.
     codigo_reset_hash: Mapped[str | None] = mapped_column(String, nullable=True)
     codigo_reset_vence: Mapped[datetime.datetime | None] = mapped_column(DateTime, nullable=True)
+    # Una cuenta desactivada (personal que se fue) no entra ni con una sesión ya abierta, pero conserva su historial.
+    activo: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     colegio_id: Mapped[int] = mapped_column(ForeignKey("colegios.id"), nullable=False)
 
     colegio: Mapped["Colegio"] = relationship(back_populates="usuarios")

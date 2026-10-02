@@ -56,6 +56,43 @@ def obtener_usuario(usuario_id: int, db: Session = Depends(obtener_db), actual: 
     return usuario
 
 
+def _personal_del_colegio(db: Session, utp: Usuario, usuario_id: int) -> Usuario:
+    """Personal (profesor o UTP) del colegio del UTP, que no sea el propio UTP. 404 si es de otro colegio o no existe."""
+    usuario = db.get(Usuario, usuario_id)
+    if usuario is None or usuario.colegio_id != utp.colegio_id:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    if usuario.id == utp.id:
+        raise HTTPException(status_code=409, detail="No puedes desactivar tu propia cuenta")
+    if not {r.rol for r in usuario.roles} & {RolNombre.PROFESOR, RolNombre.UTP}:
+        raise HTTPException(status_code=409, detail="Solo se puede desactivar a personal del colegio")
+    return usuario
+
+
+@router.post("/{usuario_id}/desactivar", response_model=UsuarioOut)
+def desactivar_usuario(
+    usuario_id: int, db: Session = Depends(obtener_db), utp: Usuario = Depends(requiere_rol(RolNombre.UTP))
+):
+    """Personal que ya no trabaja en el colegio: deja de poder entrar (incluso con la sesión que tenga abierta),
+    pero se conserva su nombre en horarios y clases. Se puede reactivar. Un UTP no se desactiva a sí mismo,
+    así que siempre queda al menos uno activo."""
+    usuario = _personal_del_colegio(db, utp, usuario_id)
+    usuario.activo = False
+    usuario.codigo_reset_hash = None
+    usuario.codigo_reset_vence = None
+    db.commit()
+    return usuario
+
+
+@router.post("/{usuario_id}/activar", response_model=UsuarioOut)
+def activar_usuario(
+    usuario_id: int, db: Session = Depends(obtener_db), utp: Usuario = Depends(requiere_rol(RolNombre.UTP))
+):
+    usuario = _personal_del_colegio(db, utp, usuario_id)
+    usuario.activo = True
+    db.commit()
+    return usuario
+
+
 @router.post("/{usuario_id}/reset-password", response_model=ResetPinOut)
 def resetear_password(
     usuario_id: int,
