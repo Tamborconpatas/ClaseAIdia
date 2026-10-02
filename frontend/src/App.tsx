@@ -1,13 +1,15 @@
 import { useEffect, useState } from 'react'
-import { BookOpen, CalendarDays, Sparkles, Users } from 'lucide-react'
+import { BookOpen, CalendarDays, Mic, Sparkles, Users } from 'lucide-react'
 import { AppShell, type ItemNav } from '@/components/AppShell'
 import { Cargando } from '@/components/comunes'
 import { api, type Curso, type Rol, type Usuario } from '@/lib/api'
+import { equipoActivo, soltarEquipo, useEquipo } from '@/lib/grabador'
 import { SesionProvider, useSesion } from '@/lib/sesion'
 import { useCarga } from '@/lib/usar'
 import { Clases } from '@/views/Clases'
 import { Cursos } from '@/views/Cursos'
 import { Entrada } from '@/views/Entrada'
+import { Grabar } from '@/views/Grabar'
 import { Horario } from '@/views/Horario'
 import { Legal, type PaginaLegal } from '@/views/Legal'
 import { Personal } from '@/views/Personal'
@@ -16,11 +18,12 @@ const HORARIO: ItemNav = { id: 'horario', etiqueta: 'Horario', icono: CalendarDa
 const CURSOS: ItemNav = { id: 'cursos', etiqueta: 'Cursos', icono: BookOpen }
 const CLASES: ItemNav = { id: 'clases', etiqueta: 'Clases', icono: Sparkles }
 const PERSONAL: ItemNav = { id: 'personal', etiqueta: 'Personal', icono: Users }
+const GRABAR: ItemNav = { id: 'grabar', etiqueta: 'Grabar', icono: Mic }
 
 // El alumno tiene un solo curso, así que no hay pestaña de cursos: su curso se muestra junto a su nombre.
 const NAV: Record<Rol, ItemNav[]> = {
   ALUMNO: [HORARIO, CLASES],
-  PROFESOR: [{ ...HORARIO, etiqueta: 'Mi horario' }, CURSOS, CLASES],
+  PROFESOR: [{ ...HORARIO, etiqueta: 'Mi horario' }, GRABAR, CURSOS, CLASES],
   UTP: [CURSOS, HORARIO, CLASES, PERSONAL],
 }
 const ETIQUETA_ROL: Record<Rol, string> = { ALUMNO: 'Alumno', PROFESOR: 'Profesor', UTP: 'UTP' }
@@ -33,6 +36,9 @@ function Principal({ usuario, rol, onSalir }: { usuario: Usuario; rol: Rol; onSa
   // Clase abierta de entrada en Clases cuando se llega desde el horario.
   const [claseInicial, setClaseInicial] = useState<number | null>(null)
   const esAlumno = rol === 'ALUMNO'
+  const equipo = useEquipo()
+  // Al cerrar la sesión (o vencer) este componente se desmonta: el micrófono de este equipo se suelta.
+  useEffect(() => () => soltarEquipo(), [])
   const cursoAlumno = useCarga(() => (esAlumno ? api<Curso[]>('/cursos') : Promise.resolve([])), [esAlumno])
 
   const items = NAV[rol]
@@ -58,7 +64,16 @@ function Principal({ usuario, rol, onSalir }: { usuario: Usuario; rol: Rol; onSa
 
   return (
     <AppShell items={items} activo={id} onCambiar={cambiar} usuario={usuario} etiquetaRol={etiquetaRol} onSalir={onSalir}>
+      {equipoActivo(equipo.info) && id !== 'grabar' && (
+        <button
+          onClick={() => cambiar('grabar')}
+          className="mb-4 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-red-100 px-3 text-sm font-medium text-red-900 ring-1 ring-red-200"
+        >
+          <span className="size-2 animate-pulse rounded-full bg-red-600" /> Este equipo está grabando una clase: volver a los controles
+        </button>
+      )}
       {id === 'horario' && <Horario onAbrirClase={abrirClase} />}
+      {id === 'grabar' && <Grabar onAbrirClase={abrirClase} />}
       {id === 'cursos' && <Cursos esUtp={rol === 'UTP'} esProfesor={rol === 'PROFESOR'} onVerClases={verClases} />}
       {id === 'personal' && <Personal />}
       {id === 'clases' && <Clases key={`${cursoClases}-${claseInicial}`} cursoInicial={cursoClases} claseInicial={claseInicial} />}
