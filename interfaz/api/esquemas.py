@@ -372,6 +372,29 @@ class PizarraOut(BaseModel):
     texto: str
 
 
+class RelacionMapa(BaseModel):
+    """Una flecha del mapa conceptual: «de» —relacion→ «a»."""
+
+    de: str = Field(max_length=60)
+    relacion: str = Field(default="", max_length=40)
+    a: str = Field(max_length=60)
+
+    @field_validator("de", "relacion", "a")
+    @classmethod
+    def _limpiar(cls, valor: str) -> str:
+        return " ".join(valor.split())  # sin saltos de línea ni espacios de más
+
+    @model_validator(mode="after")
+    def _completa(self):
+        if not self.de or not self.a:
+            raise ValueError("Cada relación necesita un concepto de origen y uno de destino")
+        return self
+
+
+class MapaEditar(BaseModel):
+    relaciones: list[RelacionMapa] = Field(max_length=30)
+
+
 class PizarraEditar(BaseModel):
     texto: str = Field(max_length=8_000)
 
@@ -391,6 +414,7 @@ class ContenidoOut(BaseModel):
     tarjetas: list[TarjetaOut]
     transcripcion_texto: str | None
     pizarra: list[PizarraOut] = []
+    mapa: list[RelacionMapa] = []
 
 
 class ContenidoEditar(BaseModel):

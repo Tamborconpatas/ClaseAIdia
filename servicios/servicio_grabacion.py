@@ -460,6 +460,17 @@ def generar_material(texto: str, asignatura: str | None = None, pizarra: str = "
     return resumen, puntos, hoja, tarjetas
 
 
+def generar_mapa(resumen: str, puntos: str, asignatura: str | None) -> list[dict]:
+    """El mapa conceptual es un extra: si falla o el modelo no da para eso, la clase sigue sin él."""
+    from servicios.servicio_material_estudio import generar_mapa_conceptual
+
+    try:
+        return generar_mapa_conceptual(resumen, puntos, asignatura)
+    except Exception:
+        traceback.print_exc()
+        return []
+
+
 def _empieza_un_flujo(inicio: bytes, mime: str) -> bool:
     """¿Este trozo es el comienzo de una grabación del navegador (con su cabecera) y no la continuación de otra?
     Un equipo que vuelve (se recargó la página, el celular se durmió) empieza un flujo nuevo."""
@@ -544,6 +555,7 @@ def procesar(grabacion_id: int, fabrica: sessionmaker) -> None:
                 g.clase.contenido = ContenidoClase(
                     transcripcion_texto=texto, transcripcion_srt=srt, resumen=resumen,
                     puntos_clave=puntos, hoja_repaso=hoja, tarjetas=tarjetas,
+                    mapa_conceptual=generar_mapa(resumen, puntos, g.clase.bloque.asignatura) or None,
                 )
                 g.estado, g.error = E.TERMINADA, None
             except ErrorProceso as e:
@@ -586,6 +598,7 @@ def procesar_generacion(grabacion_id: int, fabrica: sessionmaker) -> None:
                     pizarra = _pizarra().texto_para_el_material(otra, g.id)
                 resumen, puntos, hoja, tarjetas = generar_material(k.transcripcion_texto, g.clase.bloque.asignatura, pizarra)
                 k.resumen, k.puntos_clave, k.hoja_repaso, k.tarjetas = resumen, puntos, hoja, tarjetas
+                k.mapa_conceptual = generar_mapa(resumen, puntos, g.clase.bloque.asignatura) or None
                 k.retirado, k.generado_en = False, reloj_de_revision()  # vuelve al flujo normal: por aprobar (el plazo de revisión corre desde ahora)
                 g.estado, g.error = E.TERMINADA, None
             except ErrorProceso as e:
