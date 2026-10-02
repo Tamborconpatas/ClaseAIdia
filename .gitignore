@@ -35,3 +35,4 @@ node_modules/
 .vite/
 escuela_demo.db
 respaldos/
+logs/
