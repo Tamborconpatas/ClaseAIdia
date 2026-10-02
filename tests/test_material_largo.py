@@ -194,3 +194,57 @@ def test_las_tarjetas_numeradas_son_tarjetas_distintas():
 def test_las_tarjetas_sin_numerar_o_con_p1_siguen_funcionando():
     assert len(m._parse_flashcards("P: a\nR: b\nP: c\nR: d")) == 2
     assert len(m._parse_flashcards("P1: a\nR1: b\nP2: c\nR2: d")) == 2
+
+
+# --- Un modelo chico (llama3.2:1b, el que se usa sin GPU) escribe las tarjetas de otra forma -----------
+
+
+def test_tarjetas_en_una_sola_linea_sin_saltos():
+    """Lo que escribió el 1B en la clase real: `P: ... R: ... P: ... R: ...` todo seguido. Antes daba 0 tarjetas en silencio."""
+    crudo = "P: ¿Qué es la IA? R: Un campo de estudio. P: ¿Qué es el aprendizaje supervisado? R: Aprender con etiquetas. P: ¿Y la regresión? R: Predecir un valor continuo."
+    assert m._parse_flashcards(crudo) == [
+        {"pregunta": "¿Qué es la IA?", "respuesta": "Un campo de estudio."},
+        {"pregunta": "¿Qué es el aprendizaje supervisado?", "respuesta": "Aprender con etiquetas."},
+        {"pregunta": "¿Y la regresión?", "respuesta": "Predecir un valor continuo."},
+    ]
+
+
+def test_una_palabra_que_termina_en_r_o_p_dentro_del_texto_no_parte_una_tarjeta():
+    crudo = "P: ¿Qué es aprender: memorizar o entender?\nR: Entender: es lo que importa en la ESP: la práctica.\nP: ¿Otra?\nR: Sí."
+    tarjetas = m._parse_flashcards(crudo)
+    assert [t["pregunta"] for t in tarjetas] == ["¿Qué es aprender: memorizar o entender?", "¿Otra?"]
+    assert tarjetas[0]["respuesta"] == "Entender: es lo que importa en la ESP: la práctica."
+
+
+def test_una_seccion_que_sale_vacia_se_pide_una_vez_mas(monkeypatch):
+    llamadas = []
+
+    def falso(prompt, model, max_tokens, ollama_url="x", ventana=None):
+        llamadas.append(prompt)
+        if prompt.startswith("Este es el bloque"):
+            return "resumen parcial " * 50
+        if "tarjetas de estudio" in prompt:  # el primer intento no trae ninguna tarjeta que se entienda
+            return "P: ¿a? R: b" if "al pie de la letra" in prompt else "Aquí tienes algunas ideas sobre la clase."
+        return "Texto de la sección."
+
+    monkeypatch.setattr(m.ollama_client, "generate", falso)
+    parametros = {"ollama_model": "m", "ollama_max_tokens": 2048, "ollama_url": "u", "ollama_chunk_chars": 6000}
+    monkeypatch.setattr(m.app_config, "get_param", lambda k: parametros[k])
+    _, _, _, tarjetas = m.generate_study_material("Esto es una frase de clase. " * 4000, "X")
+    assert tarjetas == [{"pregunta": "¿a?", "respuesta": "b"}]
+    assert sum("tarjetas de estudio" in p for p in llamadas) == 2
+
+
+def test_si_tras_el_segundo_intento_sigue_sin_haber_tarjetas_no_se_pide_una_tercera_vez(monkeypatch):
+    llamadas = []
+
+    def falso(prompt, model, max_tokens, ollama_url="x", ventana=None):
+        llamadas.append(prompt)
+        return "resumen parcial " * 50 if prompt.startswith("Este es el bloque") else "Nada con formato."
+
+    monkeypatch.setattr(m.ollama_client, "generate", falso)
+    parametros = {"ollama_model": "m", "ollama_max_tokens": 2048, "ollama_url": "u", "ollama_chunk_chars": 6000}
+    monkeypatch.setattr(m.app_config, "get_param", lambda k: parametros[k])
+    _, _, _, tarjetas = m.generate_study_material("Esto es una frase de clase. " * 4000, "X")
+    assert tarjetas == []
+    assert sum("tarjetas de estudio" in p for p in llamadas) == 2  # tope de dos intentos por sección
