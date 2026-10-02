@@ -27,6 +27,10 @@ def ventana_necesaria(prompt: str, max_tokens: int) -> int:
 # texto daba resúmenes de 373 y de 1.383 caracteres en dos corridas seguidas.
 _TEMPERATURA = 0.3
 
+# Ollama mantiene el modelo en memoria 5 minutos después de la última respuesta (1,6 a 4,8 GB que un equipo modesto con
+# servidor 24/7 no puede regalar). Aquí se suelta al minuto: las llamadas de una clase van seguidas, así que no se recarga.
+_MANTENER_CARGADO = "60s"
+
 
 def generate(
     prompt: str, model: str, max_tokens: int, ollama_url: str = "http://localhost:11434", ventana: int | None = None
@@ -38,6 +42,7 @@ def generate(
         "model": model,
         "prompt": prompt,
         "stream": False,
+        "keep_alive": _MANTENER_CARGADO,
         "options": {
             "num_predict": max_tokens,
             # `ventana` fija la misma para varias llamadas seguidas: cambiarla obliga a Ollama a recargar el modelo.

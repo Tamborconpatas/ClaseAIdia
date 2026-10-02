@@ -9,6 +9,8 @@ procesamiento.
 import datetime
 import os
 import shutil
+import subprocess
+import sys
 import threading
 import traceback
 from pathlib import Path
@@ -16,6 +18,8 @@ from pathlib import Path
 from sqlalchemy.orm import Session, sessionmaker
 
 from infraestructura.seguridad import ahora_utc as reloj_de_revision
+from nucleo.memoria import esperar_memoria
+from servicios.trabajador import CODIGO_SIN_MEMORIA
 
 from infraestructura.modelos_orm import (
     Bloque,
@@ -37,6 +41,13 @@ MODOS_DE_LIMPIEZA = ("none", "light_dsp", "dsp", "heavy_dsp", "mmse")
 LIMPIEZA_POR_DEFECTO = "light_dsp"
 # Minutos después del término del bloque en que la grabación se corta sola (por si el profesor olvida terminarla).
 GRACIA_CORTE_MIN = int(os.environ.get("MINUTOS_CORTE_GRABACION", "15"))
+# El procesamiento de una clase corre en un proceso aparte (servicios/trabajador.py) para que, si se queda sin memoria,
+# caiga solo él y no el servidor que atiende a alumnos y profesores.
+RAIZ_DEL_PROYECTO = Path(__file__).resolve().parent.parent
+COMANDO_TRABAJADOR = [sys.executable, "-m", "servicios.trabajador"]
+MEMORIA_MINIMA_GB = float(os.environ.get("MEMORIA_MINIMA_PROCESAMIENTO_GB", "2.5"))  # libre para empezar (Whisper por tramos usa < 2)
+ESPERA_MEMORIA_S = 600  # cuánto espera a que haya esa memoria antes de dejar la clase en error
+TIEMPO_MAXIMO_S = float(os.environ.get("TIEMPO_MAXIMO_PROCESAMIENTO_HORAS", "4")) * 3600  # un procesamiento atascado no bloquea al servidor
 LATIDO_VIGENTE_S = 15  # un equipo sin latido por más de esto se considera desconectado
 ESPERA_FINALIZAR_S = 45  # tras pedir terminar, lo que se espera al equipo grabador antes de procesar lo que llegó
 MAX_SIN_GRABADOR_S = 600  # grabando sin ningún equipo conectado por tanto tiempo: se termina con lo recibido
@@ -275,7 +286,75 @@ def finalizar(db: Session, g: Grabacion, dispositivo: str, fabrica: sessionmaker
 
 
 def _lanzar(funcion, *args) -> None:
-    threading.Thread(target=funcion, args=args, daemon=True).start()
+    """Procesa la clase en un proceso aparte (lo normal). `PROCESAMIENTO_EN_HILO=1` lo hace en un hilo del servidor:
+    solo para desarrollo, porque sin el proceso aparte una falta de memoria se lleva también al servidor."""
+    if os.environ.get("PROCESAMIENTO_EN_HILO") == "1":
+        threading.Thread(target=funcion, args=args, daemon=True).start()
+        return
+    modo = "generacion" if funcion is procesar_generacion else "clase"
+    threading.Thread(target=_trabajar_aparte, args=(modo, args[0], args[1]), daemon=True).start()
+
+
+MENSAJE_SIN_MEMORIA = (
+    "El equipo no tenía memoria suficiente para procesar la clase: se cortó antes de afectar al resto de la plataforma. "
+    "Cierra otros programas del equipo y pulsa «Reintentar»."
+)
+
+
+def _fallo(grabacion_id: int, fabrica: sessionmaker, mensaje: str) -> None:
+    """Deja la sesión en error con el motivo, salvo que el trabajador ya la haya cerrado (terminada o con su propio error)."""
+    with fabrica() as db:
+        g = db.get(Grabacion, grabacion_id)
+        if g is not None and g.estado == E.PROCESANDO:
+            g.estado, g.error = E.ERROR, mensaje
+            db.commit()
+
+
+def _trabajar_aparte(modo: str, grabacion_id: int, fabrica: sessionmaker) -> None:
+    with _cerrojo_modelo:  # uno a la vez (la cola con prioridad es la Fase 5)
+        try:
+            if not esperar_memoria(MEMORIA_MINIMA_GB, ESPERA_MEMORIA_S):
+                _fallo(grabacion_id, fabrica, MENSAJE_SIN_MEMORIA)
+                return
+            proceso = subprocess.Popen([*COMANDO_TRABAJADOR, modo, str(grabacion_id)], cwd=RAIZ_DEL_PROYECTO)
+            _anotar_proceso(grabacion_id, proceso.pid)
+            try:
+                codigo = proceso.wait(timeout=TIEMPO_MAXIMO_S)
+            except subprocess.TimeoutExpired:
+                proceso.kill()
+                proceso.wait()
+                _fallo(grabacion_id, fabrica, f"El procesamiento tardó más de {TIEMPO_MAXIMO_S / 3600:g} horas y se canceló. Pulsa «Reintentar».")
+                return
+            if codigo != 0:
+                _fallo(
+                    grabacion_id, fabrica,
+                    MENSAJE_SIN_MEMORIA if codigo == CODIGO_SIN_MEMORIA
+                    else f"El procesamiento se interrumpió inesperadamente (código {codigo}). Si el equipo se quedó sin memoria, cierra otros programas y pulsa «Reintentar».",
+                )
+        except Exception:
+            traceback.print_exc()
+            _fallo(grabacion_id, fabrica, "No se pudo iniciar el procesamiento de la clase")
+        finally:
+            if modo == "clase":
+                borrar_audio(grabacion_id)  # lo haya cerrado bien o mal el trabajador, el audio no sobrevive
+
+
+def _anotar_proceso(grabacion_id: int, pid: int) -> None:
+    """Para saber, tras un reinicio del servidor, si el trabajador sigue vivo."""
+    carpeta = _carpeta(grabacion_id)
+    if carpeta.exists():
+        (carpeta / "trabajador.pid").write_text(str(pid), encoding="utf-8")
+
+
+def _proceso_vivo(pid: int) -> bool:
+    try:
+        if sys.platform == "win32":
+            salida = subprocess.run(["tasklist", "/FI", f"PID eq {pid}", "/NH"], capture_output=True, text=True, timeout=10).stdout
+            return str(pid) in salida
+        os.kill(pid, 0)
+        return True
+    except (OSError, subprocess.SubprocessError):
+        return False
 
 
 def _iniciar_procesamiento(db: Session, g: Grabacion, fabrica: sessionmaker) -> None:
@@ -486,13 +565,34 @@ def vigilar(db: Session, fabrica: sessionmaker, utc: datetime.datetime | None = 
             _iniciar_procesamiento(db, g, fabrica)  # el equipo no finalizó: se procesa lo que llegó
 
 
-def recuperar_al_iniciar(db: Session) -> None:
-    """Tras un reinicio del servidor: lo que estaba procesándose se pierde (y su audio se borra: no se
-    conserva nada fuera de un procesamiento), y cualquier carpeta de audio huérfana se elimina."""
+def _trabajador_vivo(carpeta: Path) -> bool:
+    archivo = carpeta / "trabajador.pid"
+    try:
+        return archivo.exists() and _proceso_vivo(int(archivo.read_text(encoding="utf-8").strip()))
+    except (OSError, ValueError):
+        return False
+
+
+def recuperar_al_iniciar(db: Session, fabrica: sessionmaker | None = None) -> None:
+    """Tras un reinicio del servidor (por ejemplo un corte de luz), una clase que se estaba procesando no se pierde: su
+    audio sigue en disco (solo mientras se procesa) y, con `fabrica`, se vuelve a procesar desde ahí. Si ya no hay audio
+    pero sí la transcripción, solo se regenera el material; si no hay nada, queda en error. Si el trabajador sigue
+    vivo (se reinició solo el servidor) no se toca: terminará y dejará el resultado. Sin `fabrica` no se reanuda nada.
+    Las carpetas de audio que no son de una sesión activa ni en proceso se borran."""
+    en_proceso = set()
     for g in db.query(Grabacion).filter(Grabacion.estado == E.PROCESANDO).all():
-        g.estado, g.error = E.ERROR, "El servidor se reinició mientras se procesaba la clase"
+        carpeta = _carpeta(g.id)
+        if _trabajador_vivo(carpeta):
+            en_proceso.add(str(g.id))
+        elif fabrica is not None and any(carpeta.glob("*.parte")):
+            en_proceso.add(str(g.id))
+            _lanzar(procesar, g.id, fabrica)
+        elif fabrica is not None and g.clase.contenido is not None and (g.clase.contenido.transcripcion_texto or "").strip() and not g.clase.contenido.resumen:
+            _lanzar(procesar_generacion, g.id, fabrica)
+        else:
+            g.estado, g.error = E.ERROR, "El servidor se reinició mientras se procesaba la clase"
     db.commit()
-    vivas = {str(g.id) for g in db.query(Grabacion).filter(Grabacion.estado.in_(ACTIVAS)).all()}
+    vivas = {str(g.id) for g in db.query(Grabacion).filter(Grabacion.estado.in_(ACTIVAS)).all()} | en_proceso
     if CARPETA_AUDIO.exists():
         for d in CARPETA_AUDIO.iterdir():
             if d.is_dir() and d.name not in vivas:
