@@ -1,5 +1,27 @@
 # Fase 4 — Control de clase en vivo
 
+**Estado (2026-10-01): hecha y probada de punta a punta con voz real, en PC y en marco de teléfono; falta probarla con un celular y un lavalier reales, y resolver el https para grabar desde el celular por la red local (Fase 6).** Detalle y mediciones en `QA.md` (secciones «Fase 4»).
+
+## Cómo quedó (decisión del usuario: las dos formas de grabar son válidas)
+
+- **Una sesión de grabación por clase** (`Grabacion`, `servicios/servicio_grabacion.py`, `interfaz/api/rutas_grabaciones.py`): el servidor guarda el estado y es quien manda. Quien **controla** (el celular del profesor, o el mismo equipo que graba) manda comandos; el **equipo grabador** (un PC de la sala o el celular: es el mismo código) consulta con su latido y obedece, y sube el audio en trozos.
+- **Frontend**: pestaña «Grabar» del profesor (`views/Grabar.tsx`, `lib/grabador.ts`). Se puede cambiar de equipo a mitad de clase; un equipo que se interrumpe puede retomar y el servidor une los flujos de audio.
+
+## Qué debía tener, y cómo va
+
+- [x] **Pantalla de control**: iniciar, pausar, silenciar, terminar, cancelar, marcar prioritaria. **Solo red local, verificado en el servidor** (una conexión con cabeceras de proxy o de un túnel cuenta como internet).
+- [x] **Corte automático**: pasado el término del bloque + 15 min (`MINUTOS_CORTE_GRABACION`), o tras 10 min sin ningún equipo conectado; si el equipo no finaliza, el servidor procesa lo recibido a los 45 s.
+- [x] **Disparo del pipeline real**: se unen los trozos → `TranscriptionService` (Whisper) → `generate_study_material` (Ollama) → `ContenidoClase` de la `Clase` real, **por aprobar** (el flujo de revisión de la Fase 3). Un solo procesamiento a la vez (la cola con prioridad es la Fase 5).
+- [x] **Marcador de «clase prioritaria»**: usable desde la pantalla (`Clase.prioritaria`); la Fase 5 lo usa.
+- [x] **Subida de audio**: tipo permitido, firma del archivo, tope por trozo (8 MB) y por grabación (500 MB), nombre de archivo que pone el servidor, solo el equipo grabador registrado.
+- [x] **Borrado de audio**: siempre, en un `finally` (también si falla), y tras un reinicio se borra cualquier carpeta huérfana.
+- [x] **Si falla solo la generación** (p. ej. Ollama apagado): la transcripción se conserva (oculta a los alumnos) y «Reintentar» regenera el material sin volver a grabar.
+- [ ] **Decisión pendiente**: ¿`transcriptions_history.db` (historial del prototipo Gradio) se retira o convive como herramienta de prueba manual? No se tocó.
+- [ ] **https para grabar con el celular por la red local**: los navegadores no dan el micrófono desde `http://192.168...`. Con un PC de la sala (o abriendo la app con `localhost`) funciona hoy; con el celular hace falta https (Fase 6).
+- [ ] **Probar con un celular real** (micrófono, Wake Lock, qué hace al bloquearse la pantalla), un lavalier, audio de sala con ruido, Safari/iOS y clases de 90 minutos.
+
+## Contexto original de la fase
+
 Esta es la fase que conecta el backend real (Fases 1-2) con el pipeline de IA que ya existe y funciona (`servicios/servicio_transcripcion.py`, `servicios/servicio_material_estudio.py`, hoy usados por el prototipo Gradio). Decisión ya tomada: el backend FastAPI corre aparte del prototipo Gradio hasta ahora — se conectan recién en esta fase de control de clase en vivo.
 
 ## Qué debe tener
