@@ -1,3 +1,11 @@
+import os
+import shutil
+import subprocess
+import sys
+import time
+from pathlib import Path
+from urllib.parse import urlparse
+
 import requests
 
 from nucleo.recursos import hilos_de_procesamiento
@@ -32,6 +40,44 @@ _TEMPERATURA = 0.3
 _MANTENER_CARGADO = "60s"
 
 
+def _ejecutable_de_ollama() -> str | None:
+    en_path = shutil.which("ollama")
+    if en_path:
+        return en_path
+    local = os.environ.get("LOCALAPPDATA")  # instalación por defecto en Windows (no siempre queda en el PATH)
+    candidato = Path(local) / "Programs" / "Ollama" / "ollama.exe" if local else None
+    return str(candidato) if candidato and candidato.is_file() else None
+
+
+def asegurar_ollama(ollama_url: str, esperar_s: float = 30) -> bool:
+    """Ollama es un programa aparte y, en un servidor sin nadie al teclado, nadie lo vuelve a abrir si se cae o si el equipo
+    se reinició: si no responde y es el de este mismo equipo, se arranca. Devuelve si quedó respondiendo."""
+    def responde() -> bool:
+        try:
+            return requests.get(f"{ollama_url}/api/tags", timeout=3).status_code == 200
+        except requests.exceptions.RequestException:
+            return False
+
+    if responde():
+        return True
+    if urlparse(ollama_url).hostname not in ("localhost", "127.0.0.1", "::1"):
+        return False  # uno remoto no se puede arrancar desde aquí
+    ejecutable = _ejecutable_de_ollama()
+    if not ejecutable:
+        return False
+    extra = {"creationflags": subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW} if sys.platform == "win32" else {"start_new_session": True}
+    try:
+        subprocess.Popen([ejecutable, "serve"], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **extra)
+    except OSError:
+        return False
+    limite = time.monotonic() + esperar_s
+    while time.monotonic() < limite:
+        if responde():
+            return True
+        time.sleep(1)
+    return False
+
+
 def generate(
     prompt: str, model: str, max_tokens: int, ollama_url: str = "http://localhost:11434", ventana: int | None = None
 ) -> str:
@@ -53,7 +99,12 @@ def generate(
     }
 
     try:
-        response = requests.post(f"{ollama_url}/api/generate", json=payload, timeout=_REQUEST_TIMEOUT_SECONDS)
+        try:
+            response = requests.post(f"{ollama_url}/api/generate", json=payload, timeout=_REQUEST_TIMEOUT_SECONDS)
+        except requests.exceptions.ConnectionError:
+            if not asegurar_ollama(ollama_url):
+                raise
+            response = requests.post(f"{ollama_url}/api/generate", json=payload, timeout=_REQUEST_TIMEOUT_SECONDS)
     except requests.exceptions.ConnectionError:
         raise RuntimeError(
             f"No se pudo conectar a Ollama. Asegúrate de tener Ollama corriendo localmente "
