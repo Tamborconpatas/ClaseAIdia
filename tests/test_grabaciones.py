@@ -379,6 +379,7 @@ def test_si_falla_la_generacion_se_conserva_la_transcripcion_oculta_a_los_alumno
         clase = db.query(Clase).one()
         assert "fotosíntesis" in clase.contenido.transcripcion_texto and clase.contenido.retirado is True
     assert g["c"].get("/clases", headers=g["alumno"]).json() == []
+    assert [c["estado"] for c in g["c"].get("/clases", headers=g["ana"]).json()] == ["error"]  # no "retirada": nadie la retiró
 
 
 def test_sin_voz_es_un_error_claro(g, monkeypatch):

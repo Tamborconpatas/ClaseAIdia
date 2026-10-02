@@ -50,7 +50,8 @@ def _estado_sin_material(g: Grabacion | None) -> str:
 
 
 def _estado(k: ContenidoClase | None, ahora: datetime.datetime, g: Grabacion | None = None) -> str:
-    if k is None:
+    if k is None or (g is not None and g.estado in (EstadoGrabacion.ERROR, EstadoGrabacion.PROCESANDO) and not k.resumen):
+        # Sin material todavía; o falló/está regenerándose la generación y solo se conserva la transcripción.
         return _estado_sin_material(g)
     if k.aprobado:
         return "publicada"
