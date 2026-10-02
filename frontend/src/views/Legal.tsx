@@ -145,7 +145,7 @@ export function Legal({ pagina, onVolver }: { pagina: PaginaLegal; onVolver: () 
       <header className="border-b bg-card px-4 py-3 pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))]">
         <div className="mx-auto flex max-w-2xl items-center justify-between">
           <Logo />
-          <button onClick={onVolver} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+          <button onClick={onVolver} className="flex h-10 items-center gap-1 rounded-lg px-2 text-sm text-muted-foreground hover:text-foreground">
             <ArrowLeft className="size-4" /> Volver
           </button>
         </div>

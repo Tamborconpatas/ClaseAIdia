@@ -189,7 +189,7 @@ function DetalleClase({ id, onVolver, onCambio }: { id: number; onVolver: () => 
 
   return (
     <article className="space-y-4 desk:max-h-[calc(100dvh-3rem)] desk:overflow-y-auto desk:pr-1">
-      <button onClick={onVolver} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground desk:hidden">
+      <button onClick={onVolver} className="-ml-2 flex h-10 items-center gap-1 rounded-lg px-2 text-sm text-muted-foreground hover:text-foreground desk:hidden">
         <ArrowLeft className="size-4" /> Clases
       </button>
 
