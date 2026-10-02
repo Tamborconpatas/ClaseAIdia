@@ -73,7 +73,9 @@ El hardware objetivo de este proyecto no tiene GPU — `faster-whisper` corre bi
 
 ### 4. Opcional: leer la pizarra con una foto
 
-El profesor puede sacar fotos de la pizarra con su celular durante la clase («Foto de la pizarra» en la pantalla de grabar); un modelo de visión las lee después de la clase y suma lo escrito al material (la imagen se borra apenas se lee). Para eso hay que instalar el modelo una vez, en el equipo del servidor:
+**Está apagada por defecto: cada colegio elige si la quiere** (ver «Rendimiento medido» más abajo para decidir). La transcripción y el resumen funcionan igual sin ella. Para activarla, poner `FOTOS_PIZARRA=si` en el `.env` e instalar el modelo (abajo); con `no` el botón ni aparece y el servidor rechaza las fotos.
+
+Con ella activada, el profesor puede sacar fotos de la pizarra con su celular durante la clase («Foto de la pizarra» en la pantalla de grabar); un modelo de visión las lee después de la clase y suma lo escrito al material (la imagen se borra apenas se lee). Para eso hay que instalar el modelo una vez, en el equipo del servidor:
 
 ```bash
 ollama pull qwen2.5vl:3b      # 3,2 GB de disco; el nombre se puede cambiar con MODELO_VISION en el .env
@@ -86,6 +88,40 @@ Necesita unos **4,5 GB de memoria libres** además de lo que ya usa el sistema: 
 # Requiere Rust + Cargo instalados primero: https://rustup.rs/ (no necesita sudo)
 pip install -r requirements-deepfilter.txt
 ```
+
+## Rendimiento medido (solo CPU, sin GPU)
+
+Lo que sigue se midió con la clase real de 92 minutos (12.500 palabras) y 6 fotos reales de pizarra, por el mismo flujo que usa la aplicación, **solo con CPU**: Ollama y Whisper sin GPU y limitados a los núcleos indicados (2026-10-02). **Las dos partes se miden y se deciden por separado**: lo primero es el núcleo de la aplicación; lo segundo es opcional.
+
+*Advertencia sobre estos números*: se midieron en un procesador Intel Core i5-13420H (de 13.ª generación, rápido). Un PC escolar típico, más antiguo, puede tardar **el doble**. Dos corridas del mismo perfil de 4 núcleos dieron 13,2 y 16,9 minutos de transcripción: cuenten con una variación de un cuarto.
+
+### A. Núcleo: transcripción y resumen (obligatorio)
+
+Una clase de 92 minutos, de principio a fin (la clase se procesa sola después de terminar; una clase de 45 minutos tarda aproximadamente la mitad):
+
+| Equipo (sin GPU) | Transcripción (Whisper `small`) | Resumen con `llama3.2:1b` (el que se usa sin GPU) | **Total con 1B** | Resumen con `llama3.2:3b` (mejor, más pesado) | Total con 3B |
+|---|---|---|---|---|---|
+| 4 núcleos rápidos | 16,9 min | 2,4 min | **19,3 min** | 17,5 min | 34,4 min |
+| 8 núcleos (4 rápidos + 4 lentos) | 22,3 min | 2,3 min | **24,6 min** | 11,6 min | 33,9 min |
+
+- **Memoria**: la transcripción llega a 2,0 GB; Ollama usa unos 1,6 GB con el modelo de 1B y unos 4,8 GB con el de 3B. Se carga un modelo a la vez y se suelta, así que 8 GB bastan con el de 1B; con el de 3B conviene tener 16 GB.
+- *Lo del 8 núcleos*: el procesador de las pruebas mezcla 4 núcleos rápidos con 4 lentos, y la transcripción esperaba a los lentos; un PC con 8 núcleos iguales debería ser más rápido que el de 4. No se midió uno.
+- Una jornada con varias clases se procesa de a una, en orden: el procesamiento es de varios minutos por clase, no de horas, así que cabe de sobra entre una clase y la siguiente o durante la noche. Esto último es una estimación (no se midió una jornada completa de clases de 45 minutos).
+
+### B. Opcional: fotos de la pizarra
+
+Seis fotos reales (tarea con letra clara, mapa conceptual en pantalla, pizarra de cálculo, cuaderno de límites, direcciones IP, lista de librerías), cada una leída por el modelo de visión `qwen2.5vl:3b`:
+
+| Equipo (sin GPU) | Primera foto (con la carga del modelo) | Las demás | Las 6 fotos | Memoria del modelo |
+|---|---|---|---|---|
+| 4 núcleos rápidos | 14 s | de 8 a 47 s (mediana 34 s) | **2,7 min** | 3,4 GB |
+| 8 núcleos (4 rápidos + 4 lentos) | 19 s | de 8 a 49 s (mediana 42 s) | **3,1 min** | 3,4 GB |
+
+- Se suma **a la clase, después de transcribir**: una clase con 10 fotos tarda unos 6 minutos más. Más núcleos no la aceleran (leer una imagen depende de la velocidad de la memoria, no de cuántos núcleos haya).
+- Pide **3,2 GB de disco** (el modelo) y unos **4,5 GB de memoria libre** además de lo que ya usa el sistema: con 16 GB sobra; con 8 GB casi seguro que no alcanza, y las fotos se saltan solas (la clase se procesa igual, sin ellas).
+- Calidad (ver `QA.md`): lee bien letra clara, listas y esquemas; en matemática escrita a mano **puede cambiar cifras**, por eso el profesor revisa y corrige antes de aprobar. Con la pizarra de cálculo más densa el modelo a veces se repite; la aplicación lo limpia y reintenta sola (en estas seis lecturas no hizo falta).
+
+**Para decidir**: si el equipo del colegio tiene 8 GB, o el profesorado no va a usar la pizarra de esa manera, déjenla apagada (`FOTOS_PIZARRA=no`, que es lo normal): no se instala nada más ni se gasta tiempo. Si tiene 16 GB y quieren que lo escrito en la pizarra llegue al material, actívenla.
 
 ## Uso
 
