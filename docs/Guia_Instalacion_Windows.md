@@ -6,25 +6,23 @@ Esta guía documenta la instalación paso a paso de **ClaseAIdia** (Universal Lo
 
 ---
 
-## 1. Versión de Python: 3.12 a 3.14
+## 1. Versión de Python: 3.12 o superior
 
 > [!NOTE]
-> **Usa Python 3.12 o superior (hasta 3.14).** Probadas: 3.12 y 3.14 (la 3.13 no se probó). **Python 3.11 o anterior ya no sirve**: `numpy`, `scipy` y `librosa` exigen 3.12 como mínimo.
->
-> (Antes esta guía advertía lo contrario, que no se usara 3.13+, porque `numpy==1.26.4` no tenía wheel para esas versiones. Se actualizó a numpy 2 y se verificó en 3.14; ver `QA.md`.)
+> **Usa Python 3.12 o superior.** Probado en 3.12 y 3.14. Versiones anteriores no sirven: `numpy`, `scipy` y `librosa` exigen 3.12 como mínimo.
 
 ---
 
 ## 2. Configuración del Entorno con Conda
 
-Para evitar cualquier conflicto con versiones globales de Python que traiga Windows o la tienda de aplicaciones, se debe aislar el proyecto mediante un entorno Conda con Python 3.12.
+Para evitar cualquier conflicto con versiones globales de Python que traiga Windows o la tienda de aplicaciones, se debe aislar el proyecto mediante un entorno Conda con Python 3.12 o superior (los ejemplos usan 3.14).
 
 ### Paso 2.1: Abrir la terminal
 Abre **PowerShell** o **Terminal de Windows** (puedes usar la terminal integrada de tu editor o Anaconda / Miniconda Prompt).
 
-### Paso 2.2: Crear el entorno virtual con Python 3.12
+### Paso 2.2: Crear el entorno virtual con Python 3.14
 ```powershell
-conda create -n transcriptor-env python=3.12 -y
+conda create -n transcriptor-env python=3.14 -y
 ```
 
 *(Nota: Si usas una instalación limpia de Miniconda y te solicita aceptar los términos de los canales oficiales, ejecuta:)*
@@ -38,10 +36,10 @@ conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/ms
 ```powershell
 conda activate transcriptor-env
 ```
-Verifica que el intérprete activo sea 3.12:
+Verifica que el intérprete activo sea 3.12 o superior:
 ```powershell
 python --version
-# Debe responder: Python 3.12.x
+# Debe responder: Python 3.12.x o superior (por ejemplo 3.14.x)
 ```
 
 ---

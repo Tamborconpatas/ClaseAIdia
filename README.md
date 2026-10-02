@@ -1,6 +1,6 @@
 # ClaseAIdia (Universal Local Transcriber)
 
-![ULT Banner](https://img.shields.io/badge/Status-Active-brightgreen) ![Python 3.12--3.14](https://img.shields.io/badge/Python-3.12--3.14-blue) ![Gradio](https://img.shields.io/badge/UI-Gradio-orange)
+![ULT Banner](https://img.shields.io/badge/Status-Active-brightgreen) ![Python 3.12+](https://img.shields.io/badge/Python-3.12%2B-blue) ![Gradio](https://img.shields.io/badge/UI-Gradio-orange)
 
 Una aplicación de Inteligencia Artificial alojada localmente, diseñada para transcribir audio y generar material de estudio (resumen y puntos clave) a partir de clases grabadas — pensada para correr en hardware modesto, **sin GPU**, y **completamente offline**.
 
@@ -28,11 +28,9 @@ Estas mismas condiciones aparecen dentro de la aplicación (`#/privacidad` y `#/
 
 ## Instalación
 
-### 0. Versión de Python (3.12 a 3.14)
-Requiere **Python 3.12 a 3.14** (probadas la 3.12 y la 3.14; la 3.13 debería funcionar igual, pero no se probó). No hace falta Conda ni Anaconda — con el Python normal de [python.org](https://www.python.org/downloads/) (o `winget`) alcanza; el módulo `venv` que se usa abajo es parte de la librería estándar.
-> **Python 3.11 o anterior ya no sirve**: `numpy`, `scipy` y `librosa` (en las versiones de `requirements.txt`) exigen 3.12 como mínimo. Hasta el 2026-09-30 el proyecto pedía lo contrario (máximo 3.12, por `numpy==1.26.4`); se actualizó y se verificó en 3.12 y 3.14, ver `QA.md`.
-> **Windows**: `winget install --id Python.Python.3.12 -e --scope user` instala Python 3.12 sin admin. Si ya tienes otras versiones instaladas, usa `py -3.12` (o `py -3.14`) en vez de `python` a secas en el paso 2 para apuntar a la correcta.
-> Para una guía completa paso a paso en Windows con Conda, consulta la [Guía de Instalación en Windows](docs/Guia_Instalacion_Windows.md).
+### 0. Versión de Python (3.12 o superior)
+Requiere **Python 3.12 o superior** (probado en 3.12 y 3.14). No hace falta Conda ni Anaconda — con el Python normal de [python.org](https://www.python.org/downloads/) (o `winget`) alcanza; el módulo `venv` que se usa abajo es parte de la librería estándar. Versiones anteriores a 3.12 no sirven: `numpy`, `scipy` y `librosa` exigen 3.12 como mínimo.
+> **Windows**: `winget install --id Python.Python.3.14 -e --scope user` instala Python sin admin. Si ya tienes otras versiones instaladas, usa `py -3.14` (o la que quieras) en vez de `python` a secas en el paso 2 para apuntar a la correcta.
 
 ### 1. Requisitos de FFMPEG (Necesario para procesar audio)
 * **Windows**: `winget install Gyan.FFmpeg` o descarga desde [Gyan.dev](https://www.gyan.dev/ffmpeg/builds/) y agrégalo a tu PATH.
@@ -42,14 +40,14 @@ Requiere **Python 3.12 a 3.14** (probadas la 3.12 y la 3.14; la 3.13 debería fu
 ### 2. Configuración del Entorno Python
 Crea un entorno virtual con `venv` (viene incluido con Python, no requiere instalar nada más) y actívalo:
 ```bash
-python3.12 -m venv transcriptor-env
+python3 -m venv transcriptor-env
 # En Linux/Mac:
 source transcriptor-env/bin/activate
-# En Windows (Powershell) — usa "py -3.12" en vez de "python3.12" si tienes más de una versión de Python instalada:
-py -3.12 -m venv transcriptor-env
+# En Windows (Powershell) — usa "py -3.14" (o tu versión) si tienes más de una versión de Python instalada:
+py -3.14 -m venv transcriptor-env
 .\transcriptor-env\Scripts\Activate.ps1
 ```
-*(Si ya usas Conda y prefieres seguir con eso, `conda create -n transcriptor-env python=3.12 -y` funciona igual de bien — ver la [Guía de Instalación en Windows](docs/Guia_Instalacion_Windows.md) para esa variante paso a paso.)*
+*(Si ya usas Conda y prefieres seguir con eso, `conda create -n transcriptor-env python=3.14 -y` funciona igual de bien — ver la [Guía de Instalación en Windows](docs/Guia_Instalacion_Windows.md) para esa variante paso a paso.)*
 
 ### 3. Instalación de Dependencias
 El hardware objetivo de este proyecto no tiene GPU — `faster-whisper` corre bien en CPU con modelos livianos (tiny/base/small). La app detecta el hardware disponible y elige el motor sola, sin configuración manual:
