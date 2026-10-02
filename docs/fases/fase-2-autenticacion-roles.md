@@ -7,7 +7,7 @@ Requisito previo cumplido: modelo de datos y backend FastAPI (`Fase 1`, ver `QA.
 - **Login alumno**: RUT + PIN de 6 dígitos.
   - El PIN lo elige el alumno en su primer ingreso (no lo asigna el UTP) — endpoint separado de "primer ingreso" que fija el PIN una sola vez.
 - **Login profesor/UTP**: RUT + contraseña.
-- **Hashing**: `passlib` con `bcrypt` o `argon2` para ambos (password y PIN). Nunca texto plano, ni siquiera para el PIN.
+- **Hashing**: `argon2-cffi` (argon2id; antes `passlib`) para ambos (password y PIN). Nunca texto plano, ni siquiera para el PIN.
 - **Sesión**: `PyJWT`, token vía header `Authorization: Bearer <token>` — no cookies (reduce riesgo CSRF). Definir expiración razonable (ej. 8-12h, una jornada escolar).
 - **Límite de intentos**: 5 intentos fallidos → bloqueo temporal creciente, tanto en login de alumno como de staff. Requiere columnas nuevas en `Usuario` (ej. `intentos_fallidos`, `bloqueado_hasta`) → nueva migración Alembic.
 - **Verificación de rol en el backend**: cada endpoint existente (`/colegios`, `/usuarios`, `/cursos`, `/cursos/{id}/bloques`) debe quedar protegido según corresponda — nunca solo ocultar botones en la UI. Ej: crear Colegio/Usuario/Curso/Bloque debería requerir rol UTP.
@@ -28,7 +28,7 @@ Requisito previo cumplido: modelo de datos y backend FastAPI (`Fase 1`, ver `QA.
 
 - ~~Bootstrap del primer UTP vía `POST /auth/bootstrap-utp`~~ — reemplazado el 2026-10-01 por `POST /auth/setup` (ver más abajo).
 - Alta de alumno: combinada con "unirse a curso" (`POST /cursos/unirse`) — no hay paso separado de registro.
-- Hash: `argon2` vía `passlib`.
+- Hash: `argon2` con `argon2-cffi` (antes vía `passlib`; mismo formato, los hashes guardados siguen sirviendo).
 - ~~`POST /colegios` y los `GET` de colegios/cursos/bloques sin autenticación~~ — era a propósito en esta fase, pero se cerró el 2026-10-01 (ver más abajo).
 
 ## Decisiones de acceso (2026-10-01)
