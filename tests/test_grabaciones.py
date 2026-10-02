@@ -9,6 +9,7 @@ from servicios import servicio_grabacion as sg
 CLAVE = "clave-segura-123"
 LUNES_0930 = datetime.datetime(2026, 9, 28, 9, 30)  # lunes: el bloque de prueba es de lunes 09:00-10:00
 WEBM = b"\x1a\x45\xdf\xa3" + b"\x00" * 200
+CLUSTER = b"\x1f\x43\xb6\x75" + b"\x00" * 200  # lo que empieza cada trozo siguiente de un mismo flujo
 EQUIPO_A, EQUIPO_B = "equipo-sala-0001", "celular-prof-0002"
 
 
@@ -77,7 +78,9 @@ def _latido(g, gid, equipo=EQUIPO_A, segundos=0, nivel=0.2):
     return g["c"].post(f"/grabaciones/{gid}/latido", json={"dispositivo": equipo, "segundos": segundos, "nivel": nivel}, headers=g["ana"])
 
 
-def _trozo(g, gid, n, datos=WEBM, equipo=EQUIPO_A, tipo="audio/webm;codecs=opus"):
+def _trozo(g, gid, n, datos=None, equipo=EQUIPO_A, tipo="audio/webm;codecs=opus"):
+    if datos is None:  # solo el primer trozo de un flujo lleva la cabecera; los demás empiezan con un "cluster"
+        datos = WEBM if n == 0 else CLUSTER
     return g["c"].put(f"/grabaciones/{gid}/trozos/{n}", params={"dispositivo": equipo}, content=datos, headers={**g["ana"], "Content-Type": tipo})
 
 
@@ -535,3 +538,49 @@ def test_regenerar_solo_cuando_corresponde(g):
     _terminar_con_audio(g, gid)  # terminó bien
     assert g["c"].post(f"/grabaciones/{gid}/regenerar", headers=g["ana"]).status_code == 409
     assert g["c"].post(f"/grabaciones/{gid}/regenerar", headers=g["beta"]).status_code == 404
+
+
+# --- Un equipo que se corta y vuelve (celular que se duerme, página recargada) ------------------
+
+
+def _webm_de_tono(ruta, segundos):
+    import shutil
+    import subprocess
+
+    if not shutil.which("ffmpeg"):
+        pytest.skip("ffmpeg no está instalado")
+    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i", f"sine=frequency=440:duration={segundos}", "-c:a", "libopus", str(ruta)], check=True)
+    return ruta.read_bytes()
+
+
+def _partir(datos, n):
+    paso = len(datos) // n + 1
+    return [datos[i:i + paso] for i in range(0, len(datos), paso)]
+
+
+def test_un_solo_flujo_se_une_tal_cual(tmp_path):
+    flujo = _webm_de_tono(tmp_path / "a.webm", 2)
+    carpeta = tmp_path / "c"
+    carpeta.mkdir()
+    for i, parte in enumerate(_partir(flujo, 3)):
+        (carpeta / f"{i:06d}.parte").write_bytes(parte)
+    unido = sg._unir_trozos(carpeta, "audio/webm")
+    assert unido.name == "clase.webm" and unido.read_bytes() == flujo
+
+
+def test_si_el_equipo_volvio_cada_flujo_se_convierte_aparte_y_se_juntan(tmp_path):
+    import wave
+
+    a, b = _webm_de_tono(tmp_path / "a.webm", 2), _webm_de_tono(tmp_path / "b.webm", 1)
+    carpeta = tmp_path / "c"
+    carpeta.mkdir()
+    partes = _partir(a, 2) + _partir(b, 2)  # el equipo se cortó tras el trozo 1 y volvió con una cabecera nueva
+    for i, parte in enumerate(partes):
+        (carpeta / f"{i:06d}.parte").write_bytes(parte)
+    assert [len(f) for f in sg._flujos(sorted(carpeta.glob("*.parte")), "audio/webm")] == [2, 2]
+    unido = sg._unir_trozos(carpeta, "audio/webm")
+    assert unido.name == "clase.wav"
+    with wave.open(str(unido), "rb") as w:
+        assert (w.getnchannels(), w.getframerate()) == (1, 16000)
+        assert 2.7 < w.getnframes() / 16000 < 3.4  # 2 s + 1 s: no se perdió ninguno de los dos flujos
+    assert not list(carpeta.glob("flujo*")) and not list(carpeta.glob("opt_*"))  # sin temporales de más
