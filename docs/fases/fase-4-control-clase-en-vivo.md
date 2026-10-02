@@ -16,7 +16,7 @@
 - [x] **Subida de audio**: tipo permitido, firma del archivo, tope por trozo (8 MB) y por grabación (500 MB), nombre de archivo que pone el servidor, solo el equipo grabador registrado.
 - [x] **Borrado de audio**: siempre, en un `finally` (también si falla), y tras un reinicio se borra cualquier carpeta huérfana.
 - [x] **Si falla solo la generación** (p. ej. Ollama apagado): la transcripción se conserva (oculta a los alumnos) y «Reintentar» regenera el material sin volver a grabar.
-- [ ] **Decisión pendiente**: ¿`transcriptions_history.db` (historial del prototipo Gradio) se retira o convive como herramienta de prueba manual? No se tocó.
+- [x] **`transcriptions_history.db`** (historial del prototipo Gradio): se borró el archivo (estaba vacío, 0 filas, y no estaba en git). El código del prototipo (`app.py`, `infraestructura/repositorio_historial.py`) sigue y lo vuelve a crear vacío si se ejecuta; el flujo real guarda todo en `escuela.db`. Si algún día se quiere retirar el historial del prototipo también, hay que sacar `repositorio_historial` y `servicio_historial`.
 - [x] **https para grabar con el celular por la red local**: `python -m scripts.generar_certificado` crea un certificado propio (válido para `localhost` y las direcciones de la red) que usan uvicorn (`--ssl-keyfile/--ssl-certfile`) y `npm run dev:https`. La primera vez cada equipo muestra una advertencia que hay que aceptar. *Falta*: confirmar en un celular real que, aceptada la advertencia, el navegador da el micrófono; y, para el despliegue sin advertencias, un dominio propio con certificado válido (Fase 6).
 - [ ] **Probar con un celular real** (micrófono, Wake Lock, qué hace al bloquearse la pantalla), un lavalier, audio de sala con ruido, Safari/iOS y clases de 90 minutos.
 
