@@ -13,13 +13,14 @@ from infraestructura.modelos_orm import (
     ContenidoClase,
     Curso,
     EstadoGrabacion,
+    FotoPizarra,
     Grabacion,
     RolNombre,
     Usuario,
 )
 from infraestructura.seguridad import ahora_utc
 from interfaz.api.dependencias_auth import requiere_rol, rol_principal, usuario_actual
-from interfaz.api.esquemas import ClaseDetalleOut, ClaseOut, ContenidoEditar, ContenidoOut, TarjetaOut
+from interfaz.api.esquemas import ClaseDetalleOut, ClaseOut, ContenidoEditar, ContenidoOut, PizarraEditar, PizarraOut, TarjetaOut
 
 router = APIRouter(prefix="/clases", tags=["clases"])
 
@@ -118,6 +119,11 @@ def _detalle(clase: Clase) -> dict:
             hoja_repaso=k.hoja_repaso,
             tarjetas=[TarjetaOut(**t) for t in (k.tarjetas or [])],
             transcripcion_texto=k.transcripcion_texto,
+            pizarra=[
+                PizarraOut(id=f.id, segundo=f.segundo, texto=f.texto)
+                for f in (clase.grabacion.fotos if clase.grabacion is not None else [])
+                if f.estado == "leida" and (f.texto or "").strip()
+            ],
         )
     return {**_resumen(clase), "contenido": contenido}
 
@@ -172,6 +178,40 @@ def editar_contenido(
     k = clase.contenido
     k.resumen, k.puntos_clave, k.hoja_repaso = datos.resumen, datos.puntos_clave, datos.hoja_repaso
     k.tarjetas = [t.model_dump() for t in datos.tarjetas]
+    db.commit()
+    db.refresh(clase)
+    return _detalle(clase)
+
+
+def _foto_de(db: Session, staff: Usuario, clase_id: int, foto_id: int) -> tuple[Clase, FotoPizarra]:
+    clase = _clases_visibles(db, staff).filter(Clase.id == clase_id).first()
+    foto = db.get(FotoPizarra, foto_id) if clase is not None and clase.grabacion is not None else None
+    if foto is None or foto.grabacion_id != clase.grabacion.id or foto.estado != "leida":
+        raise HTTPException(status_code=404, detail="Foto de la pizarra no encontrada")
+    return clase, foto
+
+
+@router.put("/{clase_id}/pizarra/{foto_id}", response_model=ClaseDetalleOut)
+def editar_pizarra(
+    clase_id: int, foto_id: int, datos: PizarraEditar, db: Session = Depends(obtener_db),
+    staff: Usuario = Depends(requiere_rol(RolNombre.PROFESOR, RolNombre.UTP)),
+):
+    """El profesor corrige lo que la IA leyó de la pizarra (las cifras a mano son lo que más falla) antes de que lo vean los alumnos."""
+    clase, foto = _foto_de(db, staff, clase_id, foto_id)
+    foto.texto = datos.texto
+    db.commit()
+    db.refresh(clase)
+    return _detalle(clase)
+
+
+@router.delete("/{clase_id}/pizarra/{foto_id}", response_model=ClaseDetalleOut)
+def quitar_pizarra(
+    clase_id: int, foto_id: int, db: Session = Depends(obtener_db),
+    staff: Usuario = Depends(requiere_rol(RolNombre.PROFESOR, RolNombre.UTP)),
+):
+    """Quita lo leído de una foto (mal leído, o no corresponde a la clase)."""
+    clase, foto = _foto_de(db, staff, clase_id, foto_id)
+    db.delete(foto)
     db.commit()
     db.refresh(clase)
     return _detalle(clase)

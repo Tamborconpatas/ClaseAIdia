@@ -364,12 +364,33 @@ class TarjetaOut(BaseModel):
     respuesta: str
 
 
+class PizarraOut(BaseModel):
+    """Lo que se leyó de una foto de la pizarra (la imagen ya no existe). Puede traer LaTeX ($...$, $$...$$)."""
+
+    id: int
+    segundo: int
+    texto: str
+
+
+class PizarraEditar(BaseModel):
+    texto: str = Field(max_length=8_000)
+
+    @field_validator("texto")
+    @classmethod
+    def _recortar(cls, valor: str) -> str:
+        valor = valor.strip()
+        if not valor:
+            raise ValueError("El texto no puede quedar vacío (si no sirve, quita la foto)")
+        return valor
+
+
 class ContenidoOut(BaseModel):
     resumen: str | None
     puntos_clave: str | None
     hoja_repaso: str | None
     tarjetas: list[TarjetaOut]
     transcripcion_texto: str | None
+    pizarra: list[PizarraOut] = []
 
 
 class ContenidoEditar(BaseModel):
