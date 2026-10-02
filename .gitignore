@@ -12,6 +12,7 @@ dist/
 downloads/
 outputs/
 audio_temp/
+certs/
 transcriptions_history.db
 transcriber_config.json
 escuela.db

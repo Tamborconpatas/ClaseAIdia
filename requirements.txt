@@ -74,3 +74,6 @@ pytest==9.1.1
 # 8. Autenticación (Fase 2) — hash de contraseña/PIN (argon2-cffi directo, sin passlib: abandonado desde 2020) y sesión (JWT).
 pyjwt==2.15.1
 argon2-cffi==25.1.0
+
+# 9. Certificado https propio para la red del colegio (scripts/generar_certificado.py).
+cryptography==50.0.2
