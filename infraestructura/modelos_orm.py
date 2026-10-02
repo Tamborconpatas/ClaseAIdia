@@ -182,6 +182,10 @@ class Grabacion(Base):
     creada_en: Mapped[datetime.datetime] = mapped_column(DateTime, default=_ahora_utc, nullable=False)
     terminando_desde: Mapped[datetime.datetime | None] = mapped_column(DateTime, nullable=True)
     error: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Reintentos automáticos: nadie está frente al computador cuando algo falla, así que un fallo del procesamiento se
+    # reintenta solo (con esperas crecientes) mientras queden intentos; el audio se conserva hasta el último.
+    intentos: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    reintento_en: Mapped[datetime.datetime | None] = mapped_column(DateTime, nullable=True)
 
     clase: Mapped["Clase"] = relationship(back_populates="grabacion")
 

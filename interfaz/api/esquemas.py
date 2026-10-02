@@ -449,6 +449,7 @@ class GrabacionOut(BaseModel):
     grabador_id: str | None
     grabador_conectado: bool
     error: str | None
+    reintento_en: datetime.datetime | None = None  # cuándo se reintenta sola (UTC), si hay un reintento programado
 
 
 class BloqueDeHoyOut(BaseModel):
