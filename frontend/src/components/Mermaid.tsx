@@ -1,22 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-
-// Mermaid pesa bastante: se baja solo cuando una pantalla tiene un diagrama, y se configura una sola vez.
-let mermaid: Promise<typeof import('mermaid').default> | undefined
-const cargarMermaid = () =>
-  (mermaid ??= import('mermaid').then((m) => {
-    // `strict`: Mermaid no ejecuta HTML ni enlaces dentro del diagrama. `htmlLabels: false` va en la raíz (no dentro de
-    // `flowchart`, que deja los nodos como <foreignObject>): los textos salen como SVG puro, que es lo único que deja pasar
-    // DOMPurify. Con la opción mal puesta los nodos se veían vacíos (medido en el navegador).
-    m.default.initialize({ startOnLoad: false, securityLevel: 'strict', theme: 'neutral', htmlLabels: false, flowchart: { useMaxWidth: true } })
-    return m.default
-  }))
-
-let contador = 0
+import { empezarDibujo } from '@/lib/dibujos'
+import { dibujarDiagrama } from '@/lib/mermaid'
 
 /**
- * Dibuja un diagrama Mermaid. El SVG que devuelve Mermaid pasa por DOMPurify (perfil SVG) y se agrega al DOM como nodos,
- * sin `innerHTML` ni `dangerouslySetInnerHTML`. Si el código no se entiende (un diagrama que escribió la IA a mano
- * alzada) se muestra el código tal cual en vez de dejar un hueco o el ícono de error de Mermaid.
+ * Dibuja un diagrama Mermaid. El SVG ya viene pasado por DOMPurify y se agrega al DOM como nodos, sin `innerHTML` ni
+ * `dangerouslySetInnerHTML`. Si el código no se entiende (un diagrama que escribió la IA a mano alzada) se muestra el
+ * código tal cual en vez de dejar un hueco o el ícono de error de Mermaid.
  */
 export function Mermaid({ codigo, descripcion }: { codigo: string; descripcion: string }) {
   const ref = useRef<HTMLDivElement>(null)
@@ -24,21 +13,19 @@ export function Mermaid({ codigo, descripcion }: { codigo: string; descripcion: 
 
   useEffect(() => {
     let vivo = true
-    const id = `mermaid-${++contador}`
-    void Promise.all([cargarMermaid(), import('dompurify')])
-      .then(async ([m, purify]) => {
-        const { svg } = await m.render(id, codigo)
+    const terminar = empezarDibujo()
+    dibujarDiagrama(codigo)
+      .then((svg) => {
         if (!vivo || !ref.current) return
-        const limpio = purify.default.sanitize(svg, { USE_PROFILES: { svg: true, svgFilters: true }, RETURN_DOM_FRAGMENT: true })
-        ref.current.replaceChildren(limpio)
+        const dibujo = new DOMParser().parseFromString(svg, 'image/svg+xml').documentElement
+        ref.current.replaceChildren(document.importNode(dibujo, true))
         setFallo(false)
       })
-      .catch(() => {
-        document.getElementById(`d${id}`)?.remove() // Mermaid deja ahí su dibujo de error
-        if (vivo) setFallo(true)
-      })
+      .catch(() => vivo && setFallo(true))
+      .finally(terminar)
     return () => {
       vivo = false
+      terminar()
     }
   }, [codigo])
 

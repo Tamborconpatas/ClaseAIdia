@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Mermaid } from '@/components/Mermaid'
-import { partir, type Trozo } from '@/lib/formulas'
+import { empezarDibujo } from '@/lib/dibujos'
+import { agrupar, partir } from '@/lib/formulas'
 import { cn } from '@/lib/utils'
 
 // KaTeX (y sus tipografías) se baja solo cuando una pantalla tiene una fórmula: el resto de la app no lo carga.
@@ -19,17 +20,21 @@ export function Formula({ tex, bloque }: { tex: string; bloque: boolean }) {
 
   useEffect(() => {
     let vivo = true
-    void cargarKatex().then((k) => {
-      if (!vivo || !ref.current) return
-      try {
-        k.render(tex, ref.current, { displayMode: bloque, throwOnError: true, trust: false, strict: 'ignore', maxSize: 30, maxExpand: 1000 })
-        setFallo(false)
-      } catch {
-        setFallo(true)
-      }
-    })
+    const terminar = empezarDibujo()
+    void cargarKatex()
+      .then((k) => {
+        if (!vivo || !ref.current) return
+        try {
+          k.render(tex, ref.current, { displayMode: bloque, throwOnError: true, trust: false, strict: 'ignore', maxSize: 30, maxExpand: 1000 })
+          setFallo(false)
+        } catch {
+          setFallo(true)
+        }
+      })
+      .finally(terminar)
     return () => {
       vivo = false
+      terminar()
     }
   }, [tex, bloque])
 
@@ -47,19 +52,13 @@ export function Formula({ tex, bloque }: { tex: string; bloque: boolean }) {
 /** Texto con fórmulas (`$...$`, `$$...$$`, `\[...\]`) y diagramas Mermaid ya partidos y dibujados, en el mismo orden del original. */
 export function TextoConFormulas({ texto, className }: { texto: string; className?: string }) {
   const trozos = useMemo(() => partir(texto), [texto])
-  // Lo que va en línea (texto y fórmulas chicas) se junta en un párrafo; las fórmulas en bloque y los diagramas cortan el párrafo.
-  const grupos: Trozo[][] = []
-  for (const t of trozos) {
-    const enLinea = t.tipo === 'texto' || (t.tipo === 'formula' && !t.bloque)
-    if (enLinea && grupos.length > 0 && grupos[grupos.length - 1][0].tipo !== 'mermaid' && !esBloque(grupos[grupos.length - 1][0])) grupos[grupos.length - 1].push(t)
-    else grupos.push([t])
-  }
+  const grupos = useMemo(() => agrupar(trozos), [trozos])
   return (
     <div className={cn('space-y-2 leading-relaxed', className)}>
       {grupos.map((grupo, i) => {
         const t = grupo[0]
         if (t.tipo === 'mermaid') return <Mermaid key={i} codigo={t.valor} descripcion="Diagrama de la pizarra" />
-        if (esBloque(t) && t.tipo === 'formula') {
+        if (t.tipo === 'formula' && t.bloque) {
           return (
             <div key={i} className="overflow-x-auto py-1" tabIndex={0} aria-label="Fórmula">
               <Formula tex={t.valor} bloque />
@@ -75,5 +74,3 @@ export function TextoConFormulas({ texto, className }: { texto: string; classNam
     </div>
   )
 }
-
-const esBloque = (t: Trozo) => t.tipo === 'formula' && t.bloque

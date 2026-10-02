@@ -59,3 +59,19 @@ export function partir(texto: string): Trozo[] {
   agregarTexto(trozos, texto.slice(desde))
   return trozos
 }
+
+/**
+ * Junta lo que va en línea (texto y fórmulas chicas) en un solo párrafo; las fórmulas en bloque y los diagramas cortan el
+ * párrafo y quedan solos, en el mismo orden del original.
+ */
+export function agrupar(trozos: Trozo[]): Trozo[][] {
+  const grupos: Trozo[][] = []
+  for (const t of trozos) {
+    const enLinea = t.tipo === 'texto' || (t.tipo === 'formula' && !t.bloque)
+    const ultimo = grupos[grupos.length - 1]
+    const ultimoEsParrafo = ultimo !== undefined && (ultimo[0].tipo === 'texto' || (ultimo[0].tipo === 'formula' && !ultimo[0].bloque))
+    if (enLinea && ultimoEsParrafo) ultimo.push(t)
+    else grupos.push([t])
+  }
+  return grupos
+}
