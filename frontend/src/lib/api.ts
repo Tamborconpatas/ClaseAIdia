@@ -68,6 +68,7 @@ export interface Tarjeta {
   pregunta: string
   respuesta: string
 }
+import type { Relacion } from '@/lib/mapa'
 export interface PizarraLeida {
   id: number
   segundo: number
@@ -82,6 +83,7 @@ export interface ClaseDetalle extends ClaseResumen {
     tarjetas: Tarjeta[]
     transcripcion_texto: string | null
     pizarra: PizarraLeida[]
+    mapa: Relacion[]
   } | null
 }
 
