@@ -60,7 +60,7 @@ En este orden de prioridad si hay que elegir:
 
 ## Stack técnico
 
-**Backend:** Python 3.12 a 3.14, FastAPI, Uvicorn, SQLAlchemy (ORM), Pydantic.
+**Backend:** Python 3.12 o superior (probado en 3.12 y 3.14), FastAPI, Uvicorn, SQLAlchemy (ORM), Pydantic.
 **IA local:** `faster-whisper` (STT, modelo liviano/cuantizado) como motor por defecto (CPU y GPU NVIDIA); si se detecta GPU AMD (ROCm, solo Linux) se usa `transformers` + PyTorch como motor alternativo, porque CTranslate2 (el motor detrás de faster-whisper) no soporta ROCm. Ollama (LLM, modelo 7-9B cuantizado, ej. Qwen o Gemma según benchmark real) — en el despliegue con Docker puede correr como varias instancias locales (mismo PC) balanceadas con nginx para paralelizar la generación cuando hay varias clases en cola.
 **Base de datos:** SQLite local (servidor del colegio) sincronizado vía Turso/libSQL con réplica en la nube (capa de acceso remoto).
 **Frontend:** React + TypeScript + Vite, Tailwind CSS, shadcn/ui, lucide-react (íconos).

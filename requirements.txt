@@ -13,12 +13,11 @@
 # de voz en español con el motor del proyecto en GPU y en CPU, limpieza de
 # audio y la interfaz Gradio. Ver QA.md.
 #
-# Requiere Python 3.12 a 3.14 (numpy 2.5, scipy 1.18 y librosa 1.0 ya no
-# soportan 3.10 ni 3.11). Recomendado: 3.12 o 3.14, las dos probadas; 3.13 no
-# se probó, pero debería funcionar igual. Si el `python3`/`python` del sistema
-# es anterior a 3.12, crear el entorno con un intérprete más nuevo instalado
-# aparte (ej. `python3.12 -m venv transcriptor-env`, o
-# `conda create -n transcriptor-env python=3.12`).
+# Requiere Python 3.12 o superior (numpy 2.5, scipy 1.18 y librosa 1.0 ya no
+# soportan versiones anteriores). Probado en 3.12 y 3.14. Si el `python3` del
+# sistema es anterior a 3.12, crear el entorno con un intérprete más nuevo
+# instalado aparte (ej. `python3.14 -m venv transcriptor-env`, o
+# `conda create -n transcriptor-env python=3.14`).
 
 # 1. Interfaz de Usuario y Utilería
 gradio==6.29.0

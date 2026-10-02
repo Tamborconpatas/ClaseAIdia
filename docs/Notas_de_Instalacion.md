@@ -6,17 +6,16 @@ Posee soporte de interfaces web creadas en **Gradio**.
 
 ## Notas de Instalación y Entorno
 
-### 0. Versión de Python (3.12 a 3.14)
+### 0. Versión de Python (3.12 o superior)
 
-Requiere **Python 3.12 a 3.14** (probadas la 3.12 y la 3.14; la 3.13 no se probó).
-> **Python 3.11 o anterior ya no sirve**: `numpy`, `scipy` y `librosa` exigen 3.12 como mínimo. (Antes el límite era el contrario, máximo 3.12, por `numpy==1.26.4`.)
+Requiere **Python 3.12 o superior** (probado en 3.12 y 3.14). Versiones anteriores no sirven: `numpy`, `scipy` y `librosa` exigen 3.12 como mínimo.
 > Para una guía completa paso a paso en Windows con Conda, ver [Guía de Instalación en Windows](Guia_Instalacion_Windows.md).
 
 Si tu sistema operativo trae una versión anterior a 3.12, instala una más nueva de forma aislada para el entorno virtual o utiliza Conda:
-*   **Fedora/Nobara**: `sudo dnf install python3.12 python3.12-devel`
-*   **Ubuntu/Debian**: `sudo apt install python3.12 python3.12-venv`
-*   **Arch**: `sudo pacman -S python312` (o el paquete equivalente en AUR según la versión exacta que necesites)
-*   **Windows**: instalar 3.12 desde [python.org](https://www.python.org/downloads/) además del que ya tengas — el instalador no reemplaza versiones existentes.
+*   **Fedora/Nobara**: `sudo dnf install python3.14 python3.14-devel`
+*   **Ubuntu/Debian**: `sudo apt install python3.14 python3.14-venv` (si tu versión de Ubuntu aún no la trae, usa 3.12 o el repositorio deadsnakes)
+*   **Arch**: `sudo pacman -S python` (trae la versión más reciente)
+*   **Windows**: instalar desde [python.org](https://www.python.org/downloads/) además del que ya tengas — el instalador no reemplaza versiones existentes.
 
 ### 1. Requerimientos de Sistema Operativo (Dependencias C/C++)
 
@@ -33,17 +32,17 @@ Para que `faster-whisper` pueda procesar MP3, M4A o audio corrompido, necesitas 
 
 ```bash
 # Python venv (parte de la librería estándar, no requiere Conda) — usa el
-# binario 3.12-3.14 del paso 0 (ej. python3.12), no "python" a secas si tu
-# sistema ya trae 3.13+ por defecto.
-python3.12 -m venv transcriptor-env
+# binario 3.12 o superior del paso 0, no "python" a secas si el de tu
+# sistema es anterior.
+python3 -m venv transcriptor-env
 source transcriptor-env/bin/activate
-# En Windows powershell — "py -3.12" si tienes más de una versión de Python instalada:
-py -3.12 -m venv transcriptor-env
+# En Windows powershell — "py -3.14" (o tu versión) si tienes más de una versión de Python instalada:
+py -3.14 -m venv transcriptor-env
 .\transcriptor-env\Scripts\Activate.ps1
 ```
-En Windows, si no tienes ningún Python 3.12 o superior instalado: `winget install --id Python.Python.3.12 -e --scope user` lo instala sin permisos de administrador (verificado 2026-09-05).
+En Windows, si no tienes ningún Python 3.12 o superior instalado: `winget install --id Python.Python.3.14 -e --scope user` lo instala sin permisos de administrador (verificado 2026-09-05).
 
-*(Si prefieres Conda, `conda create -n transcriptor-env python=3.12 -y` funciona igual — ver `Guia_Instalacion_Windows.md` para esa variante completa.)*
+*(Si prefieres Conda, `conda create -n transcriptor-env python=3.14 -y` funciona igual — ver `Guia_Instalacion_Windows.md` para esa variante completa.)*
 
 ### 3. PyTorch Base (CPU, NVIDIA o AMD)
 
