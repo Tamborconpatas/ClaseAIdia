@@ -106,6 +106,8 @@ En colegio, un Curso agrupa varios Bloques (toda la semana de un grupo fijo de a
 - **Reglas del horario** (las aplica el backend al crear y editar bloques): un bloque no puede cruzarse con otro del mismo curso, un profesor no puede estar en dos cursos a la vez, y un bloque con clases registradas no se puede borrar (el borrado en cascada se llevaría el material de estudio).
 - **Datos de prueba**: `python -m scripts.sembrar_demo` crea `escuela_demo.db` (con jornadas corta y larga y clases en todos los estados); nunca se siembra sobre `escuela.db`.
 
+- **Los términos de privacidad y uso los acepta el colegio al instalar la aplicación**: están en el "Aviso para el colegio" del `README.md` (esa es la versión que vale). Las páginas `#/privacidad` y `#/terminos` del frontend son solo su respaldo para alumnos y apoderados; si cambia una, cambia la otra.
+
 ## Pendiente por resolver antes del piloto (no técnico, pero bloqueante)
 
 - Consentimiento informado de apoderados para el colegio piloto (dato personal de menores, aunque sea descartado tras procesarse).

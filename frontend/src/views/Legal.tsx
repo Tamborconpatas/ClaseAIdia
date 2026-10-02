@@ -152,9 +152,9 @@ export function Legal({ pagina, onVolver }: { pagina: PaginaLegal; onVolver: () 
       </header>
       <main className="mx-auto max-w-2xl space-y-6 px-4 py-8 pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))]">
         <h1 className="text-3xl font-semibold tracking-tight">{titulo}</h1>
-        <p role="note" className="rounded-xl bg-amber-50 p-3.5 text-sm text-amber-950 ring-1 ring-amber-200">
-          <strong>Borrador.</strong> Este texto describe cómo funciona la plataforma, pero el colegio debe revisarlo (y, por
-          tratarse de datos de menores, validarlo con quien corresponda) antes de usarla con alumnos.
+        <p role="note" className="rounded-xl bg-muted/60 p-3.5 text-sm">
+          Este texto resume el <strong>aviso para el colegio</strong> del archivo README del proyecto, que el colegio acepta al
+          instalar y usar la plataforma. Esta página es su respaldo, para consulta de alumnos y apoderados.
         </p>
         {pagina === 'privacidad' ? PRIVACIDAD : TERMINOS}
         <PieLegal className="pt-4" />
