@@ -102,6 +102,8 @@ export interface Grabacion {
   grabador_id: string | null
   grabador_conectado: boolean
   error: string | null
+  /** Si el fallo se reintenta solo, cuándo (UTC); null si ya no quedan intentos. */
+  reintento_en: string | null
 }
 export interface BloqueDeHoy {
   bloque_id: number
