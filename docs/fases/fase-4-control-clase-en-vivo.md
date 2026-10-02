@@ -1,6 +1,6 @@
 # Fase 4 — Control de clase en vivo
 
-**Estado (2026-10-01): hecha y probada de punta a punta con voz real, en PC y en marco de teléfono; falta probarla con un celular y un lavalier reales, y resolver el https para grabar desde el celular por la red local (Fase 6).** Detalle y mediciones en `QA.md` (secciones «Fase 4»).
+**Estado (2026-10-01): hecha y probada de punta a punta con voz real, en PC y en marco de teléfono, con el corte automático probado en vivo; falta probarla con un celular y un lavalier reales.** Detalle y mediciones en `QA.md` (secciones «Fase 4»).
 
 ## Cómo quedó (decisión del usuario: las dos formas de grabar son válidas)
 
@@ -10,14 +10,14 @@
 ## Qué debía tener, y cómo va
 
 - [x] **Pantalla de control**: iniciar, pausar, silenciar, terminar, cancelar, marcar prioritaria. **Solo red local, verificado en el servidor** (una conexión con cabeceras de proxy o de un túnel cuenta como internet).
-- [x] **Corte automático**: pasado el término del bloque + 15 min (`MINUTOS_CORTE_GRABACION`), o tras 10 min sin ningún equipo conectado; si el equipo no finaliza, el servidor procesa lo recibido a los 45 s.
+- [x] **Corte automático** (probado con el servidor y el vigilante reales): pasado el término del bloque + 15 min (`MINUTOS_CORTE_GRABACION`), o tras 10 min sin ningún equipo conectado; si el equipo no finaliza, el servidor procesa lo recibido a los 45 s.
 - [x] **Disparo del pipeline real**: se unen los trozos → `TranscriptionService` (Whisper) → `generate_study_material` (Ollama) → `ContenidoClase` de la `Clase` real, **por aprobar** (el flujo de revisión de la Fase 3). Un solo procesamiento a la vez (la cola con prioridad es la Fase 5).
 - [x] **Marcador de «clase prioritaria»**: usable desde la pantalla (`Clase.prioritaria`); la Fase 5 lo usa.
 - [x] **Subida de audio**: tipo permitido, firma del archivo, tope por trozo (8 MB) y por grabación (500 MB), nombre de archivo que pone el servidor, solo el equipo grabador registrado.
 - [x] **Borrado de audio**: siempre, en un `finally` (también si falla), y tras un reinicio se borra cualquier carpeta huérfana.
 - [x] **Si falla solo la generación** (p. ej. Ollama apagado): la transcripción se conserva (oculta a los alumnos) y «Reintentar» regenera el material sin volver a grabar.
 - [ ] **Decisión pendiente**: ¿`transcriptions_history.db` (historial del prototipo Gradio) se retira o convive como herramienta de prueba manual? No se tocó.
-- [ ] **https para grabar con el celular por la red local**: los navegadores no dan el micrófono desde `http://192.168...`. Con un PC de la sala (o abriendo la app con `localhost`) funciona hoy; con el celular hace falta https (Fase 6).
+- [x] **https para grabar con el celular por la red local**: `python -m scripts.generar_certificado` crea un certificado propio (válido para `localhost` y las direcciones de la red) que usan uvicorn (`--ssl-keyfile/--ssl-certfile`) y `npm run dev:https`. La primera vez cada equipo muestra una advertencia que hay que aceptar. *Falta*: confirmar en un celular real que, aceptada la advertencia, el navegador da el micrófono; y, para el despliegue sin advertencias, un dominio propio con certificado válido (Fase 6).
 - [ ] **Probar con un celular real** (micrófono, Wake Lock, qué hace al bloquearse la pantalla), un lavalier, audio de sala con ruido, Safari/iOS y clases de 90 minutos.
 
 ## Contexto original de la fase
