@@ -50,7 +50,7 @@ Requisito previo: Fase 2 (login y JWT funcionando en el backend). El código viv
 
 Detalle, hallazgos y mediciones en `QA.md` (entradas del 2026-10-01).
 
-- **Backend**: 164 tests (`pytest tests/`).
+- **Backend**: 209 tests (`pytest tests/`; 164 al cerrar la Fase 3, el resto son de la Fase 4).
 - **Frontend, en navegador** (PC y un marco del tamaño de un teléfono vertical 390 × 780 y horizontal 820 × 380): login de los tres roles, primer arranque (validaciones, alta y cierre automático), horario por rol, jornada larga, editor del horario completo (editar, rechazo por cruce, eliminar, crear con profesor), clases, aprobar y retirar (también con toques en el marco de teléfono), unirse con QR, y el QR decodificado.
 - **Tests del frontend**: `npm test` (vitest, 15 pruebas) cubre RUT, PIN, contraseña y horario, para que el cliente no se desvíe de las reglas del backend. Los componentes se prueban en el navegador, no automáticamente. Además `tsc`, `oxlint` y `npm run build`.
 - **Pantallas nuevas en teléfono** (marco de 390 × 780 px, 2026-10-01): Personal, alumnos y reseteo de PIN, editor de material (incluida una clase "por aprobar", editada y aprobada), páginas legales: sin desbordes, sin botones de menos de 36 px ni campos de letra chica; se corrigieron dos fallos que mostró la revisión (filas de Personal aplastadas, botones "Volver" de 20 px).
