@@ -43,9 +43,15 @@ def cliente():
     app = crear_app()
     app.dependency_overrides[obtener_db] = _obtener_db_prueba
 
-    with TestClient(app) as c:
+    with TestClient(app, client=("127.0.0.1", 50000)) as c:  # conexión local, como un PC de la sala
         c.sesion = SesionPrueba  # para armar datos que la API ya no permite crear (otro colegio)
         yield c
+
+
+@pytest.fixture()
+def cliente_remoto(cliente):
+    """Mismo servidor, pero la conexión viene de internet (una dirección pública)."""
+    return TestClient(cliente.app, client=("93.184.216.34", 50000))
 
 
 @pytest.fixture()

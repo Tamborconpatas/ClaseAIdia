@@ -336,7 +336,7 @@ class UnirseCursoIn(BaseModel):
         return _rut_valido_normalizado(valor)
 
 
-EstadoClase = Literal["procesando", "por_aprobar", "provisoria", "publicada", "retirada"]
+EstadoClase = Literal["grabando", "procesando", "error", "por_aprobar", "provisoria", "publicada", "retirada"]
 
 
 class ClaseOut(BaseModel):
@@ -396,3 +396,68 @@ class ContenidoEditar(BaseModel):
 
 class ClaseDetalleOut(ClaseOut):
     contenido: ContenidoOut | None
+
+
+# --- Grabación en vivo ---------------------------------------------------------------------------
+
+AccionGrabacion = Literal[
+    "iniciar", "pausar", "reanudar", "silenciar", "activar_audio", "terminar", "cancelar", "marcar_prioritaria", "quitar_prioritaria"
+]
+_ID_DISPOSITIVO = Field(min_length=8, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
+
+
+class GrabacionCrear(BaseModel):
+    bloque_id: int
+
+
+class GrabacionComando(BaseModel):
+    accion: AccionGrabacion
+
+
+class GrabadorRegistrar(BaseModel):
+    dispositivo: str = _ID_DISPOSITIVO
+    forzar: bool = False  # tomar el lugar de otro equipo que ya graba
+
+
+class GrabadorLatido(BaseModel):
+    dispositivo: str = _ID_DISPOSITIVO
+    segundos: int = Field(ge=0, le=24 * 3600)
+    nivel: float = Field(ge=0, le=1)
+
+
+class GrabadorFinalizar(BaseModel):
+    dispositivo: str = _ID_DISPOSITIVO
+
+
+class GrabacionOut(BaseModel):
+    id: int
+    clase_id: int
+    bloque_id: int
+    asignatura: str | None
+    curso_nombre: str
+    sala: str | None
+    fecha: datetime.date
+    hora_inicio: datetime.time
+    hora_fin: datetime.time
+    estado: str
+    silenciada: bool
+    prioritaria: bool
+    corte_en: datetime.datetime
+    segundos_grabados: int
+    nivel: float
+    trozos: int
+    grabador_id: str | None
+    grabador_conectado: bool
+    error: str | None
+
+
+class BloqueDeHoyOut(BaseModel):
+    bloque_id: int
+    asignatura: str | None
+    curso_nombre: str
+    sala: str | None
+    hora_inicio: datetime.time
+    hora_fin: datetime.time
+    puede_grabar: bool
+    motivo: str | None
+    grabacion: GrabacionOut | None

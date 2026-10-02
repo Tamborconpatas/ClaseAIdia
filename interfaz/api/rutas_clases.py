@@ -6,7 +6,17 @@ from sqlalchemy import and_, or_
 from sqlalchemy.orm import Query, Session, selectinload
 
 from infraestructura.basedatos import obtener_db
-from infraestructura.modelos_orm import AlumnoCurso, Bloque, Clase, ContenidoClase, Curso, RolNombre, Usuario
+from infraestructura.modelos_orm import (
+    AlumnoCurso,
+    Bloque,
+    Clase,
+    ContenidoClase,
+    Curso,
+    EstadoGrabacion,
+    Grabacion,
+    RolNombre,
+    Usuario,
+)
 from infraestructura.seguridad import ahora_utc
 from interfaz.api.dependencias_auth import requiere_rol, rol_principal, usuario_actual
 from interfaz.api.esquemas import ClaseDetalleOut, ClaseOut, ContenidoEditar, ContenidoOut, TarjetaOut
@@ -28,9 +38,20 @@ def _utc(dt: datetime.datetime) -> datetime.datetime:
     return dt.replace(tzinfo=datetime.timezone.utc)
 
 
-def _estado(k: ContenidoClase | None, ahora: datetime.datetime) -> str:
-    if k is None:
+def _estado_sin_material(g: Grabacion | None) -> str:
+    """Una clase sin material todavía: se está grabando, se está procesando, o falló."""
+    if g is None:
         return "procesando"
+    if g.estado == EstadoGrabacion.ERROR:
+        return "error"
+    if g.estado in (EstadoGrabacion.PROCESANDO, EstadoGrabacion.TERMINADA):
+        return "procesando"
+    return "grabando"
+
+
+def _estado(k: ContenidoClase | None, ahora: datetime.datetime, g: Grabacion | None = None) -> str:
+    if k is None:
+        return _estado_sin_material(g)
     if k.aprobado:
         return "publicada"
     if k.retirado:
@@ -48,7 +69,7 @@ def _clases_visibles(db: Session, usuario: Usuario) -> Query:
         .join(Bloque, Clase.bloque_id == Bloque.id)
         .join(Curso, Bloque.curso_id == Curso.id)
         .filter(Curso.colegio_id == usuario.colegio_id)
-        .options(selectinload(Clase.bloque).selectinload(Bloque.curso), selectinload(Clase.contenido))
+        .options(selectinload(Clase.bloque).selectinload(Bloque.curso), selectinload(Clase.contenido), selectinload(Clase.grabacion))
     )
     rol = rol_principal(usuario)
     if rol == RolNombre.PROFESOR:
@@ -66,7 +87,7 @@ def _clases_visibles(db: Session, usuario: Usuario) -> Query:
 
 def _resumen(c: Clase) -> dict:
     ahora = ahora_utc()
-    estado = _estado(c.contenido, ahora)
+    estado = _estado(c.contenido, ahora, c.grabacion)
     b = c.bloque
     return {
         "id": c.id,
