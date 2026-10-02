@@ -26,16 +26,16 @@ _REVIEW_SHEET_MARKER = "##HOJA_DE_REPASO##"
 _FLASHCARDS_MARKER = "##TARJETAS_ESTUDIO##"
 
 _SECTION_PATTERNS = [
-    ("resumen", re.compile(r'#{0,3}\s*RESUMEN\s*#{0,3}\s*:?\s*\n?', re.IGNORECASE)),
-    ("puntos_clave", re.compile(r'#{0,3}\s*PUNTOS[\s_]+CLAVE\s*#{0,3}\s*:?\s*\n?', re.IGNORECASE)),
-    ("hoja_repaso", re.compile(r'#{0,3}\s*HOJA[\s_]+DE[\s_]+REPASO\s*#{0,3}\s*:?\s*\n?', re.IGNORECASE)),
-    ("tarjetas", re.compile(r'#{0,3}\s*TARJETAS[\s_]+(DE[\s_]+)?ESTUDIO\s*#{0,3}\s*:?\s*\n?', re.IGNORECASE)),
+    ("resumen", re.compile(r'[#*]{0,3}\s*RESUMEN\s*[#*]{0,3}\s*:?\s*[#*]{0,3}\s*\n?', re.IGNORECASE)),
+    ("puntos_clave", re.compile(r'[#*]{0,3}\s*PUNTOS[\s_]+CLAVE\s*[#*]{0,3}\s*:?\s*[#*]{0,3}\s*\n?', re.IGNORECASE)),
+    ("hoja_repaso", re.compile(r'[#*]{0,3}\s*HOJA[\s_]+DE[\s_]+REPASO\s*[#*]{0,3}\s*:?\s*[#*]{0,3}\s*\n?', re.IGNORECASE)),
+    ("tarjetas", re.compile(r'[#*]{0,3}\s*TARJETAS[\s_]+(DE[\s_]+)?ESTUDIO\s*[#*]{0,3}\s*:?\s*[#*]{0,3}\s*\n?', re.IGNORECASE)),
 ]
 
 # Tolera numeración que modelos chicos agregan pese a la instrucción de no
 # numerar (ej. "P1:", "P2:" en vez de "P:").
 _FLASHCARD_LINE_RE = re.compile(
-    r'P\s*\d*\s*:\s*(.+?)\s*\n\s*R\s*\d*\s*:\s*(.+?)(?=\n\s*P\s*\d*\s*:|\Z)',
+    r'P\s*\d*\s*:\s*(.+?)\s*\n\s*R\s*\d*\s*:\s*(.+?)(?=\n\s*(?:\d+[.)]\s*)?P\s*\d*\s*:|\Z)',
     re.IGNORECASE | re.DOTALL,
 )
 
@@ -98,6 +98,26 @@ def _condense_transcript(chunks: list, model_name: str, ollama_url: str) -> str:
         partial_summaries.append(f"[Parte {i}/{total}]\n{summary.strip()}")
 
     return "\n\n".join(partial_summaries)
+
+
+# Lo más largo que puede ser el texto condensado que entra a la pasada final (unos 8.000 tokens): con las
+# instrucciones y la respuesta caben en la ventana de contexto que se le pide a Ollama (ver cliente_ollama).
+_MAX_CARACTERES_FINAL = 24_000
+_MAX_NIVELES = 3  # una clase de varias horas necesita 2; con 3 caben cientos de miles de caracteres
+
+
+def _condense_until_fits(chunks: list, model_name: str, ollama_url: str, chunk_chars: int) -> str:
+    """Condensa los bloques y, si el resultado sigue siendo demasiado largo para la pasada final (una clase de
+    más de una hora), lo vuelve a condensar por bloques, hasta que quepa. Así la pasada final nunca recibe más
+    de lo que entra en la ventana de contexto, que es lo que antes la dejaba sin sus instrucciones."""
+    nivel = 1
+    while True:
+        condensado = _condense_transcript(chunks, model_name, ollama_url)
+        if len(condensado) <= _MAX_CARACTERES_FINAL or nivel == _MAX_NIVELES:
+            return condensado
+        nivel += 1
+        print(f"[study_material] El resumen por partes mide {len(condensado)} caracteres: se condensa de nuevo (nivel {nivel}).")
+        chunks = _split_into_chunks(condensado, max_chars=chunk_chars)
 
 
 def _split_study_material(raw: str) -> dict:
@@ -165,7 +185,7 @@ def generate_study_material(text: str):
     try:
         if len(chunks) > 1:
             print(f"[study_material] Transcripción larga: procesando en {len(chunks)} bloques...")
-            source_text = _condense_transcript(chunks, model_name, ollama_url)
+            source_text = _condense_until_fits(chunks, model_name, ollama_url, chunk_chars)
         else:
             source_text = text
     except RuntimeError as e:
