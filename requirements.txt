@@ -67,6 +67,6 @@ alembic==1.19.1
 pytest==9.1.1
 
 # 8. Autenticación (Fase 2) — hash de contraseña/PIN (argon2) y sesión (JWT).
-pyjwt==2.13.0
+pyjwt==2.15.1
 passlib==1.7.4
 argon2-cffi==25.1.0
