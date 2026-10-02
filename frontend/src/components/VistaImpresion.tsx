@@ -9,7 +9,7 @@ import type { Bloque } from '@/lib/exportar/modelo'
  */
 export function VistaImpresion({ bloques }: { bloques: Bloque[] }) {
   return (
-    <article className="mx-auto max-w-[170mm] space-y-2 text-[11pt] leading-relaxed text-black">
+    <main className="mx-auto max-w-[170mm] space-y-2 text-[11pt] leading-relaxed text-black">
       {bloques.map((b, i) => {
         switch (b.t) {
           case 'titulo':
@@ -52,6 +52,6 @@ export function VistaImpresion({ bloques }: { bloques: Bloque[] }) {
             )
         }
       })}
-    </article>
+    </main>
   )
 }

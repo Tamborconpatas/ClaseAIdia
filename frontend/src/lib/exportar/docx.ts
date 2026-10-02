@@ -160,7 +160,7 @@ export async function generarDocx(bloques: Bloque[], opciones: OpcionesDocx = {}
   const doc = new d.Document({
     creator: 'ClaseAIdia',
     title: titulo && titulo.t === 'titulo' ? titulo.texto : 'Clase',
-    styles: { default: { document: { run: { font: 'Calibri', size: 22 } } } },
+    styles: { default: { document: { run: { font: 'Calibri', size: 22, language: { value: 'es-CL' } } } } }, // el lector de pantalla necesita saber el idioma
     sections: [{ children: hijos }],
   })
   return d.Packer.toBlob(doc)
