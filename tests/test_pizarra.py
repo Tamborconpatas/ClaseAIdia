@@ -10,6 +10,9 @@ from servicios import servicio_pizarra as sp
 from test_grabaciones import EQUIPO_A, _comando, _crear, _en_curso, _estado, _terminar_con_audio, _vigilar, g, tiempo  # noqa: F401
 
 
+_leer_real = sp._leer  # el `entorno` de abajo lo reemplaza en cada prueba
+
+
 def foto(ancho=2000, alto=1000, formato="JPEG", orientacion=None):
     im = Image.new("RGB", (ancho, alto), (250, 250, 250))
     salida = io.BytesIO()
@@ -26,7 +29,7 @@ def entorno(monkeypatch, tmp_path):
     monkeypatch.setattr(sp, "CARPETA_FOTOS", tmp_path / "fotos")
     monkeypatch.setattr(sp, "esperar_memoria", lambda *a, **k: True)
     monkeypatch.setattr(sp.cliente_ollama, "descargar_modelo", lambda *a, **k: None)
-    monkeypatch.setattr(sp, "_leer", lambda ruta, url: "Hw: Student Book 3A")
+    monkeypatch.setattr(sp, "_leer", lambda ruta, url, reducida=False: "Hw: Student Book 3A")
 
 
 def subir(g, gid, datos=None, quien="ana", segundo=0, tipo="image/jpeg"):
@@ -100,7 +103,7 @@ def test_el_texto_de_la_foto_llega_al_generador_y_la_imagen_se_borra(g, monkeypa
 
 
 def test_una_foto_que_no_se_puede_leer_no_frena_la_clase(g, monkeypatch, tmp_path):
-    def falla(ruta, url):
+    def falla(ruta, url, reducida=False):
         raise RuntimeError('model "qwen2.5vl:3b" not found, try pulling it first')
 
     monkeypatch.setattr(sp, "_leer", falla)
@@ -174,7 +177,7 @@ def test_cada_imagen_se_borra_apenas_se_lee_sin_esperar_a_las_demas(g, monkeypat
     subir(g, gid, segundo=1), subir(g, gid, segundo=2)
     vistas = []
 
-    def leer(ruta, url):
+    def leer(ruta, url, reducida=False):
         vistas.append(len(archivos(tmp_path)))  # cuántas imágenes hay en disco al empezar a leer ésta
         return "texto"
 
@@ -187,7 +190,7 @@ def test_las_fotos_se_leen_en_el_orden_de_la_clase_y_no_en_el_de_subida(g, monke
     gid = _en_curso(g)
     subir(g, gid, segundo=900), subir(g, gid, segundo=60)
     leidas = []
-    monkeypatch.setattr(sp, "_leer", lambda ruta, url: leidas.append(ruta.stem) or f"t{len(leidas)}")
+    monkeypatch.setattr(sp, "_leer", lambda ruta, url, reducida=False: leidas.append(ruta.stem) or f"t{len(leidas)}")
     sp.leer_pendientes(gid, g["c"].sesion)
     with g["c"].sesion() as db:
         assert [(f.segundo, f.texto) for f in db.query(FotoPizarra).order_by(FotoPizarra.segundo)] == [(60, "t1"), (900, "t2")]
@@ -200,3 +203,100 @@ def test_el_servidor_limpia_las_imagenes_sobrantes_al_recuperarse(g, tmp_path):
     with g["c"].sesion() as db:
         sg.recuperar_al_iniciar(db, g["c"].sesion)
     assert not huerfana.exists()
+
+
+# --- Lo que encontró la prueba de punta a punta con el modelo de visión real ------------------------------------------------
+# Con una pizarra de cálculo densa el modelo entró en un bucle y Ollama abortó («token repeat limit reached»); y a partir de ahí
+# todas las fotos siguientes fallaban hasta que el modelo se recargaba. A 1280 px pasaba siempre; a 1024 no.
+
+NL = chr(10)
+
+
+def test_una_respuesta_que_se_repite_se_deja_una_sola_vez():
+    bloque = ["$$X & ING 9920.3 9920.4$$", "U(x)=4620x-210x^2", "V(x)=4620x-9000-1300x"]
+    repetido = NL.join(bloque * 4 + ["& texto cortado a la m"])
+    limpio = sp.limpiar_repeticiones(repetido)
+    assert limpio.splitlines()[:3] == bloque
+    assert limpio.count("U(x)=4620x-210x^2") == 1
+
+
+def test_un_texto_normal_no_se_toca_aunque_repita_algo_dos_veces_o_algo_corto():
+    texto = NL.join(["Hw.: p. 44", "ejercicio 15 del libro", "- uno", "- uno", "ejercicio 15 del libro", "fin"])
+    assert sp.limpiar_repeticiones(texto) == texto  # dos veces no es un bucle; las líneas cortas no cuentan
+
+
+def test_la_foto_se_guarda_a_1024_px_que_es_con_lo_que_se_midio(g, tmp_path):
+    gid = _en_curso(g)
+    assert subir(g, gid, foto(3000, 2000)).status_code == 201
+    assert max(Image.open(next((tmp_path / "fotos").rglob("*.jpg"))).size) == 1024 == sp.LADO_MAXIMO
+
+
+def test_si_ollama_aborta_se_descarga_el_modelo_y_se_reintenta_con_la_foto_mas_chica(g, monkeypatch):
+    llamadas, descargas = [], []
+    monkeypatch.setattr(sp.cliente_ollama, "descargar_modelo", lambda *a, **k: descargas.append(1))
+
+    def leer(ruta, url, reducida=False):
+        llamadas.append(reducida)
+        if not reducida:
+            raise RuntimeError('Error de Ollama: {"error":"prediction aborted, token repeat limit reached"}')
+        return "texto del segundo intento"
+
+    monkeypatch.setattr(sp, "_leer", leer)
+    gid = _en_curso(g)
+    subir(g, gid)
+    sp.leer_pendientes(gid, g["c"].sesion)
+    with g["c"].sesion() as db:
+        f = db.query(FotoPizarra).one()
+        assert (f.estado, f.texto) == ("leida", "texto del segundo intento")
+    assert llamadas == [False, True] and len(descargas) >= 1
+
+
+def test_una_foto_que_falla_dos_veces_no_deja_mal_a_las_que_siguen(g, monkeypatch):
+    """El modelo se descarga tras el fallo: la foto siguiente se lee con el modelo recargado."""
+    eventos = []
+    monkeypatch.setattr(sp.cliente_ollama, "descargar_modelo", lambda *a, **k: eventos.append("descarga"))
+
+    def leer(ruta, url, reducida=False):
+        eventos.append(f"lee {ruta.stem}")
+        if ruta.stem == "1":
+            raise RuntimeError("token repeat limit reached")
+        return "bien"
+
+    monkeypatch.setattr(sp, "_leer", leer)
+    gid = _en_curso(g)
+    subir(g, gid, segundo=1), subir(g, gid, segundo=2)
+    sp.leer_pendientes(gid, g["c"].sesion)
+    with g["c"].sesion() as db:
+        assert [(f.segundo, f.estado) for f in db.query(FotoPizarra).order_by(FotoPizarra.segundo)] == [(1, "error"), (2, "leida")]
+    # la primera se intentó dos veces, con una descarga entre medio y otra después de rendirse, antes de leer la segunda
+    assert eventos[:5] == ["lee 1", "descarga", "lee 1", "descarga", "lee 2"]
+
+
+def test_si_el_modelo_no_esta_instalado_no_se_reintenta(g, monkeypatch):
+    intentos = []
+    monkeypatch.setattr(sp.cliente_ollama, "descargar_modelo", lambda *a, **k: None)
+
+    def leer(ruta, url, reducida=False):
+        intentos.append(reducida)
+        raise RuntimeError('model "qwen2.5vl:3b" not found, try pulling it first')
+
+    monkeypatch.setattr(sp, "_leer", leer)
+    gid = _en_curso(g)
+    subir(g, gid)
+    sp.leer_pendientes(gid, g["c"].sesion)
+    assert intentos == [False]
+
+
+def test_la_lectura_real_limpia_las_repeticiones_y_en_el_reintento_manda_la_foto_mas_chica(tmp_path, monkeypatch):
+    enviado = []
+    repetido = NL.join(["una linea larga repetida"] * 5 + ["fin"])
+    monkeypatch.setattr(sp.cliente_ollama, "generate", lambda prompt, modelo, tope, url, **k: enviado.append(k) or repetido)
+    ruta = tmp_path / "f.jpg"
+    Image.new("RGB", (1024, 800), "white").save(ruta, "JPEG")
+    assert _leer_real(ruta, "http://x") == NL.join(["una linea larga repetida", "fin"])
+    assert _leer_real(ruta, "http://x", reducida=True)
+    normal, reducida = enviado
+    assert normal["opciones"]["repeat_penalty"] == 1.1 and reducida["opciones"]["repeat_penalty"] == 1.3
+    import base64, io as _io
+    tamano = lambda k: Image.open(_io.BytesIO(base64.b64decode(k["imagenes"][0]))).size
+    assert max(tamano(normal)) == 1024 and max(tamano(reducida)) == sp.LADO_REINTENTO == 768

@@ -71,7 +71,16 @@ El hardware objetivo de este proyecto no tiene GPU — `faster-whisper` corre bi
   ```
   ROCm no está soportado en Windows — ahí una GPU AMD simplemente cae a `faster-whisper` en CPU.
 
-### 4. Opcional: modo de limpieza de audio "DeepFilterNet"
+### 4. Opcional: leer la pizarra con una foto
+
+El profesor puede sacar fotos de la pizarra con su celular durante la clase («Foto de la pizarra» en la pantalla de grabar); un modelo de visión las lee después de la clase y suma lo escrito al material (la imagen se borra apenas se lee). Para eso hay que instalar el modelo una vez, en el equipo del servidor:
+
+```bash
+ollama pull qwen2.5vl:3b      # 3,2 GB de disco; el nombre se puede cambiar con MODELO_VISION en el .env
+```
+Necesita unos **4,5 GB de memoria libres** además de lo que ya usa el sistema: en un equipo de 16 GB sobra, en uno de 8 GB lo normal es que no alcance y las fotos se saltan (la clase se procesa igual, sin ellas; el profesor ve «no tenía memoria suficiente» junto a cada foto). Si el modelo no está instalado, pasa lo mismo y el aviso dice qué comando falta. Lee bien letra clara, listas y esquemas; en matemática escrita a mano conserva la estructura pero **puede cambiar cifras**, por eso el profesor revisa y corrige antes de aprobar.
+
+### 5. Opcional: modo de limpieza de audio "DeepFilterNet"
 `requirements.txt` no incluye `deepfilternet` a propósito — su dependencia `deepfilterlib` compila una extensión nativa en Rust y romper esto rompería la instalación de *todo* el resto de dependencias si Cargo no está presente (confirmado 2026-09-03). Sin este paso, la app funciona igual con los demás modos de limpieza de audio (DSP/MMSE). Para tener el modo `deepfilter` (máxima calidad) también:
 ```bash
 # Requiere Rust + Cargo instalados primero: https://rustup.rs/ (no necesita sudo)

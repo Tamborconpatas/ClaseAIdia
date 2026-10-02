@@ -11,6 +11,7 @@ import base64
 import io
 import os
 import shutil
+from collections import Counter
 from pathlib import Path
 
 from PIL import Image, ImageOps
@@ -26,7 +27,10 @@ CARPETA_FOTOS = Path(os.environ.get("FOTOS_TEMP_DIR", "fotos_temp"))
 MODELO_VISION = os.environ.get("MODELO_VISION", "qwen2.5vl:3b")
 MAX_FOTOS = 30
 MAX_BYTES = 15 * 1024 * 1024
-LADO_MAXIMO = 1280  # Ollama igual reduce la foto a ~1.150 tokens; más grande solo ocupa disco y tiempo
+# 1024 y no más: es con lo que se midió (QA.md). Con 1280 px el modelo entró en un bucle de repetición con una pizarra de cálculo
+# densa y Ollama abortó la respuesta (probado de punta a punta); a 1024 la leyó.
+LADO_MAXIMO = 1024
+LADO_REINTENTO = 768  # si aun así falla, una segunda lectura con la foto más chica (otra cantidad de piezas de imagen)
 MAX_CARACTERES_AL_MATERIAL = 4000
 MEMORIA_MINIMA_GB = 4.5  # el modelo de visión usa 3,4 GB (medido) más lo que ya tiene el proceso
 ESPERA_MEMORIA_S = 300
@@ -91,12 +95,51 @@ def guardar_foto(db: Session, g: Grabacion, datos: bytes, segundo: int = 0) -> F
     return foto
 
 
-def _leer(ruta: Path, ollama_url: str) -> str:
-    imagen = base64.b64encode(ruta.read_bytes()).decode()
+def limpiar_repeticiones(texto: str) -> str:
+    """Un modelo de visión pequeño a veces repite el mismo bloque una y otra vez hasta llenar el tope de palabras (pasó con una
+    tabla densa). Una línea larga que sale tres veces o más se deja solo la primera; el resto, y una última línea cortada, no."""
+    lineas = texto.split("\n")
+    veces = Counter(linea.strip() for linea in lineas if len(linea.strip()) >= 12)
+    vistas: set[str] = set()
+    salida = []
+    for linea in lineas:
+        clave = linea.strip()
+        if veces[clave] >= 3 and len(clave) >= 12:
+            if clave in vistas:
+                continue
+            vistas.add(clave)
+        salida.append(linea)
+    return "\n".join(salida).strip()
+
+
+def _leer(ruta: Path, ollama_url: str, reducida: bool = False) -> str:
+    """`reducida`: segunda oportunidad, con la foto más chica y una penalización mayor a repetir."""
+    if reducida:
+        with Image.open(ruta) as im:
+            im.thumbnail((LADO_REINTENTO, LADO_REINTENTO))
+            salida = io.BytesIO()
+            im.convert("RGB").save(salida, "JPEG", quality=85)
+        imagen = base64.b64encode(salida.getvalue()).decode()
+    else:
+        imagen = base64.b64encode(ruta.read_bytes()).decode()
     texto = cliente_ollama.generate(
-        _PROMPT, MODELO_VISION, 700, ollama_url, ventana=4096, imagenes=[imagen], opciones={"temperature": 0.1, "repeat_penalty": 1.1},
+        _PROMPT, MODELO_VISION, 700, ollama_url, ventana=4096, imagenes=[imagen],
+        opciones={"temperature": 0.1, "repeat_penalty": 1.3 if reducida else 1.1},
     )
-    return texto.strip()
+    return limpiar_repeticiones(texto.strip())
+
+
+def _leer_con_reintento(ruta: Path, ollama_url: str) -> str:
+    """Si Ollama aborta (la respuesta entró en un bucle: «token repeat limit»), el modelo cargado queda mal y las fotos
+    siguientes también fallarían (medido): se descarga de la memoria para que se recargue limpio y se prueba una vez más con
+    la foto más chica. Si el modelo ni siquiera está instalado, reintentar no sirve."""
+    try:
+        return _leer(ruta, ollama_url)
+    except Exception as e:
+        if "not found" in str(e).lower():
+            raise
+        cliente_ollama.descargar_modelo(MODELO_VISION, ollama_url)
+        return _leer(ruta, ollama_url, reducida=True)
 
 
 def leer_pendientes(grabacion_id: int, fabrica: sessionmaker, ollama_url: str | None = None) -> None:
@@ -117,9 +160,10 @@ def leer_pendientes(grabacion_id: int, fabrica: sessionmaker, ollama_url: str | 
             try:
                 if not ruta.is_file():
                     raise RuntimeError("la imagen ya no estaba en el servidor")
-                foto.texto, foto.estado, foto.error = _leer(ruta, ollama_url), "leida", None
+                foto.texto, foto.estado, foto.error = _leer_con_reintento(ruta, ollama_url), "leida", None
             except Exception as e:  # una foto no puede romper la clase
                 foto.estado, foto.error = "error", _motivo(e)
+                cliente_ollama.descargar_modelo(MODELO_VISION, ollama_url)  # que la foto que falló no deje mal a las que siguen
             finally:
                 ruta.unlink(missing_ok=True)  # leída o no, la imagen no se queda
             db.commit()
