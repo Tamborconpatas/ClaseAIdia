@@ -1,8 +1,8 @@
-import { useState } from 'react'
-import { AlertTriangle, ArrowLeft, CheckCircle2, Clock, Info, Loader2, Mic, MicOff, MonitorSmartphone, Pause, Play, Square, Timer, Wifi, WifiOff } from 'lucide-react'
+import { useRef, useState } from 'react'
+import { AlertTriangle, ArrowLeft, Camera, CheckCircle2, Clock, Info, Loader2, Mic, MicOff, MonitorSmartphone, Pause, Play, Square, Timer, Wifi, WifiOff } from 'lucide-react'
 import { Cargando, ErrorForm, Vacio } from '@/components/comunes'
 import { Button } from '@/components/ui/button'
-import { api, type AccionGrabacion, type BloqueDeHoy, type Grabacion } from '@/lib/api'
+import { api, subirFoto, type AccionGrabacion, type BloqueDeHoy, type Grabacion } from '@/lib/api'
 import { activarEquipo, equipoActivo, idDeEsteEquipo, puedeGrabarAqui, soltarEquipo, useEquipo } from '@/lib/grabador'
 import { colorAsignatura, hhmm } from '@/lib/horario'
 import { useCarga, useSondeo } from '@/lib/usar'
@@ -249,6 +249,8 @@ function Sesion({ id, onSalir, onAbrirClase }: { id: number; onSalir: () => void
         </>
       )}
 
+      {(enCurso || g.estado === 'terminando') && <FotosPizarra g={g} segundos={segundos} onSubida={actualizar} />}
+
       {g.estado === 'terminando' && (
         <Aviso icono={Loader2} tono="gris" girar>
           Terminando: el equipo que graba está subiendo lo último. Enseguida se empieza a procesar.
@@ -264,6 +266,7 @@ function Sesion({ id, onSalir, onAbrirClase }: { id: number; onSalir: () => void
           <CheckCircle2 className="mx-auto size-8 text-emerald-600" />
           <p className="font-medium">¡Listo! El material de la clase quedó por aprobar.</p>
           <p className="text-sm text-muted-foreground">Revísalo, corrígelo si hace falta y apruébalo para que lo vean los alumnos.</p>
+          <ResumenFotos g={g} />
           <Button className="h-12 w-full text-base desk:h-10 desk:w-auto desk:text-sm" onClick={() => onAbrirClase(g.clase_id)}>
             Ver la clase
           </Button>
@@ -281,6 +284,59 @@ function Sesion({ id, onSalir, onAbrirClase }: { id: number; onSalir: () => void
         </section>
       )}
     </div>
+  )
+}
+
+function ResumenFotos({ g }: { g: Grabacion }) {
+  const leidas = g.fotos.filter((f) => f.estado === 'leida').length
+  const fallas = g.fotos.filter((f) => f.estado === 'error')
+  if (g.fotos.length === 0) return null
+  return (
+    <p className="text-sm text-muted-foreground">
+      Pizarra: {leidas} {leidas === 1 ? 'foto leída' : 'fotos leídas'}
+      {fallas.length > 0 && ` y ${fallas.length} que no se pudo${fallas.length === 1 ? '' : 'ieron'} leer (${fallas[0].error})`}. Revisa lo leído antes de aprobar: puede tener errores.
+    </p>
+  )
+}
+
+/** Foto de la pizarra desde el celular: la lee la IA después de la clase y su texto se suma al material. La imagen no se guarda. */
+function FotosPizarra({ g, segundos, onSubida }: { g: Grabacion; segundos: number; onSubida: () => void }) {
+  const entrada = useRef<HTMLInputElement>(null)
+  const [subiendo, setSubiendo] = useState(false)
+  const [falla, setFalla] = useState<string | null>(null)
+
+  const alElegir = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const archivos = Array.from(e.target.files ?? [])
+    e.target.value = '' // permite volver a sacar la misma foto
+    if (archivos.length === 0) return
+    setFalla(null)
+    setSubiendo(true)
+    try {
+      for (const archivo of archivos) await subirFoto(g.id, archivo, segundos)
+      onSubida()
+    } catch (err) {
+      setFalla((err as Error).message)
+    } finally {
+      setSubiendo(false)
+    }
+  }
+
+  return (
+    <section className="space-y-2 rounded-2xl border bg-card p-4" aria-label="Fotos de la pizarra">
+      <input ref={entrada} type="file" accept="image/*" capture="environment" multiple className="sr-only" tabIndex={-1} aria-hidden onChange={(e) => void alElegir(e)} />
+      <Button variant="outline" className="h-12 w-full text-base desk:h-10 desk:w-auto desk:text-sm" disabled={subiendo} onClick={() => entrada.current?.click()}>
+        {subiendo ? <Loader2 className="animate-spin" /> : <Camera />} Foto de la pizarra
+      </Button>
+      <p className="text-xs text-muted-foreground">
+        La IA lee la foto al terminar la clase y suma lo escrito al material. La imagen se borra apenas se lee: solo queda el texto.
+      </p>
+      <ErrorForm mensaje={falla} />
+      {g.fotos.length > 0 && (
+        <p role="status" className="text-sm font-medium">
+          {g.fotos.length} {g.fotos.length === 1 ? 'foto enviada' : 'fotos enviadas'}
+        </p>
+      )}
+    </section>
   )
 }
 

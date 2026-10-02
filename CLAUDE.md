@@ -111,6 +111,8 @@ En colegio, un Curso agrupa varios Bloques (toda la semana de un grupo fijo de a
 
 - **Los términos de privacidad y uso los acepta el colegio al instalar la aplicación**: están en el "Aviso para el colegio" del `README.md` (esa es la versión que vale). Las páginas `#/privacidad` y `#/terminos` del frontend son solo su respaldo para alumnos y apoderados; si cambia una, cambia la otra.
 
+- **Fotos de la pizarra (extra n.º 1, construido el 2026-10-02)**: el profesor las saca desde el celular durante la clase (botón en «Grabar»); un modelo de visión local (`qwen2.5vl:3b`, `MODELO_VISION`) las lee **después** de la clase, en el mismo proceso aparte y con la memoria cuidada, y el texto se suma al material como apoyo. **La imagen se borra apenas se lee (también si falla): solo se guarda el texto**, igual que el audio (puede salir un alumno). Una foto que no se puede leer nunca frena la clase. Lo medido: el texto y las listas salen bien; la matemática manuscrita conserva la estructura pero **cambia cifras**, y un diagrama en Mermaid con este modelo no es confiable (ver `QA.md`); por eso el texto leído siempre se presenta como lectura automática sujeta a revisión del profesor.
+
 ## Pendiente por resolver antes del piloto (no técnico, pero bloqueante)
 
 - Consentimiento informado de apoderados para el colegio piloto (dato personal de menores, aunque sea descartado tras procesarse).

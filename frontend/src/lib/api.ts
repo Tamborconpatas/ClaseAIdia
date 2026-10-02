@@ -81,6 +81,15 @@ export interface ClaseDetalle extends ClaseResumen {
 export type EstadoGrabacion = 'esperando' | 'grabando' | 'pausada' | 'terminando' | 'procesando' | 'terminada' | 'error'
 export type AccionGrabacion =
   | 'iniciar' | 'pausar' | 'reanudar' | 'silenciar' | 'activar_audio' | 'terminar' | 'cancelar' | 'marcar_prioritaria' | 'quitar_prioritaria'
+export interface FotoPizarra {
+  id: number
+  /** Segundo de la clase en que se sacó. */
+  segundo: number
+  estado: 'pendiente' | 'leida' | 'error'
+  /** Lo que leyó el modelo de visión; la imagen no se guarda. */
+  texto: string | null
+  error: string | null
+}
 export interface Grabacion {
   id: number
   clase_id: number
@@ -104,6 +113,7 @@ export interface Grabacion {
   error: string | null
   /** Si el fallo se reintenta solo, cuándo (UTC); null si ya no quedan intentos. */
   reintento_en: string | null
+  fotos: FotoPizarra[]
 }
 export interface BloqueDeHoy {
   bloque_id: number
@@ -187,6 +197,25 @@ export async function api<T>(
 }
 
 /** Sube un trozo de audio (cuerpo crudo, no JSON). Devuelve el estado de la grabación. */
+export async function subirFoto(grabacionId: number, foto: Blob, segundo: number): Promise<Grabacion> {
+  const token = leerSesion()?.access_token
+  let r: Response
+  try {
+    r = await fetch(`${BASE}/grabaciones/${grabacionId}/fotos?segundo=${Math.max(0, Math.floor(segundo))}`, {
+      method: 'POST',
+      headers: { 'Content-Type': foto.type || 'image/jpeg', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: foto,
+    })
+  } catch {
+    throw new ApiError(0, 'No se pudo conectar con el servidor.')
+  }
+  if (!r.ok) {
+    const datos = await r.json().catch(() => null)
+    throw new ApiError(r.status, mensajeDe((datos as { detail?: unknown } | null)?.detail))
+  }
+  return (await r.json()) as Grabacion
+}
+
 export async function subirTrozo(grabacionId: number, n: number, dispositivo: string, trozo: Blob): Promise<Grabacion> {
   const token = leerSesion()?.access_token
   let r: Response
