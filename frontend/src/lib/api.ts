@@ -68,6 +68,12 @@ export interface Tarjeta {
   pregunta: string
   respuesta: string
 }
+export interface PizarraLeida {
+  id: number
+  segundo: number
+  /** Markdown con LaTeX (`$...$`, `$$...$$`) y, a veces, un bloque ```mermaid. */
+  texto: string
+}
 export interface ClaseDetalle extends ClaseResumen {
   contenido: {
     resumen: string | null
@@ -75,6 +81,7 @@ export interface ClaseDetalle extends ClaseResumen {
     hoja_repaso: string | null
     tarjetas: Tarjeta[]
     transcripcion_texto: string | null
+    pizarra: PizarraLeida[]
   } | null
 }
 

@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
-import { AlertTriangle, ArrowLeft, Check, CheckCircle2, ChevronRight, Clock, EyeOff, FileText, Layers, ListChecks, Loader2, MapPin, Pencil, RotateCcw, Sparkles } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, Check, CheckCircle2, ChevronRight, Clock, EyeOff, FileText, Layers, ListChecks, Loader2, MapPin, PenLine, Pencil, RotateCcw, Sparkles } from 'lucide-react'
 import { Cargando, ErrorForm, Vacio } from '@/components/comunes'
+import { FotoLeida } from '@/components/FotoLeida'
 import { EditorMaterial, type MaterialEditable } from '@/components/EditorMaterial'
 import { Button } from '@/components/ui/button'
 import { api, type ClaseDetalle, type ClaseResumen, type EstadoClase } from '@/lib/api'
@@ -299,6 +300,23 @@ function DetalleClase({ id, onVolver, onCambio }: { id: number; onVolver: () => 
               <ul className="space-y-2.5">
                 {k.tarjetas.map((t, i) => (
                   <TarjetaEstudio key={i} pregunta={t.pregunta} respuesta={t.respuesta} />
+                ))}
+              </ul>
+            </Seccion>
+          )}
+          {k.pizarra.length > 0 && (
+            <Seccion
+              icono={PenLine}
+              titulo="De la pizarra"
+              nota={
+                esProfesor
+                  ? 'La IA leyó estas fotos. Las cifras escritas a mano son lo que más falla: corrígelas o quítalas antes de aprobar.'
+                  : 'Lectura automática de la pizarra: puede tener errores, sobre todo en cifras. Contrástala con tus apuntes.'
+              }
+            >
+              <ul className="space-y-4">
+                {k.pizarra.map((f) => (
+                  <FotoLeida key={f.id} claseId={id} foto={f} editable={esProfesor} onCambio={() => { clase.recargar(); onCambio() }} />
                 ))}
               </ul>
             </Seccion>
