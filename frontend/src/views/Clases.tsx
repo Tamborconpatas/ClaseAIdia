@@ -10,7 +10,9 @@ import { useCarga } from '@/lib/usar'
 import { cn } from '@/lib/utils'
 
 const ESTADO: Record<EstadoClase, { texto: string; clase: string }> = {
+  grabando: { texto: 'Grabando', clase: 'bg-red-100 text-red-900' },
   procesando: { texto: 'Procesando', clase: 'bg-muted text-muted-foreground' },
+  error: { texto: 'Con error', clase: 'bg-red-200 text-red-950' },
   por_aprobar: { texto: 'Por aprobar', clase: 'bg-amber-100 text-amber-900' },
   provisoria: { texto: 'Provisoria', clase: 'bg-orange-100 text-orange-900' },
   publicada: { texto: 'Publicada', clase: 'bg-emerald-100 text-emerald-900' },

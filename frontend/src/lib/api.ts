@@ -47,7 +47,7 @@ export interface ResetPin {
   vence: string // ISO con zona (UTC)
 }
 
-export type EstadoClase = 'procesando' | 'por_aprobar' | 'provisoria' | 'publicada' | 'retirada'
+export type EstadoClase = 'grabando' | 'procesando' | 'error' | 'por_aprobar' | 'provisoria' | 'publicada' | 'retirada'
 export interface ClaseResumen {
   id: number
   bloque_id: number
@@ -76,6 +76,43 @@ export interface ClaseDetalle extends ClaseResumen {
     tarjetas: Tarjeta[]
     transcripcion_texto: string | null
   } | null
+}
+
+export type EstadoGrabacion = 'esperando' | 'grabando' | 'pausada' | 'terminando' | 'procesando' | 'terminada' | 'error'
+export type AccionGrabacion =
+  | 'iniciar' | 'pausar' | 'reanudar' | 'silenciar' | 'activar_audio' | 'terminar' | 'cancelar' | 'marcar_prioritaria' | 'quitar_prioritaria'
+export interface Grabacion {
+  id: number
+  clase_id: number
+  bloque_id: number
+  asignatura: string | null
+  curso_nombre: string
+  sala: string | null
+  fecha: string
+  hora_inicio: string
+  hora_fin: string
+  estado: EstadoGrabacion
+  silenciada: boolean
+  prioritaria: boolean
+  /** Hora local (sin zona) en que se corta sola. */
+  corte_en: string
+  segundos_grabados: number
+  nivel: number
+  trozos: number
+  grabador_id: string | null
+  grabador_conectado: boolean
+  error: string | null
+}
+export interface BloqueDeHoy {
+  bloque_id: number
+  asignatura: string | null
+  curso_nombre: string
+  sala: string | null
+  hora_inicio: string
+  hora_fin: string
+  puede_grabar: boolean
+  motivo: string | null
+  grabacion: Grabacion | null
 }
 
 export class ApiError extends Error {
@@ -145,4 +182,24 @@ export async function api<T>(
     throw new ApiError(r.status, caido ? 'El servidor no está disponible en este momento. Intenta de nuevo en un rato.' : mensajeDe(detalle))
   }
   return r.status === 204 ? (undefined as T) : ((await r.json()) as T)
+}
+
+/** Sube un trozo de audio (cuerpo crudo, no JSON). Devuelve el estado de la grabación. */
+export async function subirTrozo(grabacionId: number, n: number, dispositivo: string, trozo: Blob): Promise<Grabacion> {
+  const token = leerSesion()?.access_token
+  let r: Response
+  try {
+    r = await fetch(`${BASE}/grabaciones/${grabacionId}/trozos/${n}?dispositivo=${encodeURIComponent(dispositivo)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': trozo.type || 'audio/webm', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: trozo,
+    })
+  } catch {
+    throw new ApiError(0, 'No se pudo conectar con el servidor.')
+  }
+  if (!r.ok) {
+    const datos = await r.json().catch(() => null)
+    throw new ApiError(r.status, mensajeDe((datos as { detail?: unknown } | null)?.detail))
+  }
+  return (await r.json()) as Grabacion
 }
