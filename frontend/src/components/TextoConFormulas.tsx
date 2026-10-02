@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { MapaDibujado } from '@/components/MapaConceptual'
 import { Mermaid } from '@/components/Mermaid'
 import { empezarDibujo } from '@/lib/dibujos'
 import { agrupar, partir } from '@/lib/formulas'
+import { deMermaid } from '@/lib/pizarra'
 import { cn } from '@/lib/utils'
 
 // KaTeX (y sus tipografías) se baja solo cuando una pantalla tiene una fórmula: el resto de la app no lo carga.
@@ -57,10 +59,14 @@ export function TextoConFormulas({ texto, className }: { texto: string; classNam
     <div className={cn('space-y-2 leading-relaxed', className)}>
       {grupos.map((grupo, i) => {
         const t = grupo[0]
-        if (t.tipo === 'mermaid') return <Mermaid key={i} codigo={t.valor} descripcion="Diagrama de la pizarra" />
+        if (t.tipo === 'mermaid') {
+          // Un diagrama de flechas también va como lista de texto («Ver como lista»), para quien no puede verlo.
+          const relaciones = deMermaid(t.valor)
+          return relaciones ? <MapaDibujado key={i} relaciones={relaciones} nombre="Diagrama de la pizarra" /> : <Mermaid key={i} codigo={t.valor} descripcion="Diagrama de la pizarra" />
+        }
         if (t.tipo === 'formula' && t.bloque) {
           return (
-            <div key={i} className="overflow-x-auto py-1" tabIndex={0} aria-label="Fórmula">
+            <div key={i} className="overflow-x-auto py-1" tabIndex={0} role="group" aria-label="Fórmula">
               <Formula tex={t.valor} bloque />
             </div>
           )

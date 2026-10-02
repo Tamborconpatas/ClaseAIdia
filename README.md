@@ -118,6 +118,10 @@ DATABASE_URL=sqlite:///./escuela_demo.db uvicorn api:app --port 8000
 
 **Si un UTP olvida su contraseña**: otro UTP la resetea desde la pestaña Personal (entrega un código de un solo uso). Si es el único UTP, quien administra el servidor la restablece desde la consola: `python -m scripts.restablecer_utp <RUT>` (pide la contraseña nueva; nunca se pasa por la línea de comandos).
 
+### Accesibilidad
+
+La meta es WCAG 2.1 AA. Qué está cubierto: navegación completa con teclado y un enlace «Saltar al contenido»; nombre accesible en todos los botones y campos; avisos para lectores de pantalla al descargar, mover o quitar partes al corregir; foco que acompaña a quien edita; fórmulas dibujadas con MathML además del dibujo; cada diagrama con su versión en lista de texto; respeto de «reducir movimiento» del sistema; PDF con títulos reales y Word con idioma, títulos y texto alternativo en las imágenes. Cada pantalla se revisa con axe-core y hay pruebas automáticas (`npm test`). **Lo que falta probar**: lectores de pantalla reales (NVDA, VoiceOver, TalkBack) y un teléfono físico. Limitación conocida: en el Word las fórmulas van como imagen y su texto alternativo es el LaTeX (un lector de pantalla lo lee tal cual); la versión «con ecuaciones editables» es la más accesible para quien usa Word con lector de pantalla.
+
 ### Servidor 24/7 en Windows (arranque automático y recuperación)
 
 El servidor del colegio funciona sin que nadie lo atienda. En la carpeta `scripts\windows\` (no piden administrador):

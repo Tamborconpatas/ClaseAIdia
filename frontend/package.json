@@ -23,6 +23,7 @@
     "katex": "^0.19.0",
     "lucide-react": "^1.49.0",
     "mathjax-full": "^3.2.1",
+    "mathlive": "^0.111.0",
     "mathml2omml": "^0.5.0",
     "mermaid": "^12.1.0",
     "qrcode.react": "^4.2.0",

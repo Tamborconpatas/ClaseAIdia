@@ -42,6 +42,13 @@ export function AppShell({ items, activo, onCambiar, usuario, etiquetaRol, onSal
 
   return (
     <div className="min-h-dvh">
+      {/* Quien navega con teclado o lector de pantalla se salta el menú: solo aparece al recibir el foco. */}
+      <a
+        href="#contenido"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-50 focus:rounded-lg focus:bg-primary focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-primary-foreground"
+      >
+        Saltar al contenido
+      </a>
       {/* ---------- PC: barra lateral ---------- */}
       <aside className="fixed inset-y-0 left-0 z-20 hidden w-64 flex-col border-r bg-sidebar p-4 desk:flex">
         <Logo className="px-2 pb-6 pt-2" />
@@ -88,7 +95,7 @@ export function AppShell({ items, activo, onCambiar, usuario, etiquetaRol, onSal
         </div>
       </header>
 
-      <main className="pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] pb-28 pt-4 short:pb-20 desk:pb-10 desk:pl-[calc(16rem+2.5rem)] desk:pr-10 desk:pt-8">
+      <main id="contenido" tabIndex={-1} className="outline-none pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] pb-28 pt-4 short:pb-20 desk:pb-10 desk:pl-[calc(16rem+2.5rem)] desk:pr-10 desk:pt-8">
         <div className="mx-auto max-w-3xl desk:max-w-6xl">
           <div className="mb-6 hidden desk:block">
             <h1 className="text-2xl font-semibold tracking-tight">{actual.etiqueta}</h1>

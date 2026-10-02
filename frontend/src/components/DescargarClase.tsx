@@ -20,6 +20,7 @@ export function DescargarClase({ clase, esProfesor }: { clase: ClaseDetalle; esP
   const [trabajando, setTrabajando] = useState<'pdf' | 'word' | 'ecuaciones' | null>(null)
   const [hoja, setHoja] = useState<Bloque[] | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [aviso, setAviso] = useState('') // lo anuncia el lector de pantalla: sin esto, pulsar «Descargar» no dice nada
 
   // Con la hoja montada se espera a que se dibuje todo y recién entonces se abre la impresión.
   useEffect(() => {
@@ -28,6 +29,7 @@ export function DescargarClase({ clase, esProfesor }: { clase: ClaseDetalle; esP
     const terminar = () => {
       setHoja(null)
       setTrabajando(null)
+      setAviso('')
     }
     void (async () => {
       await esperarDibujos()
@@ -44,17 +46,22 @@ export function DescargarClase({ clase, esProfesor }: { clase: ClaseDetalle; esP
 
   const pdf = () => {
     setError(null)
+    setAviso('Preparando la hoja para guardar como PDF…')
     setTrabajando('pdf')
     setHoja(construirModelo(clase))
   }
 
   const word = async (modo: 'word' | 'ecuaciones') => {
     setError(null)
+    setAviso('Preparando el archivo de Word…')
     setTrabajando(modo)
     try {
       const { generarDocx } = await import('@/lib/exportar/docx') // la librería de Word se baja solo al pedir el archivo
-      descargar(await generarDocx(construirModelo(clase), { formulas: modo === 'word' ? 'imagen' : 'ecuacion' }), nombreDeArchivo(clase, 'docx'))
+      const nombre = nombreDeArchivo(clase, 'docx')
+      descargar(await generarDocx(construirModelo(clase), { formulas: modo === 'word' ? 'imagen' : 'ecuacion' }), nombre)
+      setAviso(`Listo: se descargó ${nombre}.`)
     } catch {
+      setAviso('')
       setError('No se pudo preparar el archivo de Word. Prueba de nuevo, o usa el PDF.')
     } finally {
       setTrabajando(null)
@@ -88,6 +95,7 @@ export function DescargarClase({ clase, esProfesor }: { clase: ClaseDetalle; esP
       <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
         <FileText className="mt-0.5 size-3.5 shrink-0" /> Incluye el resumen, los puntos clave, la hoja de repaso, el mapa, las tarjetas y lo leído de la pizarra, con las fórmulas y los diagramas.
       </p>
+      <p role="status" aria-live="polite" className="sr-only">{aviso}</p>
       <ErrorForm mensaje={error} />
       {hoja && createPortal(<div id="impresion"><VistaImpresion bloques={hoja} /></div>, document.body)}
     </div>
