@@ -1,12 +1,17 @@
+import { formulaEnImagen, type FormulaPng } from './formulaImagen'
 import type { Trozo } from '@/lib/formulas'
 import { dibujarDiagrama, svgAPng } from '@/lib/mermaid'
 import type { Bloque } from './modelo'
 
 /**
- * Word: las fórmulas van como **ecuaciones de Word** (editables), no como imágenes: KaTeX las pasa a MathML y
- * `mathml2omml` a OMML, el formato de ecuaciones de Word. Los diagramas Mermaid, que Word no sabe dibujar, van como imagen.
- * Todo se arma en el navegador de quien descarga: el servidor no hace nada. Si una fórmula o un diagrama no se pueden
- * convertir, se deja su texto (el LaTeX o el código) para que el documento nunca salga con huecos.
+ * Word. Las fórmulas pueden ir de dos maneras:
+ * - **como imagen** (por defecto): se ven en cualquier programa que abra un .docx (Word, Google Docs, el celular, Pages),
+ *   pero no se pueden editar ahí; si una fórmula está mal, se corrige en la app y se vuelve a descargar;
+ * - **como ecuación de Word** (editables): KaTeX las pasa a MathML y `mathml2omml` a OMML. Se ven en Word y LibreOffice;
+ *   otros programas pueden no entenderlas.
+ * Los diagramas Mermaid, que Word no sabe dibujar, van siempre como imagen. Todo se arma en el navegador de quien descarga:
+ * el servidor no hace nada. Si una fórmula o un diagrama no se pueden convertir, se deja su texto (el LaTeX o el código)
+ * para que el documento nunca salga con huecos.
  */
 export interface Imagen {
   datos: Uint8Array
@@ -16,6 +21,10 @@ export interface Imagen {
 export interface OpcionesDocx {
   /** Cómo se convierte un diagrama en imagen (los tests lo reemplazan: en Node no hay dónde dibujarlo). */
   diagrama?: (codigo: string) => Promise<Imagen>
+  /** `imagen` (por defecto, se ve en cualquier programa) o `ecuacion` (editable, solo Word y LibreOffice). */
+  formulas?: 'imagen' | 'ecuacion'
+  /** Cómo se convierte una fórmula en imagen (los tests lo reemplazan). */
+  formula?: (tex: string, bloque: boolean) => Promise<FormulaPng | null>
 }
 
 const diagramaEnImagen = async (codigo: string): Promise<Imagen> => svgAPng(await dibujarDiagrama(codigo))
@@ -45,14 +54,42 @@ export async function generarDocx(bloques: Bloque[], opciones: OpcionesDocx = {}
 
   const enOmml = (omml: string) => d.ImportedXmlComponent.fromXmlString(omml) as unknown as InstanceType<typeof d.TextRun>
 
+  const comoImagen = (opciones.formulas ?? 'imagen') === 'imagen'
+  const aFormulaPng = opciones.formula ?? formulaEnImagen
+  const imagenDe = (f: FormulaPng, descripcion: string) =>
+    new d.ImageRun({ type: 'png', data: f.datos, transformation: { width: f.ancho, height: f.alto }, altText: { name: 'Fórmula', title: 'Fórmula', description: descripcion } })
+
+  /** Una imagen en línea más abajo que la línea de base del texto (`w:position` en medios puntos, que es lo que entiende todo programa). */
+  class ImagenBajada extends d.ImageRun {
+    private mediosPuntos = 0
+    bajar(mediosPuntos: number) {
+      this.mediosPuntos = mediosPuntos
+      return this
+    }
+    prepForXml(context: Parameters<InstanceType<typeof d.ImageRun>['prepForXml']>[0]) {
+      const xml = super.prepForXml(context) as { 'w:r'?: unknown[] } | undefined
+      if (xml?.['w:r'] && this.mediosPuntos > 0) xml['w:r'].unshift({ 'w:rPr': [{ 'w:position': { _attr: { 'w:val': String(-this.mediosPuntos) } } }] })
+      return xml as ReturnType<InstanceType<typeof d.ImageRun>['prepForXml']>
+    }
+  }
+
+  /** La fórmula en línea (o null si hay que dejar su texto): imagen bajada hasta la línea de base del texto, o ecuación de Word. */
+  async function formulaEnLinea(tex: string): Promise<InstanceType<typeof d.TextRun> | null> {
+    if (comoImagen) {
+      const f = await aFormulaPng(tex, false)
+      if (!f) return null
+      const imagen = new ImagenBajada({ type: 'png', data: f.datos, transformation: { width: f.ancho, height: f.alto }, altText: { name: 'Fórmula', title: 'Fórmula', description: tex } })
+      return imagen.bajar(Math.round(f.baja * 1.5)) as unknown as InstanceType<typeof d.TextRun> // px → pt (×0,75) → medios puntos (×2)
+    }
+    const omml = await aOmml(tex)
+    return omml ? enOmml(omml) : null
+  }
+
   async function hijosDeParrafo(trozos: Trozo[]) {
     const hijos: InstanceType<typeof d.TextRun>[] = []
     for (const t of trozos) {
       if (t.tipo === 'texto') hijos.push(...lineas(t.valor))
-      else if (t.tipo === 'formula') {
-        const omml = await aOmml(t.valor)
-        hijos.push(omml ? enOmml(omml) : new d.TextRun({ text: t.valor, font: MONO }))
-      }
+      else if (t.tipo === 'formula') hijos.push((await formulaEnLinea(t.valor)) ?? new d.TextRun({ text: t.valor, font: MONO }))
     }
     return hijos
   }
@@ -83,10 +120,15 @@ export async function generarDocx(bloques: Bloque[], opciones: OpcionesDocx = {}
         for (const item of b.items) hijos.push(new d.Paragraph({ bullet: { level: 0 }, children: [new d.TextRun(item)] }))
         break
       case 'formula': {
-        const omml = await aOmml(b.tex)
-        const contenido = omml
-          ? enOmml(`<m:oMathPara xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math" xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">${omml}</m:oMathPara>`)
-          : new d.TextRun({ text: b.tex, font: MONO })
+        let contenido: InstanceType<typeof d.TextRun> | null = null
+        if (comoImagen) {
+          const f = await aFormulaPng(b.tex, true)
+          if (f) contenido = imagenDe(f, b.tex) as unknown as InstanceType<typeof d.TextRun>
+        } else {
+          const omml = await aOmml(b.tex)
+          if (omml) contenido = enOmml(`<m:oMathPara xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math" xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">${omml}</m:oMathPara>`)
+        }
+        contenido ??= new d.TextRun({ text: b.tex, font: MONO })
         hijos.push(new d.Paragraph({ alignment: d.AlignmentType.CENTER, spacing: { before: 80, after: 80 }, children: [contenido] }))
         break
       }

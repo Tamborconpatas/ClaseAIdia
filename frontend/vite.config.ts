@@ -21,6 +21,8 @@ function https(mode: string) {
 export default defineConfig(({ mode }) => ({
   plugins: [react(), tailwindcss()],
   resolve: { alias: { '@': path.resolve(import.meta.dirname, './src') } },
+  // MathJax (solo para el Word) busca su versión con `eval('require')` si esta constante no existe; así ese código no llega al sitio.
+  define: { PACKAGE_VERSION: JSON.stringify('3.2.1') },
   server: {
     https: https(mode),
     proxy: {
