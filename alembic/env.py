@@ -1,3 +1,4 @@
+import os
 import sys
 from logging.config import fileConfig
 from pathlib import Path
@@ -15,6 +16,11 @@ from infraestructura import modelos_orm  # noqa: E402, F401
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
+
+# Misma variable que usa la aplicación (infraestructura/basedatos.py): así `alembic upgrade head` migra la base
+# que la API va a usar (p. ej. la de demostración) y no siempre la de alembic.ini.
+if os.environ.get("DATABASE_URL"):
+    config.set_main_option("sqlalchemy.url", os.environ["DATABASE_URL"])
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.

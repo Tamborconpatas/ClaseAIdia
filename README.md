@@ -90,7 +90,7 @@ Abre tu navegador web en la URL Local proporcionada por la consola (generalmente
 
 ```bash
 cp .env.example .env    # y completar JWT_SECRET_KEY (el archivo explica cómo generarla)
-alembic upgrade head    # crea/actualiza escuela.db
+alembic upgrade head    # crea/actualiza escuela.db (o la base de DATABASE_URL, si está definida)
 uvicorn api:app --port 8000
 ```
 La primera vez, el servidor no tiene colegio: se crea junto con su primer UTP con `POST /auth/setup` (se puede hacer desde `http://127.0.0.1:8000/docs`). Después de eso ese endpoint se cierra solo — hacerlo **antes** de exponer el servidor a internet.
@@ -114,6 +114,7 @@ Ver [`frontend/README.md`](frontend/README.md). Para probarlo con datos de ejemp
 python -m scripts.sembrar_demo          # crea escuela_demo.db (no toca escuela.db) y muestra las cuentas
 DATABASE_URL=sqlite:///./escuela_demo.db uvicorn api:app --port 8000
 ```
+(La base de demostración se crea de una vez con el modelo actual, sin alembic: si el modelo cambia en el futuro, se vuelve a sembrar.)
 
 **Si un UTP olvida su contraseña**: otro UTP la resetea desde la pestaña Personal (entrega un código de un solo uso). Si es el único UTP, quien administra el servidor la restablece desde la consola: `python -m scripts.restablecer_utp <RUT>` (pide la contraseña nueva; nunca se pasa por la línea de comandos).
 
