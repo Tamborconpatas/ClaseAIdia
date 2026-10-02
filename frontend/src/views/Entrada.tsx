@@ -99,7 +99,7 @@ function Acceso() {
       <div className="space-y-6">
         <button
           onClick={() => setModo('entrar')}
-          className="-ml-1 flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+          className="-ml-2 flex h-10 items-center gap-1 rounded-lg px-2 text-sm text-muted-foreground hover:text-foreground"
         >
           <ArrowLeft className="size-4" /> Volver
         </button>

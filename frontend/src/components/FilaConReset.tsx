@@ -70,9 +70,9 @@ export function FilaConReset({ usuarioId, nombre, info, tipo, puedeResetear = tr
 
   return (
     <li className="space-y-2 p-3.5">
-      <div className="flex items-center justify-between gap-3">
-        <div className="min-w-0">{info}</div>
-        <div className="flex shrink-0 flex-wrap justify-end gap-2">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <div className="min-w-40 flex-1">{info}</div>
+        <div className="flex shrink-0 flex-wrap gap-2">
           {puedeResetear && paso === 'inicio' && !resultado && (
             <Button variant="outline" className="h-10 desk:h-8" onClick={() => setPaso('confirmando')} aria-label={`${t.boton} de ${nombre}`}>
               <KeyRound /> {t.boton}
