@@ -34,6 +34,7 @@ def _salida(g: Grabacion) -> dict:
         "grabador_conectado": sg.grabador_conectado(g), "error": g.error,
         "reintento_en": g.reintento_en.replace(tzinfo=datetime.timezone.utc) if g.reintento_en else None,
         "fotos": g.fotos,
+        "fotos_habilitadas": servicio_pizarra.activadas(),
     }
 
 

@@ -249,7 +249,7 @@ function Sesion({ id, onSalir, onAbrirClase }: { id: number; onSalir: () => void
         </>
       )}
 
-      {(enCurso || g.estado === 'terminando') && <FotosPizarra g={g} segundos={segundos} onSubida={actualizar} />}
+      {(enCurso || g.estado === 'terminando') && g.fotos_habilitadas && <FotosPizarra g={g} segundos={segundos} onSubida={actualizar} />}
 
       {g.estado === 'terminando' && (
         <Aviso icono={Loader2} tono="gris" girar>

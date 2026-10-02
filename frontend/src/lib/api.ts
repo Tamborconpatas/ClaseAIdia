@@ -123,6 +123,8 @@ export interface Grabacion {
   /** Si el fallo se reintenta solo, cuándo (UTC); null si ya no quedan intentos. */
   reintento_en: string | null
   fotos: FotoPizarra[]
+  /** El colegio activó las fotos de la pizarra (FOTOS_PIZARRA=si en el servidor). */
+  fotos_habilitadas: boolean
 }
 export interface BloqueDeHoy {
   bloque_id: number

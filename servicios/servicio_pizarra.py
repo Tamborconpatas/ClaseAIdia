@@ -50,6 +50,12 @@ _ENCABEZADO_AL_MATERIAL = (
 )
 
 
+def activadas() -> bool:
+    """Las fotos de la pizarra son opcionales: el colegio las activa con `FOTOS_PIZARRA=si` en el `.env` (por defecto no), porque
+    piden un modelo aparte (3,2 GB de disco) y unos 4,5 GB de memoria libre al procesar."""
+    return os.environ.get("FOTOS_PIZARRA", "no").strip().lower() in ("si", "sí", "1", "true", "yes")
+
+
 def _carpeta(grabacion_id: int) -> Path:
     return CARPETA_FOTOS / str(grabacion_id)
 
@@ -78,6 +84,8 @@ def _normalizar(datos: bytes) -> bytes:
 
 
 def guardar_foto(db: Session, g: Grabacion, datos: bytes, segundo: int = 0) -> FotoPizarra:
+    if not activadas():
+        raise ErrorGrabacion("Las fotos de la pizarra no están activadas en este colegio", 403)
     if g.estado not in ESTADOS_QUE_ACEPTAN_FOTOS:
         raise ErrorGrabacion(f"No se pueden agregar fotos con la grabación {g.estado.value}")
     if not datos or len(datos) > MAX_BYTES:
