@@ -1,6 +1,6 @@
 # Fase 3 — Frontend (React + TypeScript + Vite + Tailwind + shadcn/ui)
 
-**Estado (2026-10-01): en curso, con lo central hecho y probado en navegador.** Falta probarlo en un teléfono real y algunas piezas listadas al final.
+**Estado (2026-10-01): casi completa, probada en navegador.** Faltan la prueba en un teléfono real, que el equipo configure el contacto y que el colegio revise los textos legales (ver los ítems sin marcar).
 
 Requisito previo: Fase 2 (login y JWT funcionando en el backend). El código vive en `frontend/` (ver `frontend/README.md` para correrlo).
 
@@ -11,14 +11,17 @@ Requisito previo: Fase 2 (login y JWT funcionando en el backend). El código viv
 - [x] **Login**: dos flujos — RUT + PIN (alumno) y RUT + contraseña (profesor/UTP). El JWT se guarda en `localStorage` (vence a las 12 h; es razonable porque la app no usa `dangerouslySetInnerHTML`: un token ahí solo se roba con XSS) y se manda por el header `Authorization`.
 - [x] **Alumno**: unirse a un curso con código o QR; recuperar el PIN con el código que da el profesor; horario personal; lista de clases de su curso con el detalle (resumen, puntos clave, hoja de repaso, tarjetas con "ver respuesta", transcripción). No tiene pestaña de cursos: tiene uno solo, que se muestra junto a su nombre ("Alumno · 8°A").
 - [x] **Profesor**: "Mi horario" (solo sus bloques), Cursos (solo donde dicta, con sus asignaturas y un acceso a sus clases y al código/QR), Clases agrupadas por curso, y **aprobar / retirar** el material.
-- [x] **UTP**: Cursos (crear y ver el código/QR), Clases de todo el colegio, y la **grilla de horario editable**.
-- [ ] **UTP**: editar/borrar cursos y gestionar usuarios (crear profesores, **resetear el PIN de un alumno** — el endpoint ya existe, falta la pantalla).
-- [ ] **Profesor**: editar el contenido del material antes de aprobarlo (hoy solo aprueba o retira).
+- [x] **UTP**: Cursos (crear, renombrar, eliminar si están vacíos, ver el código/QR), Clases de todo el colegio, y la **grilla de horario editable**.
+- [x] **UTP**: pestaña **Personal** (profesores y UTP): agregar personal con su rol y **resetear la contraseña** de otra persona con un código de un solo uso. Un UTP no resetea la propia: otro UTP lo hace, o quien administra el servidor con `python -m scripts.restablecer_utp <RUT>`.
+- [x] **Recuperación de contraseña** del personal desde la pantalla de entrada ("Olvidé mi contraseña": RUT + código + contraseña nueva), igual que el PIN del alumno.
+- [x] **Resetear el PIN de un alumno**: profesor (alumnos de sus cursos) o UTP, desde el panel "Alumnos" de cada curso.
+- [x] **Profesor**: **editar el material** (resumen, puntos clave, hoja de repaso y tarjetas; la transcripción no se edita) antes o después de aprobarlo.
 - [x] **Formularios**: validación también en el cliente (RUT; contraseña de staff de 10 a 128 caracteres, sin el RUT y con ≥ 4 caracteres distintos; PIN de 6 dígitos que no sea repetido ni secuencia; horas de bloque), con mensajes claros. Es comodidad: la validación que cuenta es la del backend.
 - [x] **Seguridad del cliente**: sin `dangerouslySetInnerHTML` ni `innerHTML` (el contenido generado por la IA se renderiza como texto), sin llamadas a servicios externos ni trackers, `npm audit` sin vulnerabilidades.
 - [x] **Archivos estáticos**: favicon con el logo, `robots.txt` con `Disallow: /` y `<meta name="robots" content="noindex, nofollow">`.
-- [ ] **Páginas**: política de privacidad, términos y condiciones, y un medio de contacto real del equipo.
-- [ ] **Accesibilidad**: hay etiquetas `aria`, foco visible, navegación por teclado en el cuadro del editor (elemento `<dialog>`) y campos de 16 px en teléfono, pero falta una revisión formal de contraste y de lector de pantalla.
+- [x] **Páginas**: política de privacidad y términos y condiciones (`#/privacidad`, `#/terminos`), enlazadas en el pie. Son un **borrador**: faltan que el colegio las revise y que el equipo ponga un contacto real en `frontend/.env` (`VITE_CONTACTO`, ver `.env.example`).
+- [x] **Accesibilidad automática**: `axe-core` (WCAG 2.0/2.1 A y AA) sin violaciones en entrada, alumno, profesor, UTP y páginas legales (se corrigió el texto alternativo del QR). *Falta* una prueba manual con lector de pantalla y revisión de contraste con ojos humanos: axe no lo cubre todo.
+- [ ] **Quedan pendientes de producto**: desactivar o borrar personal (hoy no se puede).
 - [ ] **Teléfono real**: lo probado fue un marco del tamaño de un teléfono, no un aparato (ver "Verificación").
 
 ## Decisiones de diseño
@@ -47,7 +50,7 @@ Requisito previo: Fase 2 (login y JWT funcionando en el backend). El código viv
 
 Detalle, hallazgos y mediciones en `QA.md` (entradas del 2026-10-01).
 
-- **Backend**: 125 tests (`pytest tests/`).
+- **Backend**: 154 tests (`pytest tests/`).
 - **Frontend, en navegador** (PC y un marco del tamaño de un teléfono vertical 390 × 780 y horizontal 820 × 380): login de los tres roles, primer arranque (validaciones, alta y cierre automático), horario por rol, jornada larga, editor del horario completo (editar, rechazo por cruce, eliminar, crear con profesor), clases, aprobar y retirar (también con toques en el marco de teléfono), unirse con QR, y el QR decodificado.
-- **No hay tests automatizados del frontend** (solo `tsc`, `oxlint` y `npm run build`).
+- **Tests del frontend**: `npm test` (vitest, 15 pruebas) cubre RUT, PIN, contraseña y horario, para que el cliente no se desvíe de las reglas del backend. Los componentes se prueban en el navegador, no automáticamente. Además `tsc`, `oxlint` y `npm run build`.
 - **Pendiente**: un teléfono físico (teclado, muesca, toques reales).
