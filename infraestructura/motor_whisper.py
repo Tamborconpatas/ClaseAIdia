@@ -1,5 +1,6 @@
 import gc
 
+import numpy as np
 import torch
 
 from nucleo import configuracion as app_config
@@ -18,6 +19,40 @@ if torch.cuda.is_available():
     torch.backends.cuda.matmul.allow_tf32 = False
     torch.backends.cudnn.allow_tf32 = False
     torch.backends.cudnn.benchmark = False
+
+
+TRAMO_TRANSCRIPCION_S = 600  # segundos de audio que Whisper procesa de una vez
+BUSQUEDA_DE_CORTE_S = 15  # el corte se busca en el momento más silencioso a menos de esto del límite
+
+
+def cortes_de_audio(archivo, tramo_s: float | None = None) -> list[int]:
+    """Muestras donde partir el audio para transcribirlo por tramos de ~`tramo_s` segundos.
+
+    faster-whisper calcula las características de TODO el audio de una vez: con una clase de 92 minutos el proceso
+    llegó a 6,1 GB (medido), más de lo que tiene un equipo modesto, y crece con el largo de la clase. Por tramos la
+    memoria deja de depender de cuánto dura. Cada corte se pone en el momento más silencioso cerca del límite, para no
+    partir una palabra por la mitad."""
+    tramo_s = TRAMO_TRANSCRIPCION_S if tramo_s is None else tramo_s
+    sr, n = archivo.samplerate, archivo.frames
+    # El corte se busca cerca del límite (a lo sumo BUSQUEDA_DE_CORTE_S, y nunca más de un cuarto de tramo).
+    objetivo, margen, ventana = int(tramo_s * sr), int(min(BUSQUEDA_DE_CORTE_S, tramo_s / 4) * sr), int(0.1 * sr)
+    cortes = [0]
+    while n - cortes[-1] > objetivo * 3 // 2:  # lo que sobre no queda en un tramo diminuto
+        centro = cortes[-1] + objetivo
+        archivo.seek(max(cortes[-1], centro - margen))
+        zona = archivo.read(min(2 * margen, n - archivo.tell()), dtype="float32")
+        inicio_zona = centro - margen if centro - margen > cortes[-1] else cortes[-1]
+        ventanas = len(zona) // ventana
+        if ventanas == 0:
+            cortes.append(centro)
+            continue
+        energia = (zona[: ventanas * ventana].reshape(ventanas, ventana) ** 2).mean(axis=1)
+        # Entre momentos igual de silenciosos, el más cercano al límite (el término aditivo desempata incluso el silencio
+        # absoluto, donde la energía es 0 y la penalización multiplicativa no cambia nada): los tramos no quedan diminutos.
+        distancia = np.abs(inicio_zona + np.arange(ventanas) * ventana - centro) / max(margen, 1)
+        cortes.append(inicio_zona + int(np.argmin(energia * (1 + 0.5 * distancia) + 1e-9 * distancia)) * ventana + ventana // 2)
+    cortes.append(n)
+    return cortes
 
 
 # Catálogo CPU (o GPU NVIDIA con < 4GB VRAM): modelos livianos.
@@ -167,23 +202,44 @@ class WhisperEngine:
         full_text = ""
         segments_data = []
 
-        try:
-            segments, info = self.current_model.transcribe(**kwargs)
-            for seg in segments:
-                full_text += seg.text + " "
-                segments_data.append({'start': seg.start, 'end': seg.end, 'text': seg.text})
-                yield {"status": "✍️ Transcribiendo", "full_text": full_text.strip(), "segments": segments_data}
-        except Exception as e:
-            if "out of memory" in str(e).lower() and self.device == "cuda":
-                print("⚠️ OOM durante transcripción. Reintentando con configuración mínima (Beam 1)...")
-                if torch.cuda.is_available():
-                    torch.cuda.empty_cache()
-                kwargs["beam_size"] = 1
-                kwargs["condition_on_previous_text"] = False
+        for audio, desplazamiento in self._tramos(audio_path):
+            kwargs["audio"] = audio
+            if full_text and kwargs.get("condition_on_previous_text", True):
+                kwargs["initial_prompt"] = full_text[-200:].strip()  # el tramo siguiente sigue el hilo del anterior
+            try:
                 segments, info = self.current_model.transcribe(**kwargs)
                 for seg in segments:
                     full_text += seg.text + " "
-                    segments_data.append({'start': seg.start, 'end': seg.end, 'text': seg.text})
-                    yield {"status": "✍️ Transcribiendo (Modo Seguro)", "full_text": full_text.strip(), "segments": segments_data}
-            else:
-                raise
+                    segments_data.append({'start': seg.start + desplazamiento, 'end': seg.end + desplazamiento, 'text': seg.text})
+                    yield {"status": "✍️ Transcribiendo", "full_text": full_text.strip(), "segments": segments_data}
+            except Exception as e:
+                if "out of memory" in str(e).lower() and self.device == "cuda":
+                    print("⚠️ OOM durante transcripción. Reintentando con configuración mínima (Beam 1)...")
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
+                    kwargs["beam_size"] = 1
+                    kwargs["condition_on_previous_text"] = False
+                    segments, info = self.current_model.transcribe(**kwargs)
+                    for seg in segments:
+                        full_text += seg.text + " "
+                        segments_data.append({'start': seg.start + desplazamiento, 'end': seg.end + desplazamiento, 'text': seg.text})
+                        yield {"status": "✍️ Transcribiendo (Modo Seguro)", "full_text": full_text.strip(), "segments": segments_data}
+                else:
+                    raise
+
+    def _tramos(self, audio_path):
+        """(audio, desplazamiento en segundos) de cada tramo. Un audio corto, o uno que no se puede leer por muestras
+        (no es wav mono de 16 kHz), se transcribe entero, como siempre."""
+        try:
+            import soundfile as sf
+
+            with sf.SoundFile(audio_path) as archivo:
+                if archivo.samplerate != 16000 or archivo.channels != 1 or archivo.frames <= TRAMO_TRANSCRIPCION_S * 16000 * 3 // 2:
+                    yield audio_path, 0.0
+                    return
+                cortes = cortes_de_audio(archivo, TRAMO_TRANSCRIPCION_S)
+                for a, b in zip(cortes, cortes[1:]):
+                    archivo.seek(a)
+                    yield archivo.read(b - a, dtype="float32"), a / archivo.samplerate
+        except (RuntimeError, ImportError, OSError):
+            yield audio_path, 0.0
