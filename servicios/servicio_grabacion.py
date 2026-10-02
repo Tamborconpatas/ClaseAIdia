@@ -312,12 +312,67 @@ def generar_material(texto: str) -> tuple[str, str, str, list]:
     return resumen, puntos, hoja, tarjetas
 
 
-def _unir_trozos(carpeta: Path, mime: str) -> Path:
-    destino = carpeta / f"clase.{EXTENSION[mime]}"
+def _empieza_un_flujo(inicio: bytes, mime: str) -> bool:
+    """¿Este trozo es el comienzo de una grabación del navegador (con su cabecera) y no la continuación de otra?
+    Un equipo que vuelve (se recargó la página, el celular se durmió) empieza un flujo nuevo."""
+    if mime == "audio/webm":
+        return inicio[:4] == b"\x1a\x45\xdf\xa3"
+    if mime == "audio/mp4":
+        return inicio[4:8] == b"ftyp"
+    if mime == "audio/ogg":
+        return inicio[:4] == b"OggS" and len(inicio) > 5 and bool(inicio[5] & 0x02)  # página de inicio de flujo
+    return False  # wav y mp3 se pueden concatenar tal cual
+
+
+def _flujos(partes: list[Path], mime: str) -> list[list[Path]]:
+    flujos: list[list[Path]] = []
+    for parte in partes:
+        with parte.open("rb") as f:
+            inicio = f.read(16)
+        if not flujos or _empieza_un_flujo(inicio, mime):
+            flujos.append([])
+        flujos[-1].append(parte)
+    return flujos
+
+
+def _concatenar(partes: list[Path], destino: Path) -> None:
     with destino.open("wb") as salida:
-        for parte in sorted(carpeta.glob("*.parte")):
+        for parte in partes:
             with parte.open("rb") as f:
                 shutil.copyfileobj(f, salida)
+
+
+def _unir_trozos(carpeta: Path, mime: str) -> Path:
+    """Une los trozos en un solo archivo. Si hubo varios flujos (el equipo se cortó y volvió), cada uno se
+    convierte aparte a wav 16 kHz mono y se juntan: pegar flujos con cabecera propia no es un archivo válido."""
+    flujos = _flujos(sorted(carpeta.glob("*.parte")), mime)
+    if len(flujos) <= 1:
+        destino = carpeta / f"clase.{EXTENSION[mime]}"
+        _concatenar(flujos[0] if flujos else [], destino)
+        return destino
+
+    import wave
+
+    from infraestructura.herramientas_ffmpeg import optimize_audio_ffmpeg
+
+    destino = carpeta / "clase.wav"
+    with wave.open(str(destino), "wb") as salida:
+        salida.setnchannels(1)
+        salida.setsampwidth(2)
+        salida.setframerate(16000)
+        for i, partes in enumerate(flujos):
+            crudo = carpeta / f"flujo{i}.{EXTENSION[mime]}"
+            _concatenar(partes, crudo)
+            convertido = optimize_audio_ffmpeg(str(crudo))
+            try:
+                with wave.open(convertido, "rb") as entrada:
+                    salida.writeframes(entrada.readframes(entrada.getnframes()))
+            except (wave.Error, EOFError) as e:
+                raise ErrorProceso("No se pudo unir el audio de la clase (¿está instalado ffmpeg?)") from e
+            finally:
+                if convertido != str(crudo) and os.path.exists(convertido):
+                    os.remove(convertido)
+                crudo.unlink(missing_ok=True)
     return destino
 
 
