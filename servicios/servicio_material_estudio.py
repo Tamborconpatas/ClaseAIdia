@@ -74,7 +74,19 @@ def _split_into_chunks(text: str, max_chars: int) -> list:
     return chunks
 
 
-def _condense_transcript(chunks: list, model_name: str, ollama_url: str) -> str:
+def _contexto(asignatura: str | None) -> str:
+    """Lo que el modelo debe saber del texto: de qué materia es, que viene de un reconocimiento de voz que se
+    equivoca (sobre todo con nombres y términos en inglés) y que la conversación ajena a la materia sobra. Sin
+    esto, el saludo y el desorden del inicio de una clase real entraban al resumen como si fueran contenido."""
+    materia = f" de la materia «{asignatura}»" if asignatura else ""
+    return (
+        f"El texto es parte de una clase{materia}, transcrita automáticamente: puede tener errores en nombres, siglas "
+        "y términos técnicos (sobre todo en inglés); corrígelos cuando el contexto lo permita. Ignora los saludos, la "
+        "asistencia, las bromas y cualquier conversación que no sea parte del contenido de la materia."
+    )
+
+
+def _condense_transcript(chunks: list, model_name: str, ollama_url: str, asignatura: str | None = None) -> str:
     """Reduce cada bloque a un resumen fiel y extenso, uno a la vez
     (secuencial, nunca en paralelo) antes de la pasada final — evita
     mandarle la transcripción completa de una clase larga a Ollama de una
@@ -90,6 +102,7 @@ def _condense_transcript(chunks: list, model_name: str, ollama_url: str) -> str:
             "extensa y fiel los conceptos, definiciones, ejemplos y datos importantes "
             "mencionados en este bloque, sin agregar información que no esté en el texto ni "
             "repetir instrucciones o encabezados — responde solo con el resumen.\n\n"
+            f"{_contexto(asignatura)}\n\n"
             f"Bloque:\n{chunk}"
         )
         summary = ollama_client.generate(
@@ -106,13 +119,13 @@ _MAX_CARACTERES_FINAL = 24_000
 _MAX_NIVELES = 3  # una clase de varias horas necesita 2; con 3 caben cientos de miles de caracteres
 
 
-def _condense_until_fits(chunks: list, model_name: str, ollama_url: str, chunk_chars: int) -> str:
+def _condense_until_fits(chunks: list, model_name: str, ollama_url: str, chunk_chars: int, asignatura: str | None = None) -> str:
     """Condensa los bloques y, si el resultado sigue siendo demasiado largo para la pasada final (una clase de
     más de una hora), lo vuelve a condensar por bloques, hasta que quepa. Así la pasada final nunca recibe más
     de lo que entra en la ventana de contexto, que es lo que antes la dejaba sin sus instrucciones."""
     nivel = 1
     while True:
-        condensado = _condense_transcript(chunks, model_name, ollama_url)
+        condensado = _condense_transcript(chunks, model_name, ollama_url, asignatura)
         if len(condensado) <= _MAX_CARACTERES_FINAL or nivel == _MAX_NIVELES:
             return condensado
         nivel += 1
@@ -160,7 +173,73 @@ def _parse_flashcards(raw_tarjetas: str) -> list:
     return cards
 
 
-def generate_study_material(text: str):
+# Las cuatro partes del material de una clase larga, cada una con su propia petición: pedirlas todas juntas a un
+# modelo de 3B con un tope de 2.048 tokens dejaba un resumen de pocos cientos de caracteres. (nombre, tokens, instrucción)
+_SECCIONES = [
+    (
+        "resumen", 1500,
+        "Escribe un resumen claro y completo de la clase, en prosa, de 4 a 7 párrafos, en el orden en que se vio, "
+        "que le permita a alguien que no asistió entender todo el contenido explicado por el profesor.",
+    ),
+    (
+        "puntos_clave", 700,
+        "Escribe una lista con viñetas ('- ') de entre 8 y 15 conceptos, definiciones, fórmulas o datos que el alumno "
+        "debería memorizar antes de una evaluación (recuperación activa: formula cada punto de forma que el alumno "
+        "tenga que recordar el detalle, no solo reconocerlo).",
+    ),
+    (
+        "hoja_repaso", 1100,
+        "Escribe una hoja de repaso con los conceptos clave; para cada uno explica también POR QUÉ importa o CÓMO se "
+        "conecta con otro concepto visto en la misma clase (elaboración: no listes definiciones sueltas, teje "
+        "relaciones entre ideas).",
+    ),
+    (
+        "tarjetas", 900,
+        "Escribe entre 8 y 12 tarjetas de estudio en formato estricto: una línea 'P: <pregunta>' y la siguiente "
+        "'R: <respuesta>', una tarjeta tras otra, sin numerarlas ni agregar texto extra. Mezcla preguntas de distintos "
+        "sub-temas en vez de agruparlas por tema (interleaving) y redáctalas pensando en que el alumno las repasará "
+        "varias veces en distintos días (repetición espaciada).",
+    ),
+]
+
+
+def _sin_cola_incompleta(texto: str) -> str:
+    """Si el modelo se quedó sin tokens a mitad de una oración, quita esa oración a medias (el alumno leía el
+    resumen terminando en «Se discutió que el desarrollo»). Si cortar dejaría menos de la mitad, no toca nada."""
+    t = texto.rstrip()
+    if not t or t[-1] in '.!?»")*:;':
+        return t
+    corte = max(t.rfind(". "), t.rfind(".\n"), t.rfind("? "), t.rfind("! "), t.rfind("\n"))
+    return t[: corte + 1].rstrip() if corte >= len(t) * 0.5 else t
+
+
+def _texto_de_seccion(raw: str, nombre: str) -> str:
+    """La respuesta a una sola sección; si el modelo repite el encabezado al inicio, se lo quita."""
+    patron = dict(_SECTION_PATTERNS)[nombre]
+    primera, _, resto = raw.strip().partition("\n")
+    if resto and patron.fullmatch(primera.strip()):  # solo si el encabezado está solo en su línea, no si abre una oración
+        raw = resto
+    return raw.strip() if nombre == "tarjetas" else _sin_cola_incompleta(raw.strip())
+
+
+def _generar_por_secciones(material: str, asignatura: str | None, model_name: str, ollama_url: str, max_tokens: int):
+    """Las cuatro partes del material, cada una en su propia llamada. El contenido va primero y la instrucción al
+    final (con el mismo contenido al principio, Ollama reutiliza lo ya leído entre una llamada y la siguiente), y
+    todas piden la misma ventana de contexto: cambiarla entre llamadas hace que Ollama recargue el modelo."""
+    base = f"{_contexto(asignatura)}\n\nContenido de la clase (resumen por partes):\n{material}\n\n---\n"
+    ventana = ollama_client.ventana_necesaria(base + "x" * 600, max(tokens for _, tokens, _ in _SECCIONES))
+    textos = {}
+    for nombre, tokens, instruccion in _SECCIONES:
+        print(f"[study_material] Generando {nombre}...")
+        raw = ollama_client.generate(
+            base + f"{instruccion} Responde solo con eso, sin encabezados.",
+            model=model_name, max_tokens=min(tokens, max_tokens), ollama_url=ollama_url, ventana=ventana,
+        )
+        textos[nombre] = _texto_de_seccion(raw, nombre)
+    return textos["resumen"], textos["puntos_clave"], textos["hoja_repaso"], _parse_flashcards(textos["tarjetas"])
+
+
+def generate_study_material(text: str, asignatura: str | None = None):
     """Genera resumen, puntos clave, hoja de repaso y tarjetas de estudio,
     incorporando recuperación activa/elaboración/interleaving en el diseño
     del prompt (la repetición espaciada real necesita que la app resurfacee
@@ -185,9 +264,9 @@ def generate_study_material(text: str):
     try:
         if len(chunks) > 1:
             print(f"[study_material] Transcripción larga: procesando en {len(chunks)} bloques...")
-            source_text = _condense_until_fits(chunks, model_name, ollama_url, chunk_chars)
-        else:
-            source_text = text
+            source_text = _condense_until_fits(chunks, model_name, ollama_url, chunk_chars, asignatura)
+            return _generar_por_secciones(source_text, asignatura, model_name, ollama_url, max_tokens)
+        source_text = text
     except RuntimeError as e:
         return str(e), "", "", []
 
@@ -216,6 +295,7 @@ def generate_study_material(text: str):
         "por tema (interleaving), y redáctalas pensando en que el alumno las repasará varias "
         "veces en distintos días, no solo una vez (repetición espaciada).\n\n"
         f"No excedas los {max_tokens} tokens en total.\n\n"
+        f"{_contexto(asignatura)}\n\n"
         f"Contenido de la clase:\n{source_text}"
     )
 
