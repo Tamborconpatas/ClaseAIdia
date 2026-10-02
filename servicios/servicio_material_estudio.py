@@ -3,6 +3,7 @@ import re
 
 from nucleo import configuracion as app_config
 from nucleo import limpieza_texto
+from nucleo.memoria import memoria_libre_gb
 from infraestructura import cliente_ollama as ollama_client
 from infraestructura import hardware
 
@@ -17,6 +18,23 @@ def _resolve_ollama_model(configured: str) -> str:
     if configured != "auto":
         return configured
     return _OLLAMA_MODEL_GPU if hardware.detect_gpu_vendor() != "none" else _OLLAMA_MODEL_CPU
+
+
+# Memoria que usa Ollama con cada modelo (medido en CPU, con la ventana de contexto grande de una clase larga):
+# el de 1B llega a ~1,6 GB y el de 3B a ~4,8 GB. Un modelo que no se conoce se supone grande.
+_MEMORIA_DEL_MODELO_GB = {_OLLAMA_MODEL_CPU: 2.0, _OLLAMA_MODEL_GPU: 5.0}
+_MEMORIA_DE_UN_MODELO_DESCONOCIDO_GB = 6.0
+
+
+def _modelo_que_cabe(modelo: str, es_auto: bool) -> str:
+    """En un equipo modesto cargar un modelo que no cabe en la memoria libre ahoga a todo el sistema. Si el modelo lo
+    eligió la aplicación (`auto`) y no cabe, se usa el liviano; si lo eligió la persona se respeta."""
+    libre = memoria_libre_gb()
+    necesita = _MEMORIA_DEL_MODELO_GB.get(modelo, _MEMORIA_DE_UN_MODELO_DESCONOCIDO_GB)
+    if es_auto and libre is not None and libre < necesita and modelo != _OLLAMA_MODEL_CPU:
+        print(f"[study_material] AVISO: {modelo} necesita ~{necesita:.0f} GB y hay {libre:.1f} GB libres: se usa {_OLLAMA_MODEL_CPU}.")
+        return _OLLAMA_MODEL_CPU
+    return modelo
 
 # Regex tolerante en vez de string exacto: modelos locales pequeños no
 # siempre reproducen los marcadores al pie de la letra.
@@ -259,7 +277,8 @@ def generate_study_material(text: str, asignatura: str | None = None):
 
     text = limpieza_texto.limpiar_transcripcion(text)
 
-    model_name = _resolve_ollama_model(app_config.get_param("ollama_model"))
+    configurado = app_config.get_param("ollama_model")
+    model_name = _modelo_que_cabe(_resolve_ollama_model(configurado), es_auto=configurado == "auto")
     max_tokens = int(app_config.get_param("ollama_max_tokens"))
     ollama_url = os.environ.get("OLLAMA_URL") or app_config.get_param("ollama_url")
     chunk_chars = int(app_config.get_param("ollama_chunk_chars"))

@@ -2,6 +2,8 @@
 generación por secciones.
 (Salió de una clase real de 92 minutos: el prompt final no cabía en la ventana por defecto, Ollama le recortaba las
 instrucciones, y el material salía sin hoja de repaso ni tarjetas, o con un resumen de pocos cientos de caracteres.)"""
+import pytest
+
 from infraestructura import cliente_ollama
 from servicios import servicio_material_estudio as m
 
@@ -248,3 +250,54 @@ def test_si_tras_el_segundo_intento_sigue_sin_haber_tarjetas_no_se_pide_una_terc
     _, _, _, tarjetas = m.generate_study_material("Esto es una frase de clase. " * 4000, "X")
     assert tarjetas == []
     assert sum("tarjetas de estudio" in p for p in llamadas) == 2  # tope de dos intentos por sección
+
+
+# --- La memoria de Ollama en un equipo modesto 24/7 -------------------------------------------------
+
+
+def test_ollama_suelta_el_modelo_al_minuto_y_no_a_los_cinco(monkeypatch):
+    enviados = []
+
+    class Respuesta:
+        status_code = 200
+
+        def json(self):
+            return {"response": "ok"}
+
+    monkeypatch.setattr(cliente_ollama.requests, "post", lambda url, json, timeout: enviados.append(json) or Respuesta())
+    cliente_ollama.generate("hola", model="m", max_tokens=10)
+    assert enviados[0]["keep_alive"] == "60s"
+
+
+@pytest.mark.parametrize(
+    "modelo,libre,es_auto,esperado",
+    [
+        ("llama3.2:3b", 10.0, True, "llama3.2:3b"),  # cabe
+        ("llama3.2:3b", 5.0, True, "llama3.2:3b"),  # justo lo que necesita: cabe
+        ("llama3.2:3b", 3.0, True, "llama3.2:1b"),  # no cabe y lo eligió la aplicación: el liviano
+        ("llama3.2:3b", 3.0, False, "llama3.2:3b"),  # lo eligió la persona: se respeta
+        ("llama3.2:1b", 1.0, True, "llama3.2:1b"),  # ya es el liviano
+        ("llama3.2:3b", None, True, "llama3.2:3b"),  # no se puede medir: no se cambia nada
+        ("otro:70b", 3.0, True, "llama3.2:1b"),  # un modelo que no se conoce se supone grande
+        ("otro:70b", 7.0, True, "otro:70b"),
+    ],
+)
+def test_si_el_modelo_elegido_por_la_aplicacion_no_cabe_se_usa_el_liviano(monkeypatch, modelo, libre, es_auto, esperado):
+    monkeypatch.setattr(m, "memoria_libre_gb", lambda: libre)
+    assert m._modelo_que_cabe(modelo, es_auto) == esperado
+
+
+def test_generate_study_material_elige_el_modelo_segun_la_memoria(monkeypatch):
+    usados = []
+
+    def falso(prompt, model, max_tokens, ollama_url="x", ventana=None):
+        usados.append(model)
+        return "##RESUMEN##\nr\n##PUNTOS_CLAVE##\n- p\n##HOJA_DE_REPASO##\nh\n##TARJETAS_ESTUDIO##\nP: a\nR: b"
+
+    monkeypatch.setattr(m.ollama_client, "generate", falso)
+    monkeypatch.setattr(m.hardware, "detect_gpu_vendor", lambda: "nvidia")  # con GPU, auto elegiría el de 3B
+    monkeypatch.setattr(m, "memoria_libre_gb", lambda: 3.0)
+    parametros = {"ollama_model": "auto", "ollama_max_tokens": 2048, "ollama_url": "u", "ollama_chunk_chars": 6000}
+    monkeypatch.setattr(m.app_config, "get_param", lambda k: parametros[k])
+    m.generate_study_material("Una clase corta.")
+    assert usados == ["llama3.2:1b"]

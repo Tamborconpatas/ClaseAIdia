@@ -55,7 +55,7 @@ def crear_app(vigilar: bool = False) -> FastAPI:
             from infraestructura.basedatos import SessionLocal
 
             with SessionLocal() as db:
-                servicio_grabacion.recuperar_al_iniciar(db)
+                servicio_grabacion.recuperar_al_iniciar(db, SessionLocal)
             tarea = asyncio.create_task(_vigilante(SessionLocal))
         yield
         if tarea:
