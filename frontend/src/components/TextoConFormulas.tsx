@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { Mermaid } from '@/components/Mermaid'
 import { partir, type Trozo } from '@/lib/formulas'
 import { cn } from '@/lib/utils'
 
@@ -57,7 +58,7 @@ export function TextoConFormulas({ texto, className }: { texto: string; classNam
     <div className={cn('space-y-2 leading-relaxed', className)}>
       {grupos.map((grupo, i) => {
         const t = grupo[0]
-        if (t.tipo === 'mermaid') return <pre key={i} className="overflow-x-auto rounded-lg bg-muted p-3 font-mono text-xs">{t.valor}</pre>
+        if (t.tipo === 'mermaid') return <Mermaid key={i} codigo={t.valor} descripcion="Diagrama de la pizarra" />
         if (esBloque(t) && t.tipo === 'formula') {
           return (
             <div key={i} className="overflow-x-auto py-1" tabIndex={0} aria-label="Fórmula">

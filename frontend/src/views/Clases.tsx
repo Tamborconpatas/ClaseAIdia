@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react'
-import { AlertTriangle, ArrowLeft, Check, CheckCircle2, ChevronRight, Clock, EyeOff, FileText, Layers, ListChecks, Loader2, MapPin, PenLine, Pencil, RotateCcw, Sparkles } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, Check, CheckCircle2, ChevronRight, Clock, EyeOff, FileText, Layers, ListChecks, Loader2, MapPin, Network, PenLine, Pencil, RotateCcw, Sparkles } from 'lucide-react'
 import { Cargando, ErrorForm, Vacio } from '@/components/comunes'
 import { FotoLeida } from '@/components/FotoLeida'
+import { EditorMapa, MapaDibujado } from '@/components/MapaConceptual'
 import { EditorMaterial, type MaterialEditable } from '@/components/EditorMaterial'
 import { Button } from '@/components/ui/button'
 import { api, type ClaseDetalle, type ClaseResumen, type EstadoClase } from '@/lib/api'
@@ -159,6 +160,7 @@ function DetalleClase({ id, onVolver, onCambio }: { id: number; onVolver: () => 
   const clase = useCarga(() => api<ClaseDetalle>(`/clases/${id}`), [id])
   const [trabajando, setTrabajando] = useState<'aprobar' | 'retirar' | null>(null)
   const [editando, setEditando] = useState(false)
+  const [editandoMapa, setEditandoMapa] = useState(false)
   const [errorAccion, setErrorAccion] = useState<string | null>(null)
 
   const revisar = async (accion: 'aprobar' | 'retirar') => {
@@ -294,6 +296,31 @@ function DetalleClase({ id, onVolver, onCambio }: { id: number; onVolver: () => 
             <Seccion icono={Layers} titulo="Hoja de repaso">
               <p className="leading-relaxed">{k.hoja_repaso}</p>
             </Seccion>
+          )}
+          {(k.mapa.length > 0 || (esProfesor && editandoMapa)) && (
+            <Seccion
+              icono={Network}
+              titulo="Mapa conceptual"
+              nota={esProfesor ? 'La IA lo propone solo con un modelo grande, y puede equivocarse: corrígelo o quítalo antes de aprobar.' : 'Generado automáticamente a partir de la clase: puede tener errores.'}
+            >
+              {editandoMapa ? (
+                <EditorMapa claseId={id} inicial={k.mapa} onCancelar={() => setEditandoMapa(false)} onGuardado={() => { setEditandoMapa(false); clase.recargar() }} />
+              ) : (
+                <div className="space-y-3">
+                  <MapaDibujado relaciones={k.mapa} />
+                  {esProfesor && (
+                    <Button variant="outline" className="h-10 desk:h-8" onClick={() => setEditandoMapa(true)}>
+                      <Pencil /> Corregir el mapa
+                    </Button>
+                  )}
+                </div>
+              )}
+            </Seccion>
+          )}
+          {esProfesor && k.mapa.length === 0 && !editandoMapa && (
+            <Button variant="outline" className="h-11 w-full desk:h-9 desk:w-auto" onClick={() => setEditandoMapa(true)}>
+              <Network /> Agregar un mapa conceptual
+            </Button>
           )}
           {k.tarjetas.length > 0 && (
             <Seccion icono={Sparkles} titulo="Tarjetas de estudio" nota="Intenta responder antes de ver la respuesta: recordar activamente es lo que más ayuda a aprender.">
