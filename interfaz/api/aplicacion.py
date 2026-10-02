@@ -1,5 +1,8 @@
 import asyncio
+import datetime
+import os
 import traceback
+from pathlib import Path
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -17,7 +20,7 @@ from interfaz.api import (
     rutas_grabaciones,
     rutas_usuarios,
 )
-from servicios import servicio_grabacion
+from servicios import servicio_grabacion, servicio_respaldo
 
 # Orígenes explícitos de desarrollo (nunca "*" en producción, por CLAUDE.md).
 # Se amplía cuando exista el frontend real (Vite) y el dominio del túnel.
@@ -30,6 +33,21 @@ ORIGENES_PERMITIDOS = [
 INTERVALO_VIGILANTE_S = 10
 
 
+def _respaldar():
+    """Una vez al día (la primera pasada del día) copia la base a CARPETA_RESPALDOS."""
+    from infraestructura.basedatos import engine
+
+    if engine.url.get_backend_name() != "sqlite" or not engine.url.database:
+        return
+    try:
+        servicio_respaldo.respaldar_si_toca(
+            Path(engine.url.database), Path(os.environ.get("CARPETA_RESPALDOS", "respaldos")), datetime.datetime.now(),
+            int(os.environ.get("DIAS_DE_RESPALDO", servicio_respaldo.DIAS_POR_DEFECTO)),
+        )
+    except Exception:  # un respaldo fallido no debe frenar la vigilancia de las grabaciones
+        traceback.print_exc()
+
+
 async def _vigilante(fabrica):
     """Corte automático de las grabaciones y limpieza: cada pocos segundos revisa las sesiones en curso."""
     while True:
@@ -38,6 +56,7 @@ async def _vigilante(fabrica):
             def pasada():
                 with fabrica() as db:
                     servicio_grabacion.vigilar(db, fabrica)
+                _respaldar()
 
             await asyncio.to_thread(pasada)
         except Exception:  # un fallo de una pasada no debe matar la vigilancia

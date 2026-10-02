@@ -114,4 +114,4 @@ En colegio, un Curso agrupa varios Bloques (toda la semana de un grupo fijo de a
 ## Pendiente por resolver antes del piloto (no técnico, pero bloqueante)
 
 - Consentimiento informado de apoderados para el colegio piloto (dato personal de menores, aunque sea descartado tras procesarse).
-- Respaldo simple y periódico de la base de datos (no del audio — de la estructura: horario, usuarios, contenido de texto acumulado).
+- ~~Respaldo simple y periódico de la base de datos~~ **Hecho (2026-10-02)**: copia diaria automática a `CARPETA_RESPALDOS` (últimos `DIAS_DE_RESPALDO` días, copia en caliente de SQLite). Queda por resolver, en el despliegue, apuntarla a **otro disco o unidad externa** (en el mismo disco no protege de una falla del disco) y probar restaurar.
