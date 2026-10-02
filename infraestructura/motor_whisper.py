@@ -3,6 +3,7 @@ import gc
 import torch
 
 from nucleo import configuracion as app_config
+from nucleo.recursos import hilos_de_procesamiento
 from infraestructura import hardware
 
 try:
@@ -104,7 +105,10 @@ class WhisperEngine:
                     fw_compute_type = "int8"
 
             try:
-                self.current_model = WhisperModel(model_id_or_path, device=self.device, compute_type=fw_compute_type)
+                # En CPU se deja un núcleo libre: el servidor sigue atendiendo a la gente mientras transcribe.
+                self.current_model = WhisperModel(
+                    model_id_or_path, device=self.device, compute_type=fw_compute_type, cpu_threads=hilos_de_procesamiento()
+                )
             except Exception as e:
                 if "out of memory" in str(e).lower() and self.device == "cuda":
                     print("⚠️ OOM Detectado en GPU. Reintentando con limpieza profunda y cuantización int8 extrema...")
@@ -146,6 +150,11 @@ class WhisperEngine:
         vad_filter = app_config.get_param("vad_filter")
         beam_size = app_config.get_param("beam_size")
         kwargs = {"audio": audio_path, "vad_filter": vad_filter, "beam_size": beam_size, "language": "es"}
+
+        if self.device == "cpu":
+            # Medido (4 hilos, int8, clase real): con beam 5 `small` va a 2,5-3,5x el tiempo real y con beam 1 a 6-7x,
+            # y una clase de 90 minutos pasa de ~40 a ~15 minutos. En un servidor 24/7 sin GPU el tiempo manda.
+            kwargs["beam_size"] = 1
 
         if self.device == "cuda":
             if get_vram_gb() < 5.0:

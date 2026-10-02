@@ -1,5 +1,7 @@
 import requests
 
+from nucleo.recursos import hilos_de_procesamiento
+
 # Generar texto en CPU (hardware objetivo del proyecto, sin GPU) puede tardar
 # varios minutos para un modelo de 7-9B con num_predict alto — 180s se queda
 # corto en ese escenario real, así que el timeout queda generoso a propósito.
@@ -41,6 +43,7 @@ def generate(
             # `ventana` fija la misma para varias llamadas seguidas: cambiarla obliga a Ollama a recargar el modelo.
             "num_ctx": ventana or ventana_necesaria(prompt, max_tokens),
             "temperature": _TEMPERATURA,
+            "num_thread": hilos_de_procesamiento(),  # un núcleo libre para que el servidor siga atendiendo
         }
     }
 
