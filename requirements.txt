@@ -9,7 +9,13 @@
 # funcionando (CPU y GPU NVIDIA real). Si se sube alguna versión, probar
 # transcripción real en GPU antes de dar por bueno el cambio.
 #
-# Requiere Python 3.10 a 3.12 (no 3.13, no 3.14). numpy==1.26.4 no tiene
+# Actualizado 2026-10-01: numpy 2.x, librosa 1.0, scipy 1.18, gradio 6.29,
+# transformers 5.18, SQLAlchemy 2.1, alembic 1.20 (probado: pytest + prueba de
+# humo de limpieza de audio, faster-whisper en CPU y la interfaz Gradio, ver
+# QA.md). SIN actualizar a propósito: torch/torchaudio y ctranslate2, porque no
+# se pueden probar en GPU aquí (ver el primer párrafo).
+#
+# Requiere Python 3.10 a 3.12 (no 3.13, no 3.14). El numpy 1.26.4 anterior no tenía
 # wheel prebuilt para 3.13+ en NINGÚN sistema operativo (verificado contra
 # PyPI: solo publica cp39-cp312) — falla al compilar desde fuente si no
 # está el paquete `-devel`/`-dev` de esa versión de Python (confirmado
@@ -19,7 +25,7 @@
 # `conda create -n transcriptor-env python=3.12`), no con el del sistema.
 
 # 1. Interfaz de Usuario y Utilería
-gradio==6.26.0
+gradio==6.29.0
 
 # 2. Core AI — instalar torch/torchaudio ANTES de este archivo con el
 # índice correcto según el hardware (ver README/Notas_de_Instalacion):
@@ -37,19 +43,19 @@ ctranslate2==4.8.1
 # AMD/ROCm — CTranslate2 no soporta ROCm, así que ahí se usa PyTorch en su
 # lugar). Opcional: si no está instalado, una GPU AMD simplemente cae a
 # faster-whisper en CPU en vez de acelerar por GPU.
-transformers==5.16.1
+transformers==5.18.0
 safetensors==0.8.0
 
 # 4. Audios y Preprocesamiento
-librosa==0.11.0
+librosa==1.0.0
 soundfile==0.14.0
 yt-dlp==2026.8.19
-numpy==1.26.4
+numpy==2.5.3
 requests==2.34.2
 
 # 5. Limpieza de Audio (Pipeline de Pre-procesamiento)
 noisereduce==3.0.3   # Reducción de ruido DSP (Wiener filter), modo rápido
-scipy==1.17.1        # Filtros digitales (highpass, lowpass)
+scipy==1.18.1        # Filtros digitales (highpass, lowpass)
 # deepfilternet (modo 'deepfilter', máxima calidad) NO está acá a propósito:
 # su dependencia deepfilterlib compila una extensión nativa en Rust y no trae
 # wheel prebuilt para todas las plataformas — instalarla rompe TODO este archivo
@@ -60,8 +66,8 @@ scipy==1.17.1        # Filtros digitales (highpass, lowpass)
 # 6. Backend real (FastAPI) — app aparte del prototipo Gradio. fastapi/uvicorn
 # ya los trae gradio como dependencia transitiva; se fijan igual acá porque
 # los usamos directamente. sqlalchemy/alembic son nuevos.
-sqlalchemy==2.0.52
-alembic==1.19.1
+sqlalchemy==2.1.1
+alembic==1.20.0
 
 # 7. Pruebas (QA) — ver QA.md para el registro de qué se prueba en cada fase.
 pytest==9.1.1
