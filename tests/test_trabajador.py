@@ -327,6 +327,16 @@ def test_tras_un_reinicio_sin_audio_ni_transcripcion_queda_en_error(sesion_proce
     assert estado == E.ERROR and "reinició" in error
 
 
+def test_tras_un_reinicio_el_audio_de_una_sesion_con_reintento_pendiente_se_conserva(sesion_procesando, monkeypatch):
+    """Encontrado probando con el servidor real: reiniciar borraba el audio que el reintento automático necesitaba."""
+    monkeypatch.setattr(sg, "_lanzar", lambda *a: None)
+    with sesion_procesando["fabrica"]() as db:
+        sg.programar_reintento(db.get(Grabacion, sesion_procesando["id"]), "falló")
+        db.commit()
+    sg.recuperar_al_iniciar(sesion_procesando["db"], sesion_procesando["fabrica"])
+    assert (sesion_procesando["carpeta"] / "000000.parte").exists()
+
+
 def test_el_audio_de_una_sesion_que_nadie_procesa_ni_graba_se_borra_al_arrancar(sesion_procesando, monkeypatch):
     monkeypatch.setattr(sg, "_lanzar", lambda *a: None)
     huerfano = sg.CARPETA_AUDIO / "999"

@@ -657,6 +657,7 @@ def recuperar_al_iniciar(db: Session, fabrica: sessionmaker | None = None) -> No
             g.estado, g.error = E.ERROR, "El servidor se reinició mientras se procesaba la clase"
     db.commit()
     vivas = {str(g.id) for g in db.query(Grabacion).filter(Grabacion.estado.in_(ACTIVAS)).all()} | en_proceso
+    vivas |= {str(g.id) for g in db.query(Grabacion).filter(Grabacion.estado == E.ERROR, Grabacion.reintento_en.is_not(None)).all()}  # su reintento necesita el audio
     if CARPETA_AUDIO.exists():
         for d in CARPETA_AUDIO.iterdir():
             if d.is_dir() and d.name not in vivas:
