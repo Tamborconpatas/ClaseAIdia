@@ -26,6 +26,7 @@ def foto(ancho=2000, alto=1000, formato="JPEG", orientacion=None):
 
 @pytest.fixture(autouse=True)
 def entorno(monkeypatch, tmp_path):
+    monkeypatch.setenv("FOTOS_PIZARRA", "si")  # las pruebas parten con la función activada; una prueba aparte la apaga
     monkeypatch.setattr(sp, "CARPETA_FOTOS", tmp_path / "fotos")
     monkeypatch.setattr(sp, "esperar_memoria", lambda *a, **k: True)
     monkeypatch.setattr(sp.cliente_ollama, "descargar_modelo", lambda *a, **k: None)
@@ -300,3 +301,27 @@ def test_la_lectura_real_limpia_las_repeticiones_y_en_el_reintento_manda_la_foto
     import base64, io as _io
     tamano = lambda k: Image.open(_io.BytesIO(base64.b64decode(k["imagenes"][0]))).size
     assert max(tamano(normal)) == 1024 and max(tamano(reducida)) == sp.LADO_REINTENTO == 768
+
+
+# --- Opcional: el colegio elige si tener las fotos ------------------------------------------------------------------------
+
+
+def test_sin_activar_las_fotos_el_servidor_las_rechaza_y_la_pantalla_lo_sabe(g, monkeypatch, tmp_path):
+    gid = _en_curso(g)
+    assert _estado(g, gid)["fotos_habilitadas"] is True
+    monkeypatch.setenv("FOTOS_PIZARRA", "no")
+    r = subir(g, gid)
+    assert r.status_code == 403 and "no están activadas" in r.json()["detail"]
+    assert archivos(tmp_path) == []
+    assert _estado(g, gid)["fotos_habilitadas"] is False  # la pantalla de grabar no muestra el botón
+
+
+@pytest.mark.parametrize("valor,activada", [("si", True), ("SÍ", True), ("1", True), ("true", True), (" Yes ", True), ("no", False), ("", False), ("0", False), ("quizas", False)])
+def test_como_se_activa(monkeypatch, valor, activada):
+    monkeypatch.setenv("FOTOS_PIZARRA", valor)
+    assert sp.activadas() is activada
+
+
+def test_por_defecto_viene_apagada(monkeypatch):
+    monkeypatch.delenv("FOTOS_PIZARRA", raising=False)
+    assert sp.activadas() is False

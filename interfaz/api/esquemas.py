@@ -506,6 +506,7 @@ class GrabacionOut(BaseModel):
     error: str | None
     reintento_en: datetime.datetime | None = None  # cuándo se reintenta sola (UTC), si hay un reintento programado
     fotos: list[FotoPizarraOut] = []  # fotos de la pizarra de esta clase (la imagen no se guarda: solo el texto leído)
+    fotos_habilitadas: bool = False  # el colegio activó las fotos de la pizarra (FOTOS_PIZARRA=si)
 
 
 class BloqueDeHoyOut(BaseModel):
