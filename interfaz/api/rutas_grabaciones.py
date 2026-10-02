@@ -17,6 +17,7 @@ from interfaz.api.esquemas import (
 )
 from interfaz.api.red_local import solo_red_local
 from servicios import servicio_grabacion as sg
+from servicios import servicio_pizarra
 
 # Todo lo de /grabaciones es de la red local y del profesor de ese bloque (ni el UTP ni otro profesor).
 router = APIRouter(prefix="/grabaciones", tags=["grabaciones"], dependencies=[Depends(solo_red_local)])
@@ -32,6 +33,7 @@ def _salida(g: Grabacion) -> dict:
         "segundos_grabados": g.segundos_grabados, "nivel": g.nivel, "trozos": g.trozos, "grabador_id": g.grabador_id,
         "grabador_conectado": sg.grabador_conectado(g), "error": g.error,
         "reintento_en": g.reintento_en.replace(tzinfo=datetime.timezone.utc) if g.reintento_en else None,
+        "fotos": g.fotos,
     }
 
 
@@ -118,6 +120,20 @@ async def subir_trozo(
         if len(datos) > sg.MAX_TROZO_BYTES:
             raise HTTPException(status_code=413, detail="Trozo de audio demasiado grande")
     return _salida(sg.guardar_trozo(db, g, dispositivo, n, bytes(datos), request.headers.get("content-type", "")))
+
+
+@router.post("/{grabacion_id}/fotos", response_model=GrabacionOut, status_code=201)
+async def subir_foto(grabacion_id: int, request: Request, segundo: int = 0, db: Session = Depends(obtener_db), profesor: Usuario = Depends(profesor_actual)):
+    """Una foto de la pizarra (cuerpo crudo: JPEG, PNG o WebP). Desde cualquier equipo del profesor en la red del colegio."""
+    g = _propia(db, grabacion_id, profesor)
+    datos = bytearray()
+    async for parte in request.stream():
+        datos += parte
+        if len(datos) > servicio_pizarra.MAX_BYTES:
+            raise HTTPException(status_code=413, detail="La foto es demasiado grande")
+    servicio_pizarra.guardar_foto(db, g, bytes(datos), segundo)
+    db.refresh(g)
+    return _salida(g)
 
 
 @router.post("/{grabacion_id}/finalizar", response_model=GrabacionOut)

@@ -429,6 +429,16 @@ class GrabadorFinalizar(BaseModel):
     dispositivo: str = _ID_DISPOSITIVO
 
 
+class FotoPizarraOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    segundo: int
+    estado: str  # pendiente | leida | error
+    texto: str | None = None
+    error: str | None = None
+
+
 class GrabacionOut(BaseModel):
     id: int
     clase_id: int
@@ -450,6 +460,7 @@ class GrabacionOut(BaseModel):
     grabador_conectado: bool
     error: str | None
     reintento_en: datetime.datetime | None = None  # cuándo se reintenta sola (UTC), si hay un reintento programado
+    fotos: list[FotoPizarraOut] = []  # fotos de la pizarra de esta clase (la imagen no se guarda: solo el texto leído)
 
 
 class BloqueDeHoyOut(BaseModel):

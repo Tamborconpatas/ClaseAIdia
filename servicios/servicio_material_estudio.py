@@ -104,6 +104,11 @@ def _contexto(asignatura: str | None) -> str:
     )
 
 
+def _con_pizarra(contenido: str, pizarra: str) -> str:
+    """Lo leído de las fotos de la pizarra va aparte del contenido hablado, con su advertencia (puede tener cifras mal leídas)."""
+    return f"{contenido}\n\n{pizarra}" if pizarra and pizarra.strip() else contenido
+
+
 def _condense_transcript(chunks: list, model_name: str, ollama_url: str, asignatura: str | None = None) -> str:
     """Reduce cada bloque a un resumen fiel y extenso, uno a la vez
     (secuencial, nunca en paralelo) antes de la pasada final — evita
@@ -262,7 +267,7 @@ def _generar_por_secciones(material: str, asignatura: str | None, model_name: st
     return textos["resumen"], textos["puntos_clave"], textos["hoja_repaso"], _parse_flashcards(textos["tarjetas"])
 
 
-def generate_study_material(text: str, asignatura: str | None = None):
+def generate_study_material(text: str, asignatura: str | None = None, pizarra: str = ""):
     """Genera resumen, puntos clave, hoja de repaso y tarjetas de estudio,
     incorporando recuperación activa/elaboración/interleaving en el diseño
     del prompt (la repetición espaciada real necesita que la app resurfacee
@@ -289,8 +294,8 @@ def generate_study_material(text: str, asignatura: str | None = None):
         if len(chunks) > 1:
             print(f"[study_material] Transcripción larga: procesando en {len(chunks)} bloques...")
             source_text = _condense_until_fits(chunks, model_name, ollama_url, chunk_chars, asignatura)
-            return _generar_por_secciones(source_text, asignatura, model_name, ollama_url, max_tokens)
-        source_text = text
+            return _generar_por_secciones(_con_pizarra(source_text, pizarra), asignatura, model_name, ollama_url, max_tokens)
+        source_text = _con_pizarra(text, pizarra)
     except RuntimeError as e:
         return str(e), "", "", []
 

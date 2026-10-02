@@ -91,6 +91,12 @@ def borrar_audio(grabacion_id: int) -> None:
     shutil.rmtree(_carpeta(grabacion_id), ignore_errors=True)
 
 
+def _pizarra():
+    from servicios import servicio_pizarra  # import tardío: ese módulo importa este
+
+    return servicio_pizarra
+
+
 # --- Crear y controlar la sesión ------------------------------------------------------------------
 
 
@@ -195,6 +201,7 @@ def aplicar_comando(db: Session, g: Grabacion, accion: str) -> Grabacion | None:
 def _eliminar(db: Session, g: Grabacion) -> None:
     clase = g.clase
     borrar_audio(g.id)
+    _pizarra().borrar_fotos(g.id)
     db.delete(g)
     if clase.contenido is None:
         db.delete(clase)
@@ -371,6 +378,8 @@ def _borrar_audio_si_ya_no_hace_falta(grabacion_id: int, fabrica: sessionmaker) 
         # Si ya está la transcripción, el reintento solo regenera el material: el audio no se necesita para nada.
         if g is None or not reintentos_pendientes(g) or transcripcion_guardada:
             borrar_audio(grabacion_id)
+            if g is not None:
+                _pizarra().descartar_pendientes(db, grabacion_id)  # si la clase no se procesó, sus fotos tampoco se van a leer
 
 
 def _anotar_proceso(grabacion_id: int, pid: int) -> None:
@@ -442,10 +451,10 @@ def transcribir(ruta: str) -> tuple[str, str]:
     return final["text"], final.get("srt", "")
 
 
-def generar_material(texto: str, asignatura: str | None = None) -> tuple[str, str, str, list]:
+def generar_material(texto: str, asignatura: str | None = None, pizarra: str = "") -> tuple[str, str, str, list]:
     from servicios.servicio_material_estudio import generate_study_material
 
-    resumen, puntos, hoja, tarjetas = generate_study_material(texto, asignatura)
+    resumen, puntos, hoja, tarjetas = generate_study_material(texto, asignatura, pizarra)
     if not (puntos or hoja or tarjetas):  # el generador devuelve el error como "resumen"
         raise ErrorProceso(resumen or "No se pudo generar el material de estudio")
     return resumen, puntos, hoja, tarjetas
@@ -528,7 +537,10 @@ def procesar(grabacion_id: int, fabrica: sessionmaker) -> None:
                 texto, srt = transcribir(str(archivo))
                 if not texto.strip():
                     raise ErrorProceso("No se detectó voz en el audio")
-                resumen, puntos, hoja, tarjetas = generar_material(texto, g.clase.bloque.asignatura)
+                _pizarra().leer_pendientes(g.id, fabrica)  # después de Whisper (ya soltó su memoria); nunca lanza
+                with fabrica() as otra:
+                    pizarra = _pizarra().texto_para_el_material(otra, g.id)
+                resumen, puntos, hoja, tarjetas = generar_material(texto, g.clase.bloque.asignatura, pizarra)
                 g.clase.contenido = ContenidoClase(
                     transcripcion_texto=texto, transcripcion_srt=srt, resumen=resumen,
                     puntos_clave=puntos, hoja_repaso=hoja, tarjetas=tarjetas,
@@ -570,7 +582,9 @@ def procesar_generacion(grabacion_id: int, fabrica: sessionmaker) -> None:
                 return
             k = g.clase.contenido
             try:
-                resumen, puntos, hoja, tarjetas = generar_material(k.transcripcion_texto, g.clase.bloque.asignatura)
+                with fabrica() as otra:
+                    pizarra = _pizarra().texto_para_el_material(otra, g.id)
+                resumen, puntos, hoja, tarjetas = generar_material(k.transcripcion_texto, g.clase.bloque.asignatura, pizarra)
                 k.resumen, k.puntos_clave, k.hoja_repaso, k.tarjetas = resumen, puntos, hoja, tarjetas
                 k.retirado, k.generado_en = False, reloj_de_revision()  # vuelve al flujo normal: por aprobar (el plazo de revisión corre desde ahora)
                 g.estado, g.error = E.TERMINADA, None
@@ -656,6 +670,7 @@ def recuperar_al_iniciar(db: Session, fabrica: sessionmaker | None = None) -> No
         else:
             g.estado, g.error = E.ERROR, "El servidor se reinició mientras se procesaba la clase"
     db.commit()
+    _pizarra().limpiar_huerfanas(db)
     vivas = {str(g.id) for g in db.query(Grabacion).filter(Grabacion.estado.in_(ACTIVAS)).all()} | en_proceso
     vivas |= {str(g.id) for g in db.query(Grabacion).filter(Grabacion.estado == E.ERROR, Grabacion.reintento_en.is_not(None)).all()}  # su reintento necesita el audio
     if CARPETA_AUDIO.exists():
