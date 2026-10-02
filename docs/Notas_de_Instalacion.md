@@ -6,13 +6,13 @@ Posee soporte de interfaces web creadas en **Gradio**.
 
 ## Notas de Instalación y Entorno
 
-### 0. Versión de Python (Estrictamente 3.10 a 3.12 — Prohibido 3.13+)
+### 0. Versión de Python (3.12 a 3.14)
 
-Requiere **Python 3.10 a 3.12** (recomendado **Python 3.12**).
-> **NO USAR Python 3.13 ni 3.14**: `numpy==1.26.4` (fijado en `requirements.txt`) no tiene wheel precompilado para 3.13+ en **ningún sistema operativo** (verificado contra PyPI: solo publica cp39-cp312) — `pip` cae a compilar desde fuente, lo que falla sin un compilador C configurado. `ctranslate2` sí soporta 3.13/3.14 en Windows y Linux, así que el bloqueador real es solo `numpy`.
+Requiere **Python 3.12 a 3.14** (probadas la 3.12 y la 3.14; la 3.13 no se probó).
+> **Python 3.11 o anterior ya no sirve**: `numpy`, `scipy` y `librosa` exigen 3.12 como mínimo. (Antes el límite era el contrario, máximo 3.12, por `numpy==1.26.4`.)
 > Para una guía completa paso a paso en Windows con Conda, ver [Guía de Instalación en Windows](Guia_Instalacion_Windows.md).
 
-Si tu sistema operativo trae Python 3.13 o 3.14 instalado por defecto, instala Python 3.12 de forma aislada para el entorno virtual o utiliza Conda:
+Si tu sistema operativo trae una versión anterior a 3.12, instala una más nueva de forma aislada para el entorno virtual o utiliza Conda:
 *   **Fedora/Nobara**: `sudo dnf install python3.12 python3.12-devel`
 *   **Ubuntu/Debian**: `sudo apt install python3.12 python3.12-venv`
 *   **Arch**: `sudo pacman -S python312` (o el paquete equivalente en AUR según la versión exacta que necesites)
@@ -33,7 +33,7 @@ Para que `faster-whisper` pueda procesar MP3, M4A o audio corrompido, necesitas 
 
 ```bash
 # Python venv (parte de la librería estándar, no requiere Conda) — usa el
-# binario 3.10-3.12 del paso 0 (ej. python3.12), no "python" a secas si tu
+# binario 3.12-3.14 del paso 0 (ej. python3.12), no "python" a secas si tu
 # sistema ya trae 3.13+ por defecto.
 python3.12 -m venv transcriptor-env
 source transcriptor-env/bin/activate
@@ -41,7 +41,7 @@ source transcriptor-env/bin/activate
 py -3.12 -m venv transcriptor-env
 .\transcriptor-env\Scripts\Activate.ps1
 ```
-En Windows, si no tienes ningún Python 3.10-3.12 instalado: `winget install --id Python.Python.3.12 -e --scope user` lo instala sin permisos de administrador (verificado 2026-09-05).
+En Windows, si no tienes ningún Python 3.12 o superior instalado: `winget install --id Python.Python.3.12 -e --scope user` lo instala sin permisos de administrador (verificado 2026-09-05).
 
 *(Si prefieres Conda, `conda create -n transcriptor-env python=3.12 -y` funciona igual — ver `Guia_Instalacion_Windows.md` para esa variante completa.)*
 
@@ -51,12 +51,12 @@ El hardware objetivo de este proyecto (PC de sala de colegio) no tiene GPU, así
 
 **Sin GPU** (usa `faster-whisper` en CPU) — usa el índice **`cpu`** explícito, no el genérico: el índice genérico de PyPI también resuelve a una build con CUDA 13 empaquetado (~1.5GB de paquetes NVIDIA de más que nunca se van a usar sin GPU, confirmado 2026-09-03):
 ```bash
-pip install torch==2.13.0 torchaudio==2.11.0 --index-url https://download.pytorch.org/whl/cpu
+pip install torch==2.14.1 torchaudio==2.11.0 --index-url https://download.pytorch.org/whl/cpu
 ```
 
 **GPU NVIDIA** (usa `faster-whisper` en GPU): CTranslate2 está compilado contra CUDA 12 — el índice genérico de pip resuelve a CUDA 13 (`libcublas.so.12 not found` al transcribir), así que hay que fijar el índice a `cu126` (misma versión de PyTorch más reciente, solo cambia la familia de CUDA). `torch` y `torchaudio` van en el mismo comando — si quedan de índices distintos, `torchaudio` no encuentra sus propias librerías:
 ```bash
-pip install torch==2.13.0 torchaudio==2.11.0 --index-url https://download.pytorch.org/whl/cu126
+pip install torch==2.14.1 torchaudio==2.11.0 --index-url https://download.pytorch.org/whl/cu126
 ```
 
 **GPU AMD (usa `transformers`, ya que `faster-whisper`/CTranslate2 no soporta ROCm)** — solo Linux, ROCm no está disponible en Windows:
