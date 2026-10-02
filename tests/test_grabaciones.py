@@ -503,3 +503,35 @@ def test_una_clase_de_hoy_que_ya_tiene_material_sin_sesion_de_grabacion_no_se_gr
     r = _crear(g)
     assert r.status_code == 409 and "material" in r.json()["detail"]
     assert g["c"].get("/grabaciones/hoy", headers=g["ana"]).json()[0]["puede_grabar"] is False
+
+
+def test_si_fallo_solo_la_generacion_se_regenera_sin_volver_a_grabar(g, monkeypatch):
+    def sin_ollama(_):
+        raise sg.ErrorProceso("No se pudo conectar con Ollama")
+
+    original = sg.generar_material
+    monkeypatch.setattr(sg, "generar_material", sin_ollama)
+    gid = _en_curso(g)
+    assert _terminar_con_audio(g, gid)["estado"] == "error"
+    # Retomar la sesión devuelve la misma (con el error), no un "ya tiene material".
+    assert _crear(g).json()["estado"] == "error"
+    assert g["c"].post(f"/grabaciones/{gid}/regenerar", headers=g["ana"]).status_code == 200
+    assert _estado(g, gid)["estado"] == "error"  # Ollama sigue apagado: vuelve al error, la transcripción se conserva
+    monkeypatch.setattr(sg, "generar_material", original)  # Ollama volvió
+    assert g["c"].post(f"/grabaciones/{gid}/regenerar", headers=g["ana"]).status_code == 200
+    assert _estado(g, gid)["estado"] == "terminada"
+    clase = g["c"].get("/clases", headers=g["ana"]).json()[0]
+    assert clase["estado"] == "por_aprobar"
+    det = g["c"].get(f"/clases/{clase['id']}", headers=g["ana"]).json()["contenido"]
+    assert det["resumen"] == "Resumen X" and "fotosíntesis" in det["transcripcion_texto"]
+    assert not (g["audio"] / str(gid)).exists()
+
+
+def test_regenerar_solo_cuando_corresponde(g):
+    gid = _crear(g).json()["id"]
+    assert g["c"].post(f"/grabaciones/{gid}/regenerar", headers=g["ana"]).status_code == 409  # esperando
+    _grabador(g, gid)
+    _comando(g, gid, "iniciar")
+    _terminar_con_audio(g, gid)  # terminó bien
+    assert g["c"].post(f"/grabaciones/{gid}/regenerar", headers=g["ana"]).status_code == 409
+    assert g["c"].post(f"/grabaciones/{gid}/regenerar", headers=g["beta"]).status_code == 404

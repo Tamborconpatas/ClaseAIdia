@@ -15,6 +15,8 @@ from pathlib import Path
 
 from sqlalchemy.orm import Session, sessionmaker
 
+from infraestructura.seguridad import ahora_utc as reloj_de_revision
+
 from infraestructura.modelos_orm import (
     Bloque,
     Clase,
@@ -99,6 +101,9 @@ def crear_o_reanudar(db: Session, profesor: Usuario, bloque_id: int) -> Grabacio
     ahora = ahora_local()
     clase = db.query(Clase).filter_by(bloque_id=bloque.id, fecha=ahora.date()).first()
     if clase is not None and clase.contenido is not None:
+        k, g = clase.contenido, clase.grabacion
+        if g is not None and g.estado == E.ERROR and not k.resumen:
+            return g  # falló solo la generación: la sesión sigue ahí para regenerar el material
         raise ErrorGrabacion("Esta clase ya tiene su material")
     if clase is not None and clase.grabacion is not None:
         g = clase.grabacion
@@ -345,6 +350,41 @@ def procesar(grabacion_id: int, fabrica: sessionmaker) -> None:
             db.commit()
         finally:
             borrar_audio(grabacion_id)  # pase lo que pase, el audio no sobrevive
+            db.close()
+
+
+def regenerar(db: Session, g: Grabacion, fabrica: sessionmaker) -> Grabacion:
+    """Si falló solo la generación (p. ej. Ollama estaba apagado), la transcripción se conservó: se vuelve a
+    generar el material desde ese texto, sin audio y sin volver a grabar."""
+    k = g.clase.contenido
+    if g.estado != E.ERROR or k is None or not (k.transcripcion_texto or "").strip() or k.resumen:
+        raise ErrorGrabacion("Solo se puede regenerar cuando falló la generación del material")
+    g.estado, g.error = E.PROCESANDO, None
+    db.commit()
+    _lanzar(procesar_generacion, g.id, fabrica)
+    return g
+
+
+def procesar_generacion(grabacion_id: int, fabrica: sessionmaker) -> None:
+    with _cerrojo_modelo:
+        db = fabrica()
+        try:
+            g = db.get(Grabacion, grabacion_id)
+            if g is None:
+                return
+            k = g.clase.contenido
+            try:
+                resumen, puntos, hoja, tarjetas = generar_material(k.transcripcion_texto)
+                k.resumen, k.puntos_clave, k.hoja_repaso, k.tarjetas = resumen, puntos, hoja, tarjetas
+                k.retirado, k.generado_en = False, reloj_de_revision()  # vuelve al flujo normal: por aprobar (el plazo de revisión corre desde ahora)
+                g.estado, g.error = E.TERMINADA, None
+            except ErrorProceso as e:
+                g.estado, g.error = E.ERROR, str(e)
+            except Exception:
+                traceback.print_exc()
+                g.estado, g.error = E.ERROR, "Falló la generación del material"
+            db.commit()
+        finally:
             db.close()
 
 
