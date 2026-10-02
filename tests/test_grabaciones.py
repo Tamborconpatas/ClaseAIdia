@@ -27,6 +27,7 @@ def tiempo(monkeypatch, tmp_path):
     monkeypatch.setattr(sg, "ahora_utc", lambda: reloj["utc"])
     monkeypatch.setattr(sg, "CARPETA_AUDIO", tmp_path / "audio")
     monkeypatch.setattr(sg, "_lanzar", lambda f, *a: f(*a))  # sin hilos: el procesamiento corre al instante
+    monkeypatch.setattr(sg, "generar_mapa", lambda resumen, puntos, asignatura: [])  # sin tocar Ollama
     monkeypatch.setattr(sg, "transcribir", lambda ruta: ("Hoy vimos la fotosíntesis.", "1\n00:00:00,000 --> 00:00:02,000\nHoy vimos la fotosíntesis.\n"))
     monkeypatch.setattr(sg, "generar_material", lambda t, asignatura=None, pizarra="": ("Resumen X", "- punto", "hoja", [{"pregunta": "¿P?", "respuesta": "R"}]))
     reloj["avanzar"] = lambda **kw: reloj.update(local=reloj["local"] + datetime.timedelta(**kw), utc=reloj["utc"] + datetime.timedelta(**kw))

@@ -80,7 +80,7 @@ def asegurar_ollama(ollama_url: str, esperar_s: float = 30) -> bool:
 
 def generate(
     prompt: str, model: str, max_tokens: int, ollama_url: str = "http://localhost:11434", ventana: int | None = None,
-    imagenes: list[str] | None = None, opciones: dict | None = None,
+    imagenes: list[str] | None = None, opciones: dict | None = None, formato: dict | None = None,
 ) -> str:
     """Transporte puro hacia la API de Ollama: envía un prompt y devuelve el
     texto crudo de la respuesta. No sabe nada de prompts de dominio ni de
@@ -101,6 +101,8 @@ def generate(
     }
     if imagenes:  # en base64, para un modelo con visión
         payload["images"] = imagenes
+    if formato:  # esquema JSON: Ollama obliga al modelo a responder con esa forma (sin texto de más ni sintaxis rota)
+        payload["format"] = formato
 
     try:
         try:

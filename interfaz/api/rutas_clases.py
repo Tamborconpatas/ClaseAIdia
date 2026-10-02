@@ -20,7 +20,7 @@ from infraestructura.modelos_orm import (
 )
 from infraestructura.seguridad import ahora_utc
 from interfaz.api.dependencias_auth import requiere_rol, rol_principal, usuario_actual
-from interfaz.api.esquemas import ClaseDetalleOut, ClaseOut, ContenidoEditar, ContenidoOut, PizarraEditar, PizarraOut, TarjetaOut
+from interfaz.api.esquemas import ClaseDetalleOut, ClaseOut, ContenidoEditar, ContenidoOut, MapaEditar, PizarraEditar, PizarraOut, RelacionMapa, TarjetaOut
 
 router = APIRouter(prefix="/clases", tags=["clases"])
 
@@ -119,6 +119,7 @@ def _detalle(clase: Clase) -> dict:
             hoja_repaso=k.hoja_repaso,
             tarjetas=[TarjetaOut(**t) for t in (k.tarjetas or [])],
             transcripcion_texto=k.transcripcion_texto,
+            mapa=[RelacionMapa(**r) for r in (k.mapa_conceptual or [])],
             pizarra=[
                 PizarraOut(id=f.id, segundo=f.segundo, texto=f.texto)
                 for f in (clase.grabacion.fotos if clase.grabacion is not None else [])
@@ -178,6 +179,23 @@ def editar_contenido(
     k = clase.contenido
     k.resumen, k.puntos_clave, k.hoja_repaso = datos.resumen, datos.puntos_clave, datos.hoja_repaso
     k.tarjetas = [t.model_dump() for t in datos.tarjetas]
+    db.commit()
+    db.refresh(clase)
+    return _detalle(clase)
+
+
+@router.put("/{clase_id}/mapa", response_model=ClaseDetalleOut)
+def editar_mapa(
+    clase_id: int, datos: MapaEditar, db: Session = Depends(obtener_db),
+    staff: Usuario = Depends(requiere_rol(RolNombre.PROFESOR, RolNombre.UTP)),
+):
+    """El profesor arma o corrige el mapa conceptual de la clase (una lista vacía lo quita)."""
+    clase = _clases_visibles(db, staff).filter(Clase.id == clase_id).first()
+    if clase is None:
+        raise HTTPException(status_code=404, detail="Clase no encontrada")
+    if clase.contenido is None:
+        raise HTTPException(status_code=409, detail="Esta clase todavía no tiene material para editar")
+    clase.contenido.mapa_conceptual = [r.model_dump() for r in datos.relaciones] or None
     db.commit()
     db.refresh(clase)
     return _detalle(clase)

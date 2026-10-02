@@ -220,6 +220,9 @@ class ContenidoClase(Base):
     hoja_repaso: Mapped[str | None] = mapped_column(String, nullable=True)
     tarjetas: Mapped[list | None] = mapped_column(JSON, nullable=True)
     preguntas_detectadas: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    # Mapa conceptual: lista de relaciones {de, relacion, a}. Se guardan los datos, no código Mermaid: el diagrama lo arma el
+    # lector con ellas, así una relación mal escrita nunca rompe el dibujo.
+    mapa_conceptual: Mapped[list | None] = mapped_column(JSON, nullable=True)
     # El profesor revisa el material: aprobado = lo ven los alumnos sin advertencia. Si pasa el plazo de
     # revisión sin aprobarlo ni retirarlo, se publica como "provisorio" (con advertencia) — así un olvido
     # del profesor no deja a los alumnos sin material. `retirado` lo oculta y evita esa publicación.

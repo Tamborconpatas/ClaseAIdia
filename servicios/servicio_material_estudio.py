@@ -1,3 +1,4 @@
+import json
 import os
 import re
 
@@ -336,3 +337,78 @@ def generate_study_material(text: str, asignatura: str | None = None, pizarra: s
     sections = _split_study_material(raw)
     flashcards = _parse_flashcards(sections["tarjetas"])
     return sections["resumen"], sections["puntos_clave"], sections["hoja_repaso"], flashcards
+
+
+# --- Mapa conceptual ------------------------------------------------------------------------------------------------
+# Medido (QA.md, 2026-10-02): pedirle a un modelo pequeño que escriba código Mermaid sale mal (con el de 1B, basura; con el
+# de 3B, sintaxis rota casi siempre). Pedirle los datos como JSON con esquema, y armar el diagrama en código, sale siempre
+# válido; pero con el de 1B las relaciones no sirven (repite «origen -más-> materia»), así que solo se genera con uno mayor.
+
+_MAX_RELACIONES = 14
+_MIN_RELACIONES = 3
+_ESQUEMA_MAPA = {
+    "type": "object",
+    "properties": {
+        "relaciones": {
+            "type": "array",
+            "minItems": 5,
+            "maxItems": _MAX_RELACIONES,
+            "items": {
+                "type": "object",
+                "properties": {
+                    "de": {"type": "string", "maxLength": 60},
+                    "relacion": {"type": "string", "maxLength": 40},
+                    "a": {"type": "string", "maxLength": 60},
+                },
+                "required": ["de", "relacion", "a"],
+            },
+        }
+    },
+    "required": ["relaciones"],
+}
+
+
+def _limpiar_relaciones(crudas) -> list[dict]:
+    """Normaliza lo que devolvió el modelo: sin vacíos, sin flechas de un concepto a sí mismo, sin repetidas, y un mismo
+    concepto con la misma escritura (la primera que apareció), que es lo que une las flechas en un solo nodo."""
+    escritura: dict[str, str] = {}
+    vistas: set[tuple[str, str]] = set()
+    relaciones = []
+    for r in crudas if isinstance(crudas, list) else []:
+        if not isinstance(r, dict):
+            continue
+        de, rel, a = (" ".join(str(r.get(k) or "").split()) for k in ("de", "relacion", "a"))
+        if not de or not a or de.casefold() == a.casefold():
+            continue
+        de, a = escritura.setdefault(de.casefold(), de), escritura.setdefault(a.casefold(), a)
+        if (de.casefold(), a.casefold()) in vistas:
+            continue
+        vistas.add((de.casefold(), a.casefold()))
+        relaciones.append({"de": de, "relacion": rel, "a": a})
+    return relaciones[:_MAX_RELACIONES]
+
+
+def generar_mapa_conceptual(resumen: str, puntos_clave: str, asignatura: str | None = None) -> list[dict]:
+    """Relaciones entre los conceptos de la clase, a partir del material ya generado (más corto que la transcripción).
+    Devuelve [] si el modelo es muy pequeño, si falla o si no salen relaciones suficientes: el mapa es un extra."""
+    configurado = app_config.get_param("ollama_model")
+    modelo = _modelo_que_cabe(_resolve_ollama_model(configurado), es_auto=configurado == "auto")
+    if modelo == _OLLAMA_MODEL_CPU:
+        return []
+    texto = f"{resumen or ''}\n\n{puntos_clave or ''}".strip()[:6000]
+    if not texto:
+        return []
+    materia = f" de la materia «{asignatura}»" if asignatura else ""
+    prompt = (
+        f"Del resumen de una clase{materia} que aparece abajo, extrae las relaciones entre los conceptos principales para armar un "
+        "mapa conceptual. Cada relación es: concepto de origen (1 a 4 palabras), verbo o frase corta que los une, y concepto de "
+        "destino (1 a 4 palabras). Usa exactamente el mismo nombre cada vez que aparezca el mismo concepto. Solo ideas que estén "
+        f"en el texto; no inventes.\n\nResumen de la clase:\n{texto}"
+    )
+    ollama_url = os.environ.get("OLLAMA_URL") or app_config.get_param("ollama_url")
+    try:
+        bruto = ollama_client.generate(prompt, model=modelo, max_tokens=900, ollama_url=ollama_url, formato=_ESQUEMA_MAPA)
+        relaciones = _limpiar_relaciones(json.loads(bruto).get("relaciones"))
+    except (RuntimeError, ValueError, AttributeError):
+        return []
+    return relaciones if len(relaciones) >= _MIN_RELACIONES else []
