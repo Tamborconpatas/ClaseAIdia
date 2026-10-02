@@ -21,7 +21,14 @@ def ventana_necesaria(prompt: str, max_tokens: int) -> int:
     return min(_VENTANA_MAXIMA, max(_VENTANA_MINIMA, -(-tokens // 1024) * 1024))
 
 
-def generate(prompt: str, model: str, max_tokens: int, ollama_url: str = "http://localhost:11434") -> str:
+# Más bajo que el valor por defecto de Ollama (0,8): resumir fielmente no pide creatividad, y con 0,8 el mismo
+# texto daba resúmenes de 373 y de 1.383 caracteres en dos corridas seguidas.
+_TEMPERATURA = 0.3
+
+
+def generate(
+    prompt: str, model: str, max_tokens: int, ollama_url: str = "http://localhost:11434", ventana: int | None = None
+) -> str:
     """Transporte puro hacia la API de Ollama: envía un prompt y devuelve el
     texto crudo de la respuesta. No sabe nada de prompts de dominio ni de
     cómo parsear el resultado — eso vive en la capa de servicios."""
@@ -31,7 +38,9 @@ def generate(prompt: str, model: str, max_tokens: int, ollama_url: str = "http:/
         "stream": False,
         "options": {
             "num_predict": max_tokens,
-            "num_ctx": ventana_necesaria(prompt, max_tokens),
+            # `ventana` fija la misma para varias llamadas seguidas: cambiarla obliga a Ollama a recargar el modelo.
+            "num_ctx": ventana or ventana_necesaria(prompt, max_tokens),
+            "temperature": _TEMPERATURA,
         }
     }
 

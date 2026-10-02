@@ -28,7 +28,7 @@ def tiempo(monkeypatch, tmp_path):
     monkeypatch.setattr(sg, "CARPETA_AUDIO", tmp_path / "audio")
     monkeypatch.setattr(sg, "_lanzar", lambda f, *a: f(*a))  # sin hilos: el procesamiento corre al instante
     monkeypatch.setattr(sg, "transcribir", lambda ruta: ("Hoy vimos la fotosíntesis.", "1\n00:00:00,000 --> 00:00:02,000\nHoy vimos la fotosíntesis.\n"))
-    monkeypatch.setattr(sg, "generar_material", lambda t: ("Resumen X", "- punto", "hoja", [{"pregunta": "¿P?", "respuesta": "R"}]))
+    monkeypatch.setattr(sg, "generar_material", lambda t, asignatura=None: ("Resumen X", "- punto", "hoja", [{"pregunta": "¿P?", "respuesta": "R"}]))
     reloj["avanzar"] = lambda **kw: reloj.update(local=reloj["local"] + datetime.timedelta(**kw), utc=reloj["utc"] + datetime.timedelta(**kw))
     return reloj
 
@@ -367,7 +367,7 @@ def test_el_audio_se_borra_aunque_falle_el_procesamiento(g, monkeypatch):
 
 
 def test_si_falla_la_generacion_se_conserva_la_transcripcion_oculta_a_los_alumnos(g, monkeypatch):
-    def sin_ollama(_):
+    def sin_ollama(_, asignatura=None):
         raise sg.ErrorProceso("No se pudo conectar con Ollama")
 
     monkeypatch.setattr(sg, "generar_material", sin_ollama)
@@ -510,7 +510,7 @@ def test_una_clase_de_hoy_que_ya_tiene_material_sin_sesion_de_grabacion_no_se_gr
 
 
 def test_si_fallo_solo_la_generacion_se_regenera_sin_volver_a_grabar(g, monkeypatch):
-    def sin_ollama(_):
+    def sin_ollama(_, asignatura=None):
         raise sg.ErrorProceso("No se pudo conectar con Ollama")
 
     original = sg.generar_material
@@ -585,3 +585,44 @@ def test_si_el_equipo_volvio_cada_flujo_se_convierte_aparte_y_se_juntan(tmp_path
         assert (w.getnchannels(), w.getframerate()) == (1, 16000)
         assert 2.7 < w.getnframes() / 16000 < 3.4  # 2 s + 1 s: no se perdió ninguno de los dos flujos
     assert not list(carpeta.glob("flujo*")) and not list(carpeta.glob("opt_*"))  # sin temporales de más
+
+
+def test_la_materia_de_la_clase_llega_al_generador_del_material(g, monkeypatch):
+    recibidas = []
+
+    def espia(texto, asignatura=None):
+        recibidas.append(asignatura)
+        return "Resumen X", "- punto", "hoja", [{"pregunta": "¿P?", "respuesta": "R"}]
+
+    monkeypatch.setattr(sg, "generar_material", espia)
+    gid = _en_curso(g)
+    assert _terminar_con_audio(g, gid)["estado"] == "terminada"
+    assert recibidas == ["Matemática"]  # el modelo sabe de qué materia es y corrige mejor términos y siglas
+
+
+def test_tras_transcribir_se_libera_la_memoria_de_whisper_para_que_la_use_ollama(monkeypatch):
+    """En una GPU de 4 GB compiten: con Whisper cargado, parte del LLM se iba a la CPU y la generación tardaba el doble."""
+    import servicios.servicio_transcripcion as st
+
+    liberada = []
+
+    class MotorFalso:
+        current_model = "cargado"
+
+        def free_memory(self):
+            liberada.append(True)
+
+    class ServicioFalso:
+        engine = MotorFalso()
+
+        def load_model(self, modelo):
+            pass
+
+        def transcribe_file(self, ruta):
+            yield {"status": "✅ Completado", "text": "hola", "srt": "s"}
+
+    monkeypatch.setattr(st, "TranscriptionService", ServicioFalso)
+    monkeypatch.setattr(sg, "_servicio", None)
+    assert sg.transcribir("x") == ("hola", "s")
+    assert liberada == [True]
+    monkeypatch.setattr(sg, "_servicio", None)  # que no se filtre el servicio falso a otras pruebas

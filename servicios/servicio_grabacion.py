@@ -298,15 +298,20 @@ def transcribir(ruta: str) -> tuple[str, str]:
     final = None
     for final in _servicio.transcribe_file(ruta):
         pass
+    # Whisper ya no se necesita: se libera su memoria de la GPU para que Ollama la use entera (en una GPU de 4 GB
+    # compiten, y lo que no cabe se va a la CPU y la generación se vuelve mucho más lenta). La próxima clase lo recarga.
+    liberar = getattr(_servicio.engine, "free_memory", None)
+    if liberar:
+        liberar()
     if final is None or str(final.get("status", "")).startswith("❌"):
         raise ErrorProceso((final or {}).get("text") or "No se pudo transcribir el audio")
     return final["text"], final.get("srt", "")
 
 
-def generar_material(texto: str) -> tuple[str, str, str, list]:
+def generar_material(texto: str, asignatura: str | None = None) -> tuple[str, str, str, list]:
     from servicios.servicio_material_estudio import generate_study_material
 
-    resumen, puntos, hoja, tarjetas = generate_study_material(texto)
+    resumen, puntos, hoja, tarjetas = generate_study_material(texto, asignatura)
     if not (puntos or hoja or tarjetas):  # el generador devuelve el error como "resumen"
         raise ErrorProceso(resumen or "No se pudo generar el material de estudio")
     return resumen, puntos, hoja, tarjetas
@@ -389,7 +394,7 @@ def procesar(grabacion_id: int, fabrica: sessionmaker) -> None:
                 texto, srt = transcribir(str(archivo))
                 if not texto.strip():
                     raise ErrorProceso("No se detectó voz en el audio")
-                resumen, puntos, hoja, tarjetas = generar_material(texto)
+                resumen, puntos, hoja, tarjetas = generar_material(texto, g.clase.bloque.asignatura)
                 g.clase.contenido = ContenidoClase(
                     transcripcion_texto=texto, transcripcion_srt=srt, resumen=resumen,
                     puntos_clave=puntos, hoja_repaso=hoja, tarjetas=tarjetas,
@@ -429,7 +434,7 @@ def procesar_generacion(grabacion_id: int, fabrica: sessionmaker) -> None:
                 return
             k = g.clase.contenido
             try:
-                resumen, puntos, hoja, tarjetas = generar_material(k.transcripcion_texto)
+                resumen, puntos, hoja, tarjetas = generar_material(k.transcripcion_texto, g.clase.bloque.asignatura)
                 k.resumen, k.puntos_clave, k.hoja_repaso, k.tarjetas = resumen, puntos, hoja, tarjetas
                 k.retirado, k.generado_en = False, reloj_de_revision()  # vuelve al flujo normal: por aprobar (el plazo de revisión corre desde ahora)
                 g.estado, g.error = E.TERMINADA, None
