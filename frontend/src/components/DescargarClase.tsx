@@ -13,10 +13,11 @@ import { construirModelo, nombreDeArchivo, type Bloque } from '@/lib/exportar/mo
  * Descargar la clase en PDF o Word. Todo lo hace el teléfono o el PC de quien descarga; el servidor no interviene:
  * - PDF: se abre la impresión del navegador con una hoja pensada para papel («Guardar como PDF»); las fórmulas y los
  *   diagramas salen dibujados.
- * - Word: un .docx con las fórmulas como ecuaciones de Word (editables) y los diagramas como imagen.
+ * - Word: un .docx con las fórmulas y los diagramas como imagen, que se ve en cualquier programa (Word, Google Docs, el
+ *   celular). El profesor, que puede querer editarlas, tiene además una versión con ecuaciones de Word editables.
  */
-export function DescargarClase({ clase }: { clase: ClaseDetalle }) {
-  const [trabajando, setTrabajando] = useState<'pdf' | 'word' | null>(null)
+export function DescargarClase({ clase, esProfesor }: { clase: ClaseDetalle; esProfesor: boolean }) {
+  const [trabajando, setTrabajando] = useState<'pdf' | 'word' | 'ecuaciones' | null>(null)
   const [hoja, setHoja] = useState<Bloque[] | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -47,12 +48,12 @@ export function DescargarClase({ clase }: { clase: ClaseDetalle }) {
     setHoja(construirModelo(clase))
   }
 
-  const word = async () => {
+  const word = async (modo: 'word' | 'ecuaciones') => {
     setError(null)
-    setTrabajando('word')
+    setTrabajando(modo)
     try {
       const { generarDocx } = await import('@/lib/exportar/docx') // la librería de Word se baja solo al pedir el archivo
-      descargar(await generarDocx(construirModelo(clase)), nombreDeArchivo(clase, 'docx'))
+      descargar(await generarDocx(construirModelo(clase), { formulas: modo === 'word' ? 'imagen' : 'ecuacion' }), nombreDeArchivo(clase, 'docx'))
     } catch {
       setError('No se pudo preparar el archivo de Word. Prueba de nuevo, o usa el PDF.')
     } finally {
@@ -66,10 +67,24 @@ export function DescargarClase({ clase }: { clase: ClaseDetalle }) {
         <Button variant="outline" className="h-11 flex-1 desk:h-9 desk:flex-none" disabled={trabajando !== null} onClick={pdf}>
           {trabajando === 'pdf' ? <Loader2 className="animate-spin" /> : <Printer />} Guardar como PDF
         </Button>
-        <Button variant="outline" className="h-11 flex-1 desk:h-9 desk:flex-none" disabled={trabajando !== null} onClick={() => void word()}>
+        <Button variant="outline" className="h-11 flex-1 desk:h-9 desk:flex-none" disabled={trabajando !== null} onClick={() => void word('word')}>
           {trabajando === 'word' ? <Loader2 className="animate-spin" /> : <FileDown />} Descargar Word
         </Button>
       </div>
+      {esProfesor && (
+        <div className="space-y-2 rounded-xl bg-muted/50 p-3 text-xs leading-relaxed text-muted-foreground">
+          <p>
+            <strong className="text-foreground">Sobre las fórmulas en el Word:</strong> van como <strong>imagen</strong> para que se vean en cualquier programa
+            (Word, Google Docs, el celular), así que ahí no se pueden editar. Si una fórmula está mal, corrígela arriba, en «De la pizarra», y vuelve a descargar.
+          </p>
+          <p>
+            Si prefieres editarlas dentro de Word, descarga la versión con ecuaciones editables: se ve bien en Word y LibreOffice, pero puede que otros programas no las muestren.
+          </p>
+          <Button variant="outline" className="h-10 desk:h-8" disabled={trabajando !== null} onClick={() => void word('ecuaciones')}>
+            {trabajando === 'ecuaciones' ? <Loader2 className="animate-spin" /> : <FileDown />} Word con ecuaciones editables
+          </Button>
+        </div>
+      )}
       <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
         <FileText className="mt-0.5 size-3.5 shrink-0" /> Incluye el resumen, los puntos clave, la hoja de repaso, el mapa, las tarjetas y lo leído de la pizarra, con las fórmulas y los diagramas.
       </p>

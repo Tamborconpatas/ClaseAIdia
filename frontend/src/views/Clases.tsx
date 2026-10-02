@@ -243,7 +243,7 @@ function DetalleClase({ id, onVolver, onCambio }: { id: number; onVolver: () => 
           Retiraste este material: los alumnos no lo ven y no se publicará solo. Puedes aprobarlo si cambias de opinión.
         </Aviso>
       )}
-      {k && !editando && <DescargarClase clase={c} />}
+      {k && !editando && <DescargarClase clase={c} esProfesor={esProfesor} />}
 
       {esProfesor && c.contenido && (
         <div className="space-y-2">

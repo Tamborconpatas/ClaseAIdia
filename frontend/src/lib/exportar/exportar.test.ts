@@ -2,7 +2,7 @@
 import JSZip from 'jszip'
 import { describe, expect, it } from 'vitest'
 import type { ClaseDetalle } from '@/lib/api'
-import { aOmml, generarDocx } from './docx'
+import { aOmml, generarDocx, type OpcionesDocx } from './docx'
 import { construirModelo, nombreDeArchivo, type Bloque } from './modelo'
 
 const BS = String.fromCharCode(92) // una barra invertida, para escribir LaTeX sin dobles escapes
@@ -79,16 +79,23 @@ describe('aOmml', () => {
   })
 })
 
-async function documentoXml(bloques: Bloque[]) {
-  const png = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='), (c) => c.charCodeAt(0))
-  const blob = await generarDocx(bloques, { diagrama: async () => ({ datos: png, ancho: 200, alto: 100 }) })
+const png = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='), (c) => c.charCodeAt(0))
+
+async function documentoXml(bloques: Bloque[], opciones: OpcionesDocx = {}) {
+  const blob = await generarDocx(bloques, {
+    diagrama: async () => ({ datos: png, ancho: 200, alto: 100 }),
+    formula: async (_tex, bloque) => ({ datos: png, ancho: 40, alto: 20, baja: bloque ? 0 : 3 }), // en Node no hay dónde dibujar la fórmula
+    ...opciones,
+  })
   const zip = await JSZip.loadAsync(await blob.arrayBuffer())
   return { xml: await zip.file('word/document.xml')!.async('string'), archivos: Object.keys(zip.files) }
 }
 
 describe('generarDocx', () => {
-  it('arma un Word con títulos, viñetas, tarjetas y las fórmulas como ecuaciones', async () => {
-    const { xml } = await documentoXml(construirModelo(clase({ pizarra: [{ id: 1, segundo: 60, texto: tex('Sea $x^2$ y $$@sqrt{a+b}$$') }] })))
+  const conFormulas = () => construirModelo(clase({ pizarra: [{ id: 1, segundo: 60, texto: tex('Sea $x^2$ y $$@sqrt{a+b}$$') }] }))
+
+  it('arma un Word con títulos, viñetas, tarjetas y, si se pide, las fórmulas como ecuaciones editables', async () => {
+    const { xml } = await documentoXml(conFormulas(), { formulas: 'ecuacion' })
     expect(xml).toContain('Matemática')
     expect(xml).toContain('Primer párrafo.')
     expect(xml).toContain('Pregunta: ')
@@ -96,6 +103,22 @@ describe('generarDocx', () => {
     expect(xml).toContain('<m:rad>') // la raíz es una ecuación de Word, no una imagen
     expect(xml).toContain('<m:sSup>') // la fórmula en línea, dentro del párrafo
     expect(xml).toContain('w:numId') // las viñetas
+  })
+
+  it('por defecto las fórmulas van como imagen: se ven en cualquier programa y no dependen de las ecuaciones de Word', async () => {
+    const { xml, archivos } = await documentoXml(conFormulas())
+    expect(xml).not.toContain('<m:oMath')
+    expect((xml.match(/<w:drawing>/g) ?? []).length).toBe(2) // una en línea y una en bloque
+    expect(xml).toContain('<w:position w:val="-5"/>') // la fórmula en línea baja hasta la línea de base del texto (3 px = 2,25 pt = 4,5 → 5 medios puntos)
+    expect(xml).not.toMatch(/<w:r>(?:(?!<\/w:r>).)*<w:r>/s) // una corrida dentro de otra corrida es XML inválido para Word
+    expect(archivos.filter((a) => a.startsWith('word/media/')).length).toBeGreaterThan(0)
+  })
+
+  it('si una fórmula no se puede dibujar como imagen queda su LaTeX en el texto', async () => {
+    const { xml } = await documentoXml(conFormulas(), { formula: async () => null })
+    expect(xml).not.toContain('<w:drawing>')
+    expect(xml).toContain('x^2')
+    expect(xml).toContain('Consolas')
   })
 
   it('un diagrama va como imagen dentro del documento', async () => {
