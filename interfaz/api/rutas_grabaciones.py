@@ -1,3 +1,5 @@
+import datetime
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session, selectinload, sessionmaker
 
@@ -29,6 +31,7 @@ def _salida(g: Grabacion) -> dict:
         "estado": g.estado.value, "silenciada": g.silenciada, "prioritaria": g.clase.prioritaria, "corte_en": g.corte_en,
         "segundos_grabados": g.segundos_grabados, "nivel": g.nivel, "trozos": g.trozos, "grabador_id": g.grabador_id,
         "grabador_conectado": sg.grabador_conectado(g), "error": g.error,
+        "reintento_en": g.reintento_en.replace(tzinfo=datetime.timezone.utc) if g.reintento_en else None,
     }
 
 
@@ -126,3 +129,9 @@ def finalizar(grabacion_id: int, datos: GrabadorFinalizar, db: Session = Depends
 def regenerar(grabacion_id: int, db: Session = Depends(obtener_db), profesor: Usuario = Depends(profesor_actual)):
     """Vuelve a generar el material desde la transcripción guardada, cuando falló solo la generación."""
     return _salida(sg.regenerar(db, _propia(db, grabacion_id, profesor), _fabrica(db)))
+
+
+@router.post("/{grabacion_id}/reintentar-ahora", response_model=GrabacionOut)
+def reintentar_ahora(grabacion_id: int, db: Session = Depends(obtener_db), profesor: Usuario = Depends(profesor_actual)):
+    """No esperar al reintento automático programado: se lanza en unos segundos."""
+    return _salida(sg.reintentar_ahora(db, _propia(db, grabacion_id, profesor)))

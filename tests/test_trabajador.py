@@ -175,20 +175,20 @@ def test_si_el_trabajador_termina_bien_el_servidor_no_toca_el_resultado(sesion_p
     assert not sesion_procesando["carpeta"].exists()  # y el audio ya no existe
 
 
-def test_si_el_trabajador_se_pasa_de_memoria_la_clase_queda_en_error_con_el_motivo_y_se_puede_reintentar(sesion_procesando, monkeypatch):
+def test_si_el_trabajador_se_pasa_de_memoria_la_clase_queda_en_error_con_el_motivo_y_se_reintenta_sola(sesion_procesando, monkeypatch):
     _con_hijo(monkeypatch, "import sys; sys.exit(75)")
     sg._trabajar_aparte("clase", sesion_procesando["id"], sesion_procesando["fabrica"])
     estado, error = _estado(sesion_procesando)
-    assert estado == E.ERROR and error == sg.MENSAJE_SIN_MEMORIA and "Reintentar" in error
-    assert not sesion_procesando["carpeta"].exists()
+    assert estado == E.ERROR and error.startswith(sg.MENSAJE_SIN_MEMORIA) and "Se reintentará sola" in error
+    assert sesion_procesando["carpeta"].exists()  # el audio se conserva: el reintento lo necesita
 
 
-def test_si_el_sistema_mata_al_trabajador_tambien_queda_en_error_y_sin_audio(sesion_procesando, monkeypatch):
+def test_si_el_sistema_mata_al_trabajador_tambien_queda_en_error_y_se_reintenta_sola(sesion_procesando, monkeypatch):
     _con_hijo(monkeypatch, "import sys; sys.exit(137)")  # lo que ve el servidor si el sistema cierra el proceso
     sg._trabajar_aparte("clase", sesion_procesando["id"], sesion_procesando["fabrica"])
     estado, error = _estado(sesion_procesando)
-    assert estado == E.ERROR and "137" in error and "interrumpió" in error
-    assert not sesion_procesando["carpeta"].exists()
+    assert estado == E.ERROR and "137" in error and "interrumpió" in error and "Se reintentará sola" in error
+    assert sesion_procesando["carpeta"].exists()
 
 
 def test_el_servidor_no_pisa_un_resultado_que_el_trabajador_ya_dejo(sesion_procesando, monkeypatch):
@@ -219,8 +219,9 @@ def test_sin_memoria_libre_ni_siquiera_se_lanza_el_trabajador(sesion_procesando,
     monkeypatch.setattr(sg, "esperar_memoria", lambda minimo, espera: False)
     sg._trabajar_aparte("clase", sesion_procesando["id"], sesion_procesando["fabrica"])
     assert lanzados == []
-    assert _estado(sesion_procesando) == (E.ERROR, sg.MENSAJE_SIN_MEMORIA)
-    assert not sesion_procesando["carpeta"].exists()
+    estado, error = _estado(sesion_procesando)
+    assert estado == E.ERROR and error.startswith(sg.MENSAJE_SIN_MEMORIA) and "Se reintentará sola" in error
+    assert sesion_procesando["carpeta"].exists()
 
 
 def test_la_espera_de_memoria_usa_el_minimo_y_el_tiempo_configurados(sesion_procesando, monkeypatch):
@@ -236,8 +237,8 @@ def test_si_no_se_puede_lanzar_el_trabajador_la_clase_queda_en_error(sesion_proc
     monkeypatch.setattr(sg, "esperar_memoria", lambda *a, **k: True)
     sg._trabajar_aparte("clase", sesion_procesando["id"], sesion_procesando["fabrica"])
     estado, error = _estado(sesion_procesando)
-    assert estado == E.ERROR and "No se pudo iniciar" in error
-    assert not sesion_procesando["carpeta"].exists()
+    assert estado == E.ERROR and "No se pudo iniciar" in error and "Se reintentará sola" in error
+    assert sesion_procesando["carpeta"].exists()
 
 
 def test_el_trabajador_recibe_el_modo_y_el_id(sesion_procesando, monkeypatch, tmp_path):

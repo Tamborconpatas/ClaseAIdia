@@ -354,16 +354,86 @@ def _terminar_con_audio(g, gid):
     return _estado(g, gid)
 
 
-def test_el_audio_se_borra_aunque_falle_el_procesamiento(g, monkeypatch):
+def test_un_fallo_del_procesamiento_se_reintenta_solo_y_el_audio_se_conserva_solo_mientras_queden_intentos(g, monkeypatch, tiempo):
+    """Nadie está frente al computador cuando algo falla: se reintenta solo (5, 15 y 45 min) y, al último fallo, el audio se borra."""
+    intentos = []
+
     def explota(_):
+        intentos.append(1)
         raise RuntimeError("se cayó Whisper")
 
     monkeypatch.setattr(sg, "transcribir", explota)
     gid = _en_curso(g)
     r = _terminar_con_audio(g, gid)
-    assert r["estado"] == "error" and r["error"]
-    assert not (g["audio"] / str(gid)).exists()
+    assert r["estado"] == "error" and "Se reintentará sola" in r["error"] and "intento 2 de 4" in r["error"]
+    assert r["reintento_en"] is not None
+    assert (g["audio"] / str(gid)).exists()  # se conserva: el reintento lo necesita
     assert [c["estado"] for c in g["c"].get("/clases", headers=g["ana"]).json()] == ["error"]
+    for minutos, intento in zip(sg.REINTENTOS_MIN, (2, 3, 4)):
+        _vigilar(g, None)
+        assert len(intentos) == intento - 1  # todavía no le toca
+        tiempo["avanzar"](minutes=minutos, seconds=1)
+        _vigilar(g, None)
+        assert len(intentos) == intento
+    final = _estado(g, gid)
+    assert final["estado"] == "error" and final["reintento_en"] is None and "Ya se reintentó 3 veces" in final["error"]
+    assert not (g["audio"] / str(gid)).exists()  # sin más intentos, el audio ya no se conserva
+    _vigilar(g, None)
+    tiempo["avanzar"](hours=5)
+    _vigilar(g, None)
+    assert len(intentos) == 4  # y no se reintenta de nuevo
+
+
+def test_si_el_reintento_funciona_la_clase_queda_terminada_y_sin_audio(g, monkeypatch, tiempo):
+    llamadas = []
+    original = sg.transcribir
+
+    def falla_la_primera_vez(ruta):
+        llamadas.append(1)
+        if len(llamadas) == 1:
+            raise RuntimeError("falla pasajera")
+        return original(ruta)
+
+    monkeypatch.setattr(sg, "transcribir", falla_la_primera_vez)
+    gid = _en_curso(g)
+    assert _terminar_con_audio(g, gid)["estado"] == "error"
+    tiempo["avanzar"](minutes=sg.REINTENTOS_MIN[0], seconds=1)
+    _vigilar(g, None)
+    s = _estado(g, gid)
+    assert s["estado"] == "terminada" and s["error"] is None and s["reintento_en"] is None
+    assert not (g["audio"] / str(gid)).exists()
+    assert [c["estado"] for c in g["c"].get("/clases", headers=g["ana"]).json()] == ["por_aprobar"]
+
+
+def test_se_puede_adelantar_el_reintento_sin_esperar(g, monkeypatch, tiempo):
+    llamadas = []
+    original = sg.transcribir
+    monkeypatch.setattr(sg, "transcribir", lambda ruta: (llamadas.append(1), (_ for _ in ()).throw(RuntimeError("x")) if len(llamadas) == 1 else original(ruta))[1])
+    gid = _en_curso(g)
+    _terminar_con_audio(g, gid)
+    assert g["c"].post(f"/grabaciones/{gid}/reintentar-ahora", headers=g["beta"]).status_code == 404  # solo el profesor de la clase
+    assert g["c"].post(f"/grabaciones/{gid}/reintentar-ahora", headers=g["ana"]).status_code == 200
+    _vigilar(g, None)
+    assert _estado(g, gid)["estado"] == "terminada"
+    assert g["c"].post(f"/grabaciones/{gid}/reintentar-ahora", headers=g["ana"]).status_code == 409  # ya no hay nada pendiente
+
+
+def test_reintentar_a_mano_no_pisa_una_sesion_que_se_reintenta_sola(g, monkeypatch):
+    """Reiniciar la sesión borraría el audio que el reintento automático necesita."""
+    monkeypatch.setattr(sg, "transcribir", lambda ruta: (_ for _ in ()).throw(RuntimeError("x")))
+    gid = _en_curso(g)
+    _terminar_con_audio(g, gid)
+    r = _crear(g)
+    assert r.status_code == 201 and r.json()["id"] == gid and r.json()["estado"] == "error" and r.json()["reintento_en"]
+    assert (g["audio"] / str(gid)).exists()
+
+
+def test_sin_voz_no_se_reintenta_porque_no_lo_arregla(g, monkeypatch):
+    monkeypatch.setattr(sg, "transcribir", lambda ruta: ("   ", ""))
+    gid = _en_curso(g)
+    r = _terminar_con_audio(g, gid)
+    assert r["estado"] == "error" and "voz" in r["error"] and r["reintento_en"] is None
+    assert not (g["audio"] / str(gid)).exists()
 
 
 def test_si_falla_la_generacion_se_conserva_la_transcripcion_oculta_a_los_alumnos(g, monkeypatch):
@@ -373,8 +443,8 @@ def test_si_falla_la_generacion_se_conserva_la_transcripcion_oculta_a_los_alumno
     monkeypatch.setattr(sg, "generar_material", sin_ollama)
     gid = _en_curso(g)
     r = _terminar_con_audio(g, gid)
-    assert r["estado"] == "error" and "Ollama" in r["error"]
-    assert not (g["audio"] / str(gid)).exists()
+    assert r["estado"] == "error" and "Ollama" in r["error"] and "Se reintentará sola" in r["error"]
+    assert not (g["audio"] / str(gid)).exists()  # la transcripción quedó guardada: el audio ya no hace falta
     with g["c"].sesion() as db:
         clase = db.query(Clase).one()
         assert "fotosíntesis" in clase.contenido.transcripcion_texto and clase.contenido.retirado is True

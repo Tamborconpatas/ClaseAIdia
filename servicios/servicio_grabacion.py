@@ -124,6 +124,8 @@ def crear_o_reanudar(db: Session, profesor: Usuario, bloque_id: int) -> Grabacio
         raise ErrorGrabacion("Esta clase ya tiene su material")
     if clase is not None and clase.grabacion is not None:
         g = clase.grabacion
+        if reintentos_pendientes(g):
+            return g  # se reintenta sola: reiniciarla borraría el audio que el reintento necesita
         if g.estado == E.ERROR:  # reintento: la sesión vuelve a empezar de cero
             borrar_audio(g.id)
             g.estado, g.error, g.silenciada = E.ESPERANDO, None, False
@@ -295,18 +297,38 @@ def _lanzar(funcion, *args) -> None:
     threading.Thread(target=_trabajar_aparte, args=(modo, args[0], args[1]), daemon=True).start()
 
 
-MENSAJE_SIN_MEMORIA = (
-    "El equipo no tenía memoria suficiente para procesar la clase: se cortó antes de afectar al resto de la plataforma. "
-    "Cierra otros programas del equipo y pulsa «Reintentar»."
-)
+# Esperas (minutos) antes de cada reintento automático de un procesamiento que falló. Nadie está frente al computador
+# cuando algo falla (memoria, un corte, Ollama apagado), así que se reintenta solo; el audio se conserva hasta el último.
+REINTENTOS_MIN = (5, 15, 45)
+
+
+def programar_reintento(g: Grabacion, mensaje: str) -> None:
+    """Deja la sesión en error y, si quedan intentos, programa el siguiente. El mensaje queda a la vista del profesor."""
+    g.estado = E.ERROR
+    if g.intentos < len(REINTENTOS_MIN):
+        espera = datetime.timedelta(minutes=REINTENTOS_MIN[g.intentos])
+        g.reintento_en = ahora_utc() + espera
+        hora = (ahora_local() + espera).strftime("%H:%M")
+        g.error = f"{mensaje} Se reintentará sola a las {hora} (intento {g.intentos + 2} de {len(REINTENTOS_MIN) + 1})."
+    else:
+        g.reintento_en = None
+        g.error = f"{mensaje} Ya se reintentó {len(REINTENTOS_MIN)} veces sin éxito."
+
+
+def reintentos_pendientes(g: Grabacion) -> bool:
+    return g.estado == E.ERROR and g.reintento_en is not None
+
+
+MENSAJE_SIN_MEMORIA = "El equipo no tenía memoria suficiente para procesar la clase: se cortó antes de afectar al resto de la plataforma."
 
 
 def _fallo(grabacion_id: int, fabrica: sessionmaker, mensaje: str) -> None:
-    """Deja la sesión en error con el motivo, salvo que el trabajador ya la haya cerrado (terminada o con su propio error)."""
+    """Deja la sesión en error con el motivo y programa el reintento, salvo que el trabajador ya la haya cerrado
+    (terminada o con su propio error)."""
     with fabrica() as db:
         g = db.get(Grabacion, grabacion_id)
         if g is not None and g.estado == E.PROCESANDO:
-            g.estado, g.error = E.ERROR, mensaje
+            programar_reintento(g, mensaje)
             db.commit()
 
 
@@ -323,20 +345,32 @@ def _trabajar_aparte(modo: str, grabacion_id: int, fabrica: sessionmaker) -> Non
             except subprocess.TimeoutExpired:
                 proceso.kill()
                 proceso.wait()
-                _fallo(grabacion_id, fabrica, f"El procesamiento tardó más de {TIEMPO_MAXIMO_S / 3600:g} horas y se canceló. Pulsa «Reintentar».")
+                _fallo(grabacion_id, fabrica, f"El procesamiento tardó más de {TIEMPO_MAXIMO_S / 3600:g} horas y se canceló.")
                 return
             if codigo != 0:
                 _fallo(
                     grabacion_id, fabrica,
                     MENSAJE_SIN_MEMORIA if codigo == CODIGO_SIN_MEMORIA
-                    else f"El procesamiento se interrumpió inesperadamente (código {codigo}). Si el equipo se quedó sin memoria, cierra otros programas y pulsa «Reintentar».",
+                    else f"El procesamiento se interrumpió inesperadamente (código {codigo}).",
                 )
         except Exception:
             traceback.print_exc()
             _fallo(grabacion_id, fabrica, "No se pudo iniciar el procesamiento de la clase")
         finally:
             if modo == "clase":
-                borrar_audio(grabacion_id)  # lo haya cerrado bien o mal el trabajador, el audio no sobrevive
+                _borrar_audio_si_ya_no_hace_falta(grabacion_id, fabrica)
+
+
+def _borrar_audio_si_ya_no_hace_falta(grabacion_id: int, fabrica: sessionmaker) -> None:
+    """El audio no sobrevive al procesamiento: se borra cuando terminó bien o cuando ya no se va a reintentar. Mientras haya
+    un reintento programado se conserva (es parte del mismo procesamiento: no se puede reintentar sin él)."""
+    with fabrica() as db:
+        g = db.get(Grabacion, grabacion_id)
+        k = g.clase.contenido if g is not None else None
+        transcripcion_guardada = k is not None and bool((k.transcripcion_texto or "").strip())
+        # Si ya está la transcripción, el reintento solo regenera el material: el audio no se necesita para nada.
+        if g is None or not reintentos_pendientes(g) or transcripcion_guardada:
+            borrar_audio(grabacion_id)
 
 
 def _anotar_proceso(grabacion_id: int, pid: int) -> None:
@@ -501,16 +535,18 @@ def procesar(grabacion_id: int, fabrica: sessionmaker) -> None:
                 )
                 g.estado, g.error = E.TERMINADA, None
             except ErrorProceso as e:
-                g.estado, g.error = E.ERROR, str(e)
-                if texto.strip():  # falló la generación pero la transcripción se conserva (oculta a los alumnos)
+                if texto.strip():  # falló la generación: se conserva la transcripción (oculta) y se reintenta solo la generación
                     g.clase.contenido = ContenidoClase(transcripcion_texto=texto, transcripcion_srt=srt, retirado=True)
+                    programar_reintento(g, str(e))
+                else:  # sin voz o sin poder transcribir: reintentar no lo arregla
+                    g.estado, g.error, g.reintento_en = E.ERROR, str(e), None
             except Exception:
                 traceback.print_exc()
-                g.estado, g.error = E.ERROR, "Falló el procesamiento de la clase"
+                programar_reintento(g, "Falló el procesamiento de la clase.")  # con el audio, que se conserva para el reintento
             db.commit()
         finally:
-            borrar_audio(grabacion_id)  # pase lo que pase, el audio no sobrevive
             db.close()
+            _borrar_audio_si_ya_no_hace_falta(grabacion_id, fabrica)
 
 
 def regenerar(db: Session, g: Grabacion, fabrica: sessionmaker) -> Grabacion:
@@ -519,7 +555,7 @@ def regenerar(db: Session, g: Grabacion, fabrica: sessionmaker) -> Grabacion:
     k = g.clase.contenido
     if g.estado != E.ERROR or k is None or not (k.transcripcion_texto or "").strip() or k.resumen:
         raise ErrorGrabacion("Solo se puede regenerar cuando falló la generación del material")
-    g.estado, g.error = E.PROCESANDO, None
+    g.estado, g.error, g.reintento_en = E.PROCESANDO, None, None
     db.commit()
     _lanzar(procesar_generacion, g.id, fabrica)
     return g
@@ -539,10 +575,10 @@ def procesar_generacion(grabacion_id: int, fabrica: sessionmaker) -> None:
                 k.retirado, k.generado_en = False, reloj_de_revision()  # vuelve al flujo normal: por aprobar (el plazo de revisión corre desde ahora)
                 g.estado, g.error = E.TERMINADA, None
             except ErrorProceso as e:
-                g.estado, g.error = E.ERROR, str(e)
+                programar_reintento(g, str(e))
             except Exception:
                 traceback.print_exc()
-                g.estado, g.error = E.ERROR, "Falló la generación del material"
+                programar_reintento(g, "Falló la generación del material.")
             db.commit()
         finally:
             db.close()
@@ -563,6 +599,34 @@ def vigilar(db: Session, fabrica: sessionmaker, utc: datetime.datetime | None = 
                 db.commit()
         elif g.estado == E.TERMINANDO and (utc - (g.terminando_desde or utc)).total_seconds() > ESPERA_FINALIZAR_S:
             _iniciar_procesamiento(db, g, fabrica)  # el equipo no finalizó: se procesa lo que llegó
+    for g in db.query(Grabacion).filter(Grabacion.estado == E.ERROR, Grabacion.reintento_en.is_not(None), Grabacion.reintento_en <= utc).all():
+        _reintentar(db, g, fabrica)
+
+
+def _reintentar(db: Session, g: Grabacion, fabrica: sessionmaker) -> None:
+    k = g.clase.contenido
+    if k is not None and (k.transcripcion_texto or "").strip() and not k.resumen:
+        funcion = procesar_generacion  # la transcripción está: solo falta el material, sin audio
+    elif any(_carpeta(g.id).glob("*.parte")):
+        funcion = procesar
+    else:
+        g.reintento_en = None
+        g.error = f"{g.error or ''} No queda audio para reintentar: hay que grabar la clase de nuevo.".strip()
+        db.commit()
+        return
+    g.intentos += 1
+    g.estado, g.error, g.reintento_en = E.PROCESANDO, None, None
+    db.commit()
+    _lanzar(funcion, g.id, fabrica)
+
+
+def reintentar_ahora(db: Session, g: Grabacion) -> Grabacion:
+    """El profesor (o el UTP) no quiere esperar: el vigilante lanza el reintento programado en unos segundos."""
+    if not reintentos_pendientes(g):
+        raise ErrorGrabacion("No hay un reintento automático pendiente")
+    g.reintento_en = ahora_utc()
+    db.commit()
+    return g
 
 
 def _trabajador_vivo(carpeta: Path) -> bool:
