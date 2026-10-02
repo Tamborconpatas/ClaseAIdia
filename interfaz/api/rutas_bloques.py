@@ -20,6 +20,10 @@ def verificar_bloque(db: Session, utp: Usuario, curso: Curso, datos: BloqueCrear
             or RolNombre.PROFESOR not in {r.rol for r in profesor.roles}
         ):
             raise HTTPException(status_code=409, detail="profesor_id inexistente")
+        # Un profesor desactivado no recibe bloques nuevos (a un bloque que ya era suyo se le puede seguir editando la hora).
+        actual = db.get(Bloque, excluir_id) if excluir_id is not None else None
+        if not profesor.activo and (actual is None or actual.profesor_id != profesor.id):
+            raise HTTPException(status_code=409, detail="Ese profesor está desactivado")
 
     cruzan = db.query(Bloque).filter(
         Bloque.dia_semana == datos.dia_semana,

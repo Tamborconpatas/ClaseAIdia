@@ -31,6 +31,8 @@ def usuario_actual(
     usuario = db.get(Usuario, int(payload["sub"]))
     if usuario is None:
         raise HTTPException(status_code=401, detail="Usuario no encontrado")
+    if not usuario.activo:  # también corta las sesiones que ya estaban abiertas
+        raise HTTPException(status_code=401, detail="Cuenta desactivada")
     return usuario
 
 

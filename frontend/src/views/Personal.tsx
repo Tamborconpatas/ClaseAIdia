@@ -1,5 +1,5 @@
 import { useMemo, useState, type FormEvent } from 'react'
-import { CheckCircle2, Info, Loader2, UserPlus, Users } from 'lucide-react'
+import { CheckCircle2, Info, Loader2, UserCheck, UserPlus, UserX, Users } from 'lucide-react'
 import { Campo, Cargando, ErrorForm, Vacio } from '@/components/comunes'
 import { FilaConReset } from '@/components/FilaConReset'
 import { Button } from '@/components/ui/button'
@@ -24,7 +24,7 @@ export function Personal() {
         .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es')),
     [personal.datos],
   )
-  const hayOtroUtp = lista.some((u) => u.roles.includes('UTP') && u.id !== usuario?.id)
+  const hayOtroUtp = lista.some((u) => u.roles.includes('UTP') && u.activo && u.id !== usuario?.id)
 
   return (
     <div className="space-y-6 desk:grid desk:grid-cols-[minmax(0,22rem)_minmax(0,1fr)] desk:items-start desk:gap-8 desk:space-y-0">
@@ -49,21 +49,7 @@ export function Personal() {
         ) : (
           <ul className="divide-y rounded-2xl border bg-card" aria-label="Personal">
             {lista.map((p) => (
-              <FilaConReset
-                key={p.id}
-                usuarioId={p.id}
-                nombre={p.nombre}
-                tipo="password"
-                puedeResetear={p.id !== usuario?.id}
-                info={
-                  <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                    <p className="truncate font-medium">{p.nombre}</p>
-                    {p.roles.includes('UTP') && <span className="rounded-full bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground">UTP</span>}
-                    {p.id === usuario?.id && <span className="text-xs text-muted-foreground">(tú)</span>}
-                    <p className="w-full text-xs tabular-nums text-muted-foreground">{p.rut}</p>
-                  </div>
-                }
-              />
+              <FilaPersonal key={p.id} persona={p} esYo={p.id === usuario?.id} onCambio={personal.recargar} />
             ))}
           </ul>
         )}
@@ -71,7 +57,7 @@ export function Personal() {
         <div className="flex gap-2.5 rounded-xl bg-muted/60 p-3.5 text-sm text-muted-foreground">
           <Info className="mt-0.5 size-4 shrink-0" />
           <p>
-            Si alguien olvida su contraseña, genera un código con «Resetear contraseña». Tú no puedes resetear la tuya:{' '}
+            Si alguien olvida su contraseña, genera un código con «Resetear contraseña». Si alguien deja el colegio, «Desactivar» le corta el acceso sin borrar su historial. Tú no puedes resetear ni desactivar tu cuenta:{' '}
             {hayOtroUtp
               ? 'pídeselo a otro UTP.'
               : 'hoy eres el único UTP, así que agrega a otro (rol UTP) para tener respaldo. Si igual la olvidas, quien administra el servidor puede restablecerla desde su consola con «python -m scripts.restablecer_utp ' + (usuario?.rut ?? 'TU-RUT') + '».'}
@@ -79,6 +65,73 @@ export function Personal() {
         </div>
       </section>
     </div>
+  )
+}
+
+function FilaPersonal({ persona: p, esYo, onCambio }: { persona: Usuario; esYo: boolean; onCambio: () => void }) {
+  const [confirmando, setConfirmando] = useState(false)
+  const [enviando, setEnviando] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const cambiar = async () => {
+    setEnviando(true)
+    setError(null)
+    try {
+      await api(`/usuarios/${p.id}/${p.activo ? 'desactivar' : 'activar'}`, { metodo: 'POST' })
+      setConfirmando(false)
+      onCambio()
+    } catch (e) {
+      setError((e as Error).message)
+    }
+    setEnviando(false)
+  }
+
+  return (
+    <FilaConReset
+      usuarioId={p.id}
+      nombre={p.nombre}
+      tipo="password"
+      puedeResetear={!esYo && p.activo}
+      info={
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+          <p className={cn('truncate font-medium', !p.activo && 'text-muted-foreground')}>{p.nombre}</p>
+          {p.roles.includes('UTP') && <span className="rounded-full bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground">UTP</span>}
+          {!p.activo && <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">Desactivado</span>}
+          {esYo && <span className="text-xs text-muted-foreground">(tú)</span>}
+          <p className="w-full text-xs tabular-nums text-muted-foreground">{p.rut}</p>
+        </div>
+      }
+      accion={
+        !esYo &&
+        !confirmando && (
+          <Button variant="ghost" className="h-10 desk:h-8" onClick={() => setConfirmando(true)} aria-label={`${p.activo ? 'Desactivar' : 'Reactivar'} a ${p.nombre}`}>
+            {p.activo ? <UserX /> : <UserCheck />} {p.activo ? 'Desactivar' : 'Reactivar'}
+          </Button>
+        )
+      }
+      bajo={
+        <>
+          {confirmando && (
+            <div className="space-y-2 rounded-lg bg-background p-3 text-sm ring-1 ring-border">
+              <p>
+                {p.activo
+                  ? `¿Desactivar a ${p.nombre}? Dejará de poder entrar, incluso si tiene la sesión abierta. Su nombre se conserva en horarios y clases, y puedes reactivarlo cuando quieras.`
+                  : `¿Reactivar a ${p.nombre}? Volverá a poder entrar con su contraseña.`}
+              </p>
+              <div className="flex gap-2">
+                <Button className="h-10 flex-1 desk:h-8 desk:flex-none" disabled={enviando} onClick={cambiar}>
+                  {enviando && <Loader2 className="animate-spin" />} {p.activo ? 'Sí, desactivar' : 'Sí, reactivar'}
+                </Button>
+                <Button variant="ghost" className="h-10 desk:h-8" disabled={enviando} onClick={() => setConfirmando(false)}>
+                  No
+                </Button>
+              </div>
+            </div>
+          )}
+          <ErrorForm mensaje={error} />
+        </>
+      }
+    />
   )
 }
 

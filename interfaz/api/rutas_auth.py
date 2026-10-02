@@ -84,7 +84,7 @@ def setup_inicial(datos: SetupIn, db: Session = Depends(obtener_db)):
 @router.post("/login/staff", response_model=TokenOut)
 def login_staff(datos: LoginStaffIn, db: Session = Depends(obtener_db)):
     usuario = db.query(Usuario).filter_by(rut=datos.rut).first()
-    if usuario is None or usuario.password_hash is None:
+    if usuario is None or usuario.password_hash is None or not usuario.activo:
         verificar_secreto_falso(datos.password)
         raise HTTPException(status_code=401, detail="Credenciales inválidas")
 
@@ -149,7 +149,7 @@ def restablecer_password(datos: RestablecerPasswordIn, db: Session = Depends(obt
     (POST /usuarios/{id}/reset-password). Cuenta intentos igual que el login. Si el único UTP olvidó la suya,
     se restablece desde la consola del servidor: `python -m scripts.restablecer_utp <RUT>`."""
     usuario = db.query(Usuario).filter_by(rut=datos.rut).first()
-    if usuario is None or usuario.codigo_reset_hash is None or not _tiene_rol(usuario, RolNombre.PROFESOR, RolNombre.UTP):
+    if usuario is None or usuario.codigo_reset_hash is None or not usuario.activo or not _tiene_rol(usuario, RolNombre.PROFESOR, RolNombre.UTP):
         verificar_secreto_falso(datos.codigo)
         raise HTTPException(status_code=401, detail="Código inválido o vencido")
 

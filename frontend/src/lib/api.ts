@@ -15,6 +15,8 @@ export interface Usuario {
   rut: string
   nombre: string
   colegio_id: number
+  /** Falso: el personal que se fue; no entra, pero su nombre queda en horarios y clases. */
+  activo: boolean
   roles: Rol[]
 }
 export interface Curso {

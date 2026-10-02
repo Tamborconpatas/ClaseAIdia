@@ -30,13 +30,17 @@ interface Props {
   tipo: 'pin' | 'password'
   /** Falso para no ofrecer el reseteo (p. ej. en la propia cuenta). */
   puedeResetear?: boolean
+  /** Otra acción de la fila (p. ej. desactivar), junto al botón de reseteo. */
+  accion?: ReactNode
+  /** Contenido bajo la fila (p. ej. la confirmación de esa acción). */
+  bajo?: ReactNode
 }
 
 /**
  * Una fila con su botón de reseteo: pide confirmación, entrega un código de un solo uso con su vencimiento
  * y las instrucciones para dárselo en persona.
  */
-export function FilaConReset({ usuarioId, nombre, info, tipo, puedeResetear = true }: Props) {
+export function FilaConReset({ usuarioId, nombre, info, tipo, puedeResetear = true, accion, bajo }: Props) {
   const t = TEXTOS[tipo]
   const [paso, setPaso] = useState<'inicio' | 'confirmando' | 'enviando'>('inicio')
   const [resultado, setResultado] = useState<ResetPin | null>(null)
@@ -68,12 +72,16 @@ export function FilaConReset({ usuarioId, nombre, info, tipo, puedeResetear = tr
     <li className="space-y-2 p-3.5">
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">{info}</div>
-        {puedeResetear && paso === 'inicio' && !resultado && (
-          <Button variant="outline" className="h-10 shrink-0 desk:h-8" onClick={() => setPaso('confirmando')} aria-label={`${t.boton} de ${nombre}`}>
-            <KeyRound /> {t.boton}
-          </Button>
-        )}
+        <div className="flex shrink-0 flex-wrap justify-end gap-2">
+          {puedeResetear && paso === 'inicio' && !resultado && (
+            <Button variant="outline" className="h-10 desk:h-8" onClick={() => setPaso('confirmando')} aria-label={`${t.boton} de ${nombre}`}>
+              <KeyRound /> {t.boton}
+            </Button>
+          )}
+          {accion}
+        </div>
       </div>
+      {bajo}
 
       {paso !== 'inicio' && (
         <div className="space-y-2 rounded-lg bg-background p-3 text-sm ring-1 ring-border">
