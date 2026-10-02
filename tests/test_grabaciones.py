@@ -28,7 +28,7 @@ def tiempo(monkeypatch, tmp_path):
     monkeypatch.setattr(sg, "CARPETA_AUDIO", tmp_path / "audio")
     monkeypatch.setattr(sg, "_lanzar", lambda f, *a: f(*a))  # sin hilos: el procesamiento corre al instante
     monkeypatch.setattr(sg, "transcribir", lambda ruta: ("Hoy vimos la fotosíntesis.", "1\n00:00:00,000 --> 00:00:02,000\nHoy vimos la fotosíntesis.\n"))
-    monkeypatch.setattr(sg, "generar_material", lambda t, asignatura=None: ("Resumen X", "- punto", "hoja", [{"pregunta": "¿P?", "respuesta": "R"}]))
+    monkeypatch.setattr(sg, "generar_material", lambda t, asignatura=None, pizarra="": ("Resumen X", "- punto", "hoja", [{"pregunta": "¿P?", "respuesta": "R"}]))
     reloj["avanzar"] = lambda **kw: reloj.update(local=reloj["local"] + datetime.timedelta(**kw), utc=reloj["utc"] + datetime.timedelta(**kw))
     return reloj
 
@@ -437,7 +437,7 @@ def test_sin_voz_no_se_reintenta_porque_no_lo_arregla(g, monkeypatch):
 
 
 def test_si_falla_la_generacion_se_conserva_la_transcripcion_oculta_a_los_alumnos(g, monkeypatch):
-    def sin_ollama(_, asignatura=None):
+    def sin_ollama(_, asignatura=None, pizarra=""):
         raise sg.ErrorProceso("No se pudo conectar con Ollama")
 
     monkeypatch.setattr(sg, "generar_material", sin_ollama)
@@ -580,7 +580,7 @@ def test_una_clase_de_hoy_que_ya_tiene_material_sin_sesion_de_grabacion_no_se_gr
 
 
 def test_si_fallo_solo_la_generacion_se_regenera_sin_volver_a_grabar(g, monkeypatch):
-    def sin_ollama(_, asignatura=None):
+    def sin_ollama(_, asignatura=None, pizarra=""):
         raise sg.ErrorProceso("No se pudo conectar con Ollama")
 
     original = sg.generar_material
@@ -660,7 +660,7 @@ def test_si_el_equipo_volvio_cada_flujo_se_convierte_aparte_y_se_juntan(tmp_path
 def test_la_materia_de_la_clase_llega_al_generador_del_material(g, monkeypatch):
     recibidas = []
 
-    def espia(texto, asignatura=None):
+    def espia(texto, asignatura=None, pizarra=""):
         recibidas.append(asignatura)
         return "Resumen X", "- punto", "hoja", [{"pregunta": "¿P?", "respuesta": "R"}]
 

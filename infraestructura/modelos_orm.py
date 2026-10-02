@@ -188,6 +188,24 @@ class Grabacion(Base):
     reintento_en: Mapped[datetime.datetime | None] = mapped_column(DateTime, nullable=True)
 
     clase: Mapped["Clase"] = relationship(back_populates="grabacion")
+    fotos: Mapped[list["FotoPizarra"]] = relationship(back_populates="grabacion", cascade="all, delete-orphan", order_by="FotoPizarra.segundo")
+
+
+class FotoPizarra(Base):
+    """Una foto de la pizarra que sacó el profesor durante la clase. La imagen es temporal (se borra apenas se lee, como
+    el audio: puede salir un alumno); lo único que se guarda es el texto que leyó el modelo de visión."""
+
+    __tablename__ = "fotos_pizarra"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    grabacion_id: Mapped[int] = mapped_column(ForeignKey("grabaciones.id"), nullable=False, index=True)
+    segundo: Mapped[int] = mapped_column(Integer, default=0, nullable=False)  # en qué momento de la clase se sacó
+    estado: Mapped[str] = mapped_column(String, default="pendiente", nullable=False)  # pendiente | leida | error
+    texto: Mapped[str | None] = mapped_column(String, nullable=True)
+    error: Mapped[str | None] = mapped_column(String, nullable=True)
+    creada_en: Mapped[datetime.datetime] = mapped_column(DateTime, default=_ahora_utc, nullable=False)
+
+    grabacion: Mapped["Grabacion"] = relationship(back_populates="fotos")
 
 
 class ContenidoClase(Base):

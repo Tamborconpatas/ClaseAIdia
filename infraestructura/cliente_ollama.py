@@ -79,7 +79,8 @@ def asegurar_ollama(ollama_url: str, esperar_s: float = 30) -> bool:
 
 
 def generate(
-    prompt: str, model: str, max_tokens: int, ollama_url: str = "http://localhost:11434", ventana: int | None = None
+    prompt: str, model: str, max_tokens: int, ollama_url: str = "http://localhost:11434", ventana: int | None = None,
+    imagenes: list[str] | None = None, opciones: dict | None = None,
 ) -> str:
     """Transporte puro hacia la API de Ollama: envía un prompt y devuelve el
     texto crudo de la respuesta. No sabe nada de prompts de dominio ni de
@@ -95,8 +96,11 @@ def generate(
             "num_ctx": ventana or ventana_necesaria(prompt, max_tokens),
             "temperature": _TEMPERATURA,
             "num_thread": hilos_de_procesamiento(),  # un núcleo libre para que el servidor siga atendiendo
+            **(opciones or {}),
         }
     }
+    if imagenes:  # en base64, para un modelo con visión
+        payload["images"] = imagenes
 
     try:
         try:
@@ -127,3 +131,11 @@ def generate(
         raise RuntimeError("Respuesta vacía del LLM.")
 
     return raw
+
+
+def descargar_modelo(model: str, ollama_url: str = "http://localhost:11434") -> None:
+    """Saca el modelo de la memoria ya (Ollama lo hace solo al minuto; entre dos modelos grandes no hay que esperar)."""
+    try:
+        requests.post(f"{ollama_url}/api/generate", json={"model": model, "keep_alive": 0}, timeout=15)
+    except requests.exceptions.RequestException:
+        pass  # si no se pudo, se descarga solo por su tiempo de espera
