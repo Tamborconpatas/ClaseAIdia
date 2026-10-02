@@ -98,7 +98,7 @@ export function FilaConReset({ usuarioId, nombre, info, tipo, puedeResetear = tr
       )}
 
       {resultado && (
-        <div className="space-y-2 rounded-lg bg-emerald-50 p-3.5 text-emerald-950 ring-1 ring-emerald-200" role="status">
+        <div className="space-y-2 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 p-3.5 text-emerald-950 dark:text-emerald-100 ring-1 ring-emerald-200 dark:ring-emerald-800" role="status">
           <p className="text-sm">
             Código para {nombre}: <strong className="font-mono text-xl tracking-[0.2em]">{resultado.codigo}</strong>
           </p>

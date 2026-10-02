@@ -42,7 +42,7 @@ export function VistaImpresion({ bloques }: { bloques: Bloque[] }) {
           case 'formula':
             return <div key={i} className="break-inside-avoid overflow-hidden py-1"><Formula tex={b.tex} bloque /></div>
           case 'diagrama':
-            return <div key={i} className="break-inside-avoid"><Mermaid codigo={b.codigo} descripcion={b.descripcion} /></div>
+            return <div key={i} className="break-inside-avoid"><Mermaid codigo={b.codigo} descripcion={b.descripcion} tema="claro" /></div>
           case 'tarjeta':
             return (
               <div key={i} className="break-inside-avoid pt-2">

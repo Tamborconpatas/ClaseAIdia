@@ -313,7 +313,7 @@ function CodigoCurso({ cursoId }: { cursoId: number }) {
         </p>
         {/* El QR lleva la dirección con que se abrió esta página; "localhost" en un teléfono es el propio teléfono. */}
         {['localhost', '127.0.0.1', '[::1]'].includes(window.location.hostname) && (
-          <p className="max-w-xs rounded-lg bg-amber-50 p-2.5 text-xs text-amber-950 ring-1 ring-amber-200">
+          <p className="max-w-xs rounded-lg bg-amber-50 dark:bg-amber-950/40 p-2.5 text-xs text-amber-950 dark:text-amber-100 ring-1 ring-amber-200 dark:ring-amber-800">
             <strong>Este QR no funcionará en un teléfono</strong>: abriste la app como «{window.location.hostname}». Ábrela con
             la dirección del servidor en la red del colegio y genera el QR desde ahí. Mientras tanto, los alumnos pueden
             escribir el código.
