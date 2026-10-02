@@ -5,39 +5,39 @@
 # Versiones fijadas a propósito (==, no >=): un `torch` "más nuevo" cambió
 # de CUDA 12 a CUDA 13 y rompió faster-whisper/CTranslate2 en GPU
 # (libcublas.so.12 not found) sin que cambiara nuestro código — exactamente
-# el tipo de problema que se busca evitar. Esta combinación está probada
-# funcionando (CPU y GPU NVIDIA real). Si se sube alguna versión, probar
+# el tipo de problema que se busca evitar. Si se sube alguna versión, probar
 # transcripción real en GPU antes de dar por bueno el cambio.
 #
-# Actualizado 2026-10-01: numpy 2.x, librosa 1.0, scipy 1.18, gradio 6.29,
-# transformers 5.18, SQLAlchemy 2.1, alembic 1.20 (probado: pytest + prueba de
-# humo de limpieza de audio, faster-whisper en CPU y la interfaz Gradio, ver
-# QA.md). SIN actualizar a propósito: torch/torchaudio y ctranslate2, porque no
-# se pueden probar en GPU aquí (ver el primer párrafo).
+# Última verificación (2026-10-01): Python 3.12.10 y 3.14.7, con torch
+# 2.14.1+cu126 y GPU NVIDIA real (RTX 2050): `pytest` 154 pasan, transcripción
+# de voz en español con el motor del proyecto en GPU y en CPU, limpieza de
+# audio y la interfaz Gradio. Ver QA.md.
 #
-# Requiere Python 3.10 a 3.12 (no 3.13, no 3.14). El numpy 1.26.4 anterior no tenía
-# wheel prebuilt para 3.13+ en NINGÚN sistema operativo (verificado contra
-# PyPI: solo publica cp39-cp312) — falla al compilar desde fuente si no
-# está el paquete `-devel`/`-dev` de esa versión de Python (confirmado
-# 2026-09-03/04 en Linux y Windows, ver QA.md). Si el `python3`/`python`
-# del sistema ya es 3.13+, crear el entorno con un intérprete 3.10-3.12
-# instalado aparte (ej. `python3.12 -m venv transcriptor-env`, o
-# `conda create -n transcriptor-env python=3.12`), no con el del sistema.
+# Requiere Python 3.12 a 3.14 (numpy 2.5, scipy 1.18 y librosa 1.0 ya no
+# soportan 3.10 ni 3.11). Recomendado: 3.12 o 3.14, las dos probadas; 3.13 no
+# se probó, pero debería funcionar igual. Si el `python3`/`python` del sistema
+# es anterior a 3.12, crear el entorno con un intérprete más nuevo instalado
+# aparte (ej. `python3.12 -m venv transcriptor-env`, o
+# `conda create -n transcriptor-env python=3.12`).
 
 # 1. Interfaz de Usuario y Utilería
 gradio==6.29.0
 
 # 2. Core AI — instalar torch/torchaudio ANTES de este archivo con el
 # índice correcto según el hardware (ver README/Notas_de_Instalacion):
-# CPU: pip install torch==2.13.0 torchaudio==2.11.0
-# GPU NVIDIA: pip install torch==2.13.0 torchaudio==2.11.0 --index-url https://download.pytorch.org/whl/cu126
+# CPU: pip install torch==2.14.1 torchaudio==2.11.0
+# GPU NVIDIA: pip install torch==2.14.1 torchaudio==2.11.0 --index-url https://download.pytorch.org/whl/cu126
 # GPU AMD: pip install torch==2.6.0 torchaudio==2.6.0 --index-url https://download.pytorch.org/whl/rocm6.1
-torch==2.13.0
+torch==2.14.1
 torchaudio==2.11.0
 
 # 3. Backend: Faster-Whisper (motor por defecto — CPU y GPU NVIDIA)
 faster-whisper==1.2.1
-ctranslate2==4.8.1
+# av 19 quitó un parámetro que faster-whisper 1.2.1 todavía usa: con av 19
+# la transcripción falla (TypeError: open() got an unexpected keyword argument
+# 'metadata_errors'). Se fija la última versión que funciona.
+av==18.1.0
+ctranslate2==4.8.2
 
 # 3b. Backend alternativo: Transformers (SOLO se usa si se detecta una GPU
 # AMD/ROCm — CTranslate2 no soporta ROCm, así que ahí se usa PyTorch en su

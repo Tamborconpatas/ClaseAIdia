@@ -1,6 +1,6 @@
 # ClaseAIdia (Universal Local Transcriber)
 
-![ULT Banner](https://img.shields.io/badge/Status-Active-brightgreen) ![Python 3.10--3.12](https://img.shields.io/badge/Python-3.10--3.12-blue) ![Gradio](https://img.shields.io/badge/UI-Gradio-orange)
+![ULT Banner](https://img.shields.io/badge/Status-Active-brightgreen) ![Python 3.12--3.14](https://img.shields.io/badge/Python-3.12--3.14-blue) ![Gradio](https://img.shields.io/badge/UI-Gradio-orange)
 
 Una aplicación de Inteligencia Artificial alojada localmente, diseñada para transcribir audio y generar material de estudio (resumen y puntos clave) a partir de clases grabadas — pensada para correr en hardware modesto, **sin GPU**, y **completamente offline**.
 
@@ -28,10 +28,10 @@ Estas mismas condiciones aparecen dentro de la aplicación (`#/privacidad` y `#/
 
 ## Instalación
 
-### 0. Versión de Python (Prohibido Python 3.13+)
-Requiere estrictamente **Python 3.10 a 3.12** (recomendado **Python 3.12**). No hace falta Conda ni Anaconda — con el Python normal de [python.org](https://www.python.org/downloads/) (o `winget`) alcanza; el módulo `venv` que se usa abajo es parte de la librería estándar.
-> **NO USAR Python 3.13 ni 3.14**: `numpy==1.26.4` (fijado en `requirements.txt`) no tiene wheel precompilado para 3.13+ en **ningún sistema operativo** (verificado contra PyPI: solo publica para cp39-cp312) — `pip` cae a compilar desde fuente, lo que falla sin un compilador C configurado. Confirmado en Linux (2026-09-03) y Windows (2026-09-04), ver `QA.md`.
-> **Windows**: `winget install --id Python.Python.3.12 -e --scope user` instala Python 3.12 sin admin (verificado 2026-09-05). Si ya tienes otra versión de Python instalada (ej. 3.14 desde la Microsoft Store), esto no la reemplaza — usa `py -3.12` en vez de `python` a secas en el paso 2 para apuntar a la versión correcta.
+### 0. Versión de Python (3.12 a 3.14)
+Requiere **Python 3.12 a 3.14** (probadas la 3.12 y la 3.14; la 3.13 debería funcionar igual, pero no se probó). No hace falta Conda ni Anaconda — con el Python normal de [python.org](https://www.python.org/downloads/) (o `winget`) alcanza; el módulo `venv` que se usa abajo es parte de la librería estándar.
+> **Python 3.11 o anterior ya no sirve**: `numpy`, `scipy` y `librosa` (en las versiones de `requirements.txt`) exigen 3.12 como mínimo. Hasta el 2026-09-30 el proyecto pedía lo contrario (máximo 3.12, por `numpy==1.26.4`); se actualizó y se verificó en 3.12 y 3.14, ver `QA.md`.
+> **Windows**: `winget install --id Python.Python.3.12 -e --scope user` instala Python 3.12 sin admin. Si ya tienes otras versiones instaladas, usa `py -3.12` (o `py -3.14`) en vez de `python` a secas en el paso 2 para apuntar a la correcta.
 > Para una guía completa paso a paso en Windows con Conda, consulta la [Guía de Instalación en Windows](docs/Guia_Instalacion_Windows.md).
 
 ### 1. Requisitos de FFMPEG (Necesario para procesar audio)
@@ -56,13 +56,13 @@ El hardware objetivo de este proyecto no tiene GPU — `faster-whisper` corre bi
 
 * **Sin GPU**: instala PyTorch desde el índice **`cpu`** explícito — el índice genérico de PyPI también resuelve a una build con CUDA 13 empaquetado (~1.5GB de paquetes NVIDIA de más, confirmado 2026-09-03) aunque no haya GPU en el equipo:
   ```bash
-  pip install torch==2.13.0 torchaudio==2.11.0 --index-url https://download.pytorch.org/whl/cpu
+  pip install torch==2.14.1 torchaudio==2.11.0 --index-url https://download.pytorch.org/whl/cpu
   pip install -r requirements.txt
   ```
 
 * **GPU NVIDIA**: `faster-whisper` (CTranslate2) está compilado contra CUDA 12 — instala PyTorch fijado a ese índice, **no** el genérico (que hoy resuelve a CUDA 13 y causa un error `libcublas.so.12 not found` al transcribir en GPU). `torch` y `torchaudio` deben instalarse del mismo índice en el mismo comando — si quedan de versiones de CUDA distintas, `torchaudio` no encuentra sus propias librerías:
   ```bash
-  pip install torch==2.13.0 torchaudio==2.11.0 --index-url https://download.pytorch.org/whl/cu126
+  pip install torch==2.14.1 torchaudio==2.11.0 --index-url https://download.pytorch.org/whl/cu126
   pip install -r requirements.txt
   ```
 

@@ -6,16 +6,12 @@ Esta guía documenta la instalación paso a paso de **ClaseAIdia** (Universal Lo
 
 ---
 
-## 1. ADVERTENCIA: Prohibido usar Python 3.13 o superior
+## 1. Versión de Python: 3.12 a 3.14
 
-> [!CAUTION]
-> **NO utilices Python 3.13, 3.14 ni versiones superiores para este proyecto.**
+> [!NOTE]
+> **Usa Python 3.12 o superior (hasta 3.14).** Probadas: 3.12 y 3.14 (la 3.13 no se probó). **Python 3.11 o anterior ya no sirve**: `numpy`, `scipy` y `librosa` exigen 3.12 como mínimo.
 >
-> El único bloqueador real, verificado contra los archivos publicados en PyPI: `numpy==1.26.4` (fijado en `requirements.txt`) no tiene wheel precompilado para Python 3.13+ en **ningún sistema operativo** (Windows incluido — PyPI solo publica `cp39` a `cp312`). Sin wheel, `pip` cae a compilar desde el `.tar.gz` de numpy, lo que falla en una máquina Windows sin *Microsoft Visual C++ Build Tools* instalado.
->
-> (Nota: `ctranslate2==4.8.1`, a diferencia de numpy, sí publica wheels de Windows para 3.13 y 3.14 — no es el problema. El límite real de esta versión del proyecto es solo `numpy`.)
->
-> **La versión oficial, probada y requerida es: Python 3.12 (o 3.10/3.11, sin verificar en esta guía).**
+> (Antes esta guía advertía lo contrario, que no se usara 3.13+, porque `numpy==1.26.4` no tenía wheel para esas versiones. Se actualizó a numpy 2 y se verificó en 3.14; ver `QA.md`.)
 
 ---
 
@@ -73,13 +69,13 @@ Para evitar que `pip` descargue paquetes CUDA innecesarios o versiones incompati
 ### Caso A: PC con GPU NVIDIA (Recomendado para equipos con GeForce / RTX)
 Si tu equipo cuenta con una tarjeta NVIDIA (por ejemplo, RTX 2050, 3060, 4060, etc.):
 ```powershell
-pip install torch==2.13.0 torchaudio==2.11.0 --index-url https://download.pytorch.org/whl/cu126
+pip install torch==2.14.1 torchaudio==2.11.0 --index-url https://download.pytorch.org/whl/cu126
 ```
 
 ### Caso B: PC sin GPU dedicada (Solo CPU)
 Para computadores de colegios o notebooks estándar sin tarjeta de video:
 ```powershell
-pip install torch==2.13.0 torchaudio==2.11.0 --index-url https://download.pytorch.org/whl/cpu
+pip install torch==2.14.1 torchaudio==2.11.0 --index-url https://download.pytorch.org/whl/cpu
 ```
 
 ---
