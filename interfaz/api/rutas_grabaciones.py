@@ -120,3 +120,9 @@ async def subir_trozo(
 @router.post("/{grabacion_id}/finalizar", response_model=GrabacionOut)
 def finalizar(grabacion_id: int, datos: GrabadorFinalizar, db: Session = Depends(obtener_db), profesor: Usuario = Depends(profesor_actual)):
     return _salida(sg.finalizar(db, _propia(db, grabacion_id, profesor), datos.dispositivo, _fabrica(db)))
+
+
+@router.post("/{grabacion_id}/regenerar", response_model=GrabacionOut)
+def regenerar(grabacion_id: int, db: Session = Depends(obtener_db), profesor: Usuario = Depends(profesor_actual)):
+    """Vuelve a generar el material desde la transcripción guardada, cuando falló solo la generación."""
+    return _salida(sg.regenerar(db, _propia(db, grabacion_id, profesor), _fabrica(db)))
