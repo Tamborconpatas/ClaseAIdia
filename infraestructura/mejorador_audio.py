@@ -50,6 +50,66 @@ except ImportError:
 
 # ─── Clase principal ───────────────────────────────────────────────────────────
 
+def perfil_de_ruido(audio: np.ndarray, sr: int, segundos: float) -> np.ndarray:
+    """El tramo con ruido de fondo y sin voz, que es lo que el filtro aprende a quitar.
+
+    Antes eran los primeros segundos del audio, pero en una clase el profesor suele estar hablando desde el inicio:
+    el filtro aprendía su voz como si fuera ruido y la borraba (medido: con `dsp` se perdían 38 s de habla de cada
+    4 minutos). Ahora se toma una de las ventanas más silenciosas del audio completo (percentil 5, ignorando el
+    silencio digital exacto, que no dice nada de la sala)."""
+    n = int(sr * segundos)
+    if len(audio) <= n:
+        return audio
+    ventanas = len(audio) // n
+    rms = np.sqrt(np.mean(audio[: ventanas * n].reshape(ventanas, n) ** 2, axis=1))
+    con_senal = np.flatnonzero(rms > 1e-4)
+    if len(con_senal) == 0:
+        return audio[:n]
+    elegida = con_senal[np.argsort(rms[con_senal])[len(con_senal) // 20]]
+    return audio[elegida * n:(elegida + 1) * n]
+
+
+TRAMO_S = 300  # segundos de audio que se limpian de una vez
+TRASLAPE_S = 2  # segundos que se superponen entre un tramo y el siguiente, con fundido, para que no se note el empalme
+
+
+def por_tramos(funcion, audio: np.ndarray, sr: int, tramo_s: float = TRAMO_S, traslape_s: float = TRASLAPE_S) -> np.ndarray:
+    """Aplica `funcion` (que devuelve un audio del mismo largo) por tramos de `tramo_s` segundos en vez de al archivo
+    entero, así la memoria que usa no depende de cuánto dura la clase. Los tramos se superponen `traslape_s` segundos
+    y se unen con un fundido lineal (las dos rampas suman 1: el audio sin procesar vuelve idéntico)."""
+    n, tramo, traslape = len(audio), int(tramo_s * sr), int(traslape_s * sr)
+    if n <= tramo + traslape:
+        return funcion(audio)
+    rampa = np.linspace(0, 1, traslape + 2, dtype=np.float32)[1:-1]
+    salida = np.zeros(n, dtype=np.float32)
+    inicio = 0
+    while True:
+        fin = min(n, inicio + tramo + traslape)
+        procesado = np.asarray(funcion(audio[inicio:fin]), dtype=np.float32)
+        largo = fin - inicio
+        if len(procesado) != largo:  # por si el filtro devuelve unas muestras de más o de menos
+            procesado = np.pad(procesado[:largo], (0, max(0, largo - len(procesado))))
+        peso = np.ones(largo, dtype=np.float32)
+        if inicio > 0:
+            peso[:traslape] = rampa
+        if fin < n:
+            peso[-traslape:] = 1 - rampa
+        salida[inicio:fin] += procesado * peso
+        if fin >= n:
+            return salida
+        inicio = fin - traslape
+
+
+def _rms(audio: np.ndarray) -> float:
+    """Valor RMS sin crear una copia del audio al cuadrado (con una clase larga son cientos de MB)."""
+    total = 0.0
+    paso = 1 << 22
+    for i in range(0, len(audio), paso):
+        trozo = audio[i:i + paso].astype(np.float64)
+        total += float(np.dot(trozo, trozo))
+    return float(np.sqrt(total / max(len(audio), 1)))
+
+
 class AudioEnhancer:
     """Pipeline de mejora de audio multi-capa con configuración granular."""
 
@@ -108,19 +168,21 @@ class AudioEnhancer:
 
     def _normalize_rms(self, audio: np.ndarray, target_db: float = -20.0) -> np.ndarray:
         """Normaliza a un nivel RMS objetivo en dBFS."""
-        rms = np.sqrt(np.mean(audio ** 2))
+        rms = _rms(audio)
         if rms < 1e-9:
             return audio
         target_rms = 10 ** (target_db / 20.0)
-        gain = np.clip(target_rms / rms, 0.0, 15.0)
-        return np.clip(audio * gain, -1.0, 1.0)
+        gain = np.float32(np.clip(target_rms / rms, 0.0, 15.0))
+        salida = audio * gain  # una sola copia del audio, no tres
+        np.clip(salida, -1.0, 1.0, out=salida)
+        return salida
 
     def _normalize_peak(self, audio: np.ndarray, peak: float = 0.95) -> np.ndarray:
         """Normalización final por pico para evitar clipping."""
         max_val = np.max(np.abs(audio))
         if max_val < 1e-9:
             return audio
-        return (audio / max_val * peak).astype(np.float32)
+        return audio * np.float32(peak / max_val)  # una sola copia del audio
 
     # ── Filtros de frecuencia ─────────────────────────────────────────────────
 
@@ -131,7 +193,7 @@ class AudioEnhancer:
         nyq = sr / 2
         normal_cutoff = max(min(cutoff_hz / nyq, 0.999), 0.001)
         sos = butter(4, normal_cutoff, btype='high', output='sos')
-        return sosfiltfilt(sos, audio).astype(np.float32)
+        return por_tramos(lambda x: sosfiltfilt(sos, x).astype(np.float32), audio, sr)
 
     def _lowpass_filter(self, audio: np.ndarray, sr: int, cutoff_hz: int) -> np.ndarray:
         """Filtro pasa-bajos para recortar sibilancias y ruido de alta frecuencia."""
@@ -140,7 +202,7 @@ class AudioEnhancer:
         nyq = sr / 2
         normal_cutoff = max(min(cutoff_hz / nyq, 0.999), 0.001)
         sos = butter(4, normal_cutoff, btype='low', output='sos')
-        return sosfiltfilt(sos, audio).astype(np.float32)
+        return por_tramos(lambda x: sosfiltfilt(sos, x).astype(np.float32), audio, sr)
 
     def _bandpass_boost(self, audio: np.ndarray, sr: int,
                         low_hz: int = 800, high_hz: int = 4000,
@@ -217,7 +279,7 @@ class AudioEnhancer:
         """DSP ligero: sustracción espectral suave (prop_decrease=0.3)."""
         if not HAS_NOISEREDUCE:
             return audio
-        noise_clip = audio[:min(int(sr * 0.5), len(audio))]
+        noise_clip = perfil_de_ruido(audio, sr, 0.5)
         return nr.reduce_noise(y=audio, y_noise=noise_clip, sr=sr,
                                prop_decrease=0.3, stationary=True, n_jobs=1).astype(np.float32)
 
@@ -225,7 +287,7 @@ class AudioEnhancer:
         """Wiener filter estándar, balanceado ruido/calidad."""
         if not HAS_NOISEREDUCE:
             return audio
-        noise_clip = audio[:min(int(sr * 0.5), len(audio))]
+        noise_clip = perfil_de_ruido(audio, sr, 0.5)
         prop = np.clip(strength / 3.0, 0.1, 1.0)
         return nr.reduce_noise(y=audio, y_noise=noise_clip, sr=sr,
                                prop_decrease=prop, stationary=False, n_jobs=1).astype(np.float32)
@@ -234,7 +296,7 @@ class AudioEnhancer:
         """Wiener filter agresivo: doble pasada con prop_decrease alto."""
         if not HAS_NOISEREDUCE:
             return audio
-        noise_clip = audio[:min(int(sr * 1.0), len(audio))]
+        noise_clip = perfil_de_ruido(audio, sr, 1.0)
         # Primera pasada: reducción fuerte
         pass1 = nr.reduce_noise(y=audio, y_noise=noise_clip, sr=sr,
                                 prop_decrease=0.9, stationary=False, n_jobs=1)
@@ -372,14 +434,16 @@ class AudioEnhancer:
 
         # ── Capa 4: Reducción de ruido ─────────────────────────────────────────
         try:
-            if denoise_mode == 'light_dsp':
-                audio = self._denoise_light_dsp(audio, sr)
-            elif denoise_mode == 'dsp':
-                audio = self._denoise_dsp(audio, sr, strength=denoise_strength)
-            elif denoise_mode == 'heavy_dsp':
-                audio = self._denoise_heavy_dsp(audio, sr)
-            elif denoise_mode == 'mmse':
-                audio = self._denoise_mmse(audio, sr)
+            # Por tramos: el consumo de memoria no debe crecer con el largo de la clase (medido sobre 92 min:
+            # 2,7 GB con los modos DSP y 11,6 GB con mmse, que no caben en un equipo modesto).
+            quitar_ruido = {
+                'light_dsp': lambda x: self._denoise_light_dsp(x, sr),
+                'dsp': lambda x: self._denoise_dsp(x, sr, strength=denoise_strength),
+                'heavy_dsp': lambda x: self._denoise_heavy_dsp(x, sr),
+                'mmse': lambda x: self._denoise_mmse(x, sr),
+            }.get(denoise_mode)
+            if quitar_ruido:
+                audio = por_tramos(quitar_ruido, audio, sr)
             elif denoise_mode == 'deepfilter':
                 audio = self._denoise_deepfilter(audio, sr)
             if denoise_mode != 'none':

@@ -615,6 +615,9 @@ def test_tras_transcribir_se_libera_la_memoria_de_whisper_para_que_la_use_ollama
     class ServicioFalso:
         engine = MotorFalso()
 
+        def set_enhancement_config(self, config):
+            pass
+
         def load_model(self, modelo):
             pass
 

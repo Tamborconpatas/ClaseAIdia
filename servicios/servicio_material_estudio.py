@@ -35,7 +35,7 @@ _SECTION_PATTERNS = [
 # Tolera numeración que modelos chicos agregan pese a la instrucción de no
 # numerar (ej. "P1:", "P2:" en vez de "P:").
 _FLASHCARD_LINE_RE = re.compile(
-    r'P\s*\d*\s*:\s*(.+?)\s*\n\s*R\s*\d*\s*:\s*(.+?)(?=\n\s*(?:\d+[.)]\s*)?P\s*\d*\s*:|\Z)',
+    r'(?<!\w)P\s*\d*\s*:\s*(.+?)\s*(?<!\w)R\s*\d*\s*:\s*(.+?)(?=\s(?:\d+[.)]\s*)?(?<!\w)P\s*\d*\s*:|\Z)',
     re.IGNORECASE | re.DOTALL,
 )
 
@@ -230,12 +230,17 @@ def _generar_por_secciones(material: str, asignatura: str | None, model_name: st
     ventana = ollama_client.ventana_necesaria(base + "x" * 600, max(tokens for _, tokens, _ in _SECCIONES))
     textos = {}
     for nombre, tokens, instruccion in _SECCIONES:
-        print(f"[study_material] Generando {nombre}...")
-        raw = ollama_client.generate(
-            base + f"{instruccion} Responde solo con eso, sin encabezados.",
-            model=model_name, max_tokens=min(tokens, max_tokens), ollama_url=ollama_url, ventana=ventana,
-        )
-        textos[nombre] = _texto_de_seccion(raw, nombre)
+        texto = ""
+        for intento in (1, 2):  # un modelo chico a veces no sigue el formato: se pide una vez más antes de dar la sección por perdida
+            print(f"[study_material] Generando {nombre}..." + (" (otro intento)" if intento == 2 else ""))
+            raw = ollama_client.generate(
+                base + f"{instruccion} Responde solo con eso, sin encabezados." + (" Sigue el formato pedido al pie de la letra." if intento == 2 else ""),
+                model=model_name, max_tokens=min(tokens, max_tokens), ollama_url=ollama_url, ventana=ventana,
+            )
+            texto = _texto_de_seccion(raw, nombre)
+            if texto and (nombre != "tarjetas" or _parse_flashcards(texto)):
+                break
+        textos[nombre] = texto
     return textos["resumen"], textos["puntos_clave"], textos["hoja_repaso"], _parse_flashcards(textos["tarjetas"])
 
 
