@@ -32,7 +32,7 @@ DATABASE_URL=sqlite:///./escuela_demo.db uvicorn api:app --port 8000
 
 Los tests del frontend cubren solo las utilidades de `src/lib/` (las reglas que duplican las del backend); las pantallas se prueban a mano en el navegador. El backend tiene los suyos (`pytest tests/` en la raíz).
 
-Los textos de privacidad y términos son un borrador. El contacto que muestran se configura copiando `.env.example` a `.env` y poniendo `VITE_CONTACTO` (un correo o teléfono del equipo).
+El contacto que muestran las páginas de privacidad y términos es `VITE_CONTACTO`: está en `.env.production` (se incluye al compilar con `npm run build`; ese archivo sí va al repositorio) y en `.env` para `npm run dev` (ese no). Para cambiarlo, edita los dos. Sin la variable, las páginas indican que se consulte a UTP del colegio.
 
 ## Estructura
 
