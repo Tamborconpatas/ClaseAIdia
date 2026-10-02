@@ -16,6 +16,7 @@ Aplicación web que graba, transcribe y sintetiza clases usando IA ejecutada loc
 - Debe quedar como **prototipo funcional demostrable** para la defensa, no solo diseñado.
 - El piloto de validación es acotado: 1-2 cursos, no un colegio completo.
 - **El servidor es un equipo modesto del colegio y corre 24/7**, no un PC de desarrollo: se asume **solo CPU, 4 núcleos y 16 GB de RAM como máximo** (puede ser menos; con GPU, mejor, pero nunca se depende de ella). Todo se evalúa contra ese piso, no contra la máquina de quien programa: memoria (cargar un modelo a la vez y soltarlo; nada que crezca con las horas encendido), tiempo (una clase de 90 minutos no puede bloquear el servidor más de lo que dura la siguiente), disco (el audio temporal tiene tope y se borra siempre) y reinicios (un corte de luz a media clase no debe perder la clase). Una prueba que solo pasó en una máquina potente no cuenta como "probado".
+- **Todo debe funcionar sin que nadie atienda el computador**: un fallo se recupera solo (reintentos automáticos a los 5, 15 y 45 min; reanudar tras un reinicio) y deja el motivo visible al profesor; solo el último fallo exige una acción humana. El audio de una clase que falló se conserva únicamente mientras queden reintentos (y se borra en cuanto hay transcripción guardada), nunca más.
 
 ## Alcance funcional
 

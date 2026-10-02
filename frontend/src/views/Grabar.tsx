@@ -153,7 +153,8 @@ function Sesion({ id, onSalir, onAbrirClase }: { id: number; onSalir: () => void
     setTrabajando('reintentar')
     try {
       try {
-        await api(`/grabaciones/${id}/regenerar`, { metodo: 'POST' })
+        // Con un reintento automático programado, el botón solo lo adelanta (la sesión y su audio se conservan).
+        await api(`/grabaciones/${id}/${g?.reintento_en ? 'reintentar-ahora' : 'regenerar'}`, { metodo: 'POST' })
       } catch {
         // No había transcripción que regenerar (falló antes): se vuelve a empezar la misma sesión.
         await api('/grabaciones', { metodo: 'POST', cuerpo: { bloque_id: g?.bloque_id } })
@@ -271,11 +272,11 @@ function Sesion({ id, onSalir, onAbrirClase }: { id: number; onSalir: () => void
       {g.estado === 'error' && (
         <section className="space-y-3 rounded-2xl border border-destructive/30 bg-card p-5">
           <p className="flex items-start gap-2 font-medium text-destructive">
-            <AlertTriangle className="mt-0.5 size-4 shrink-0" /> No se pudo procesar la clase
+            <AlertTriangle className="mt-0.5 size-4 shrink-0" /> {g.reintento_en ? 'El procesamiento falló y se reintentará solo' : 'No se pudo procesar la clase'}
           </p>
           <p className="text-sm text-muted-foreground">{g.error}</p>
           <Button className="h-12 w-full text-base desk:h-10 desk:w-auto desk:text-sm" disabled={trabajando === 'reintentar'} onClick={() => void reintentar()}>
-            {trabajando === 'reintentar' && <Loader2 className="animate-spin" />} Reintentar
+            {trabajando === 'reintentar' && <Loader2 className="animate-spin" />} {g.reintento_en ? 'Reintentar ahora' : 'Reintentar'}
           </Button>
         </section>
       )}
