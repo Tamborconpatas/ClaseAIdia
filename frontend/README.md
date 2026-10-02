@@ -28,8 +28,11 @@ DATABASE_URL=sqlite:///./escuela_demo.db uvicorn api:app --port 8000
 | `npm run dev` | Servidor de desarrollo con recarga |
 | `npm run build` | Revisa tipos (`tsc`) y genera el sitio estático en `dist/` |
 | `npm run lint` | `oxlint` |
+| `npm test` | `vitest`: reglas de RUT, PIN, contraseña y horario |
 
-No hay tests automatizados del frontend todavía; el backend tiene los suyos (`pytest tests/` en la raíz).
+Los tests del frontend cubren solo las utilidades de `src/lib/` (las reglas que duplican las del backend); las pantallas se prueban a mano en el navegador. El backend tiene los suyos (`pytest tests/` en la raíz).
+
+Los textos de privacidad y términos son un borrador. El contacto que muestran se configura copiando `.env.example` a `.env` y poniendo `VITE_CONTACTO` (un correo o teléfono del equipo).
 
 ## Estructura
 
