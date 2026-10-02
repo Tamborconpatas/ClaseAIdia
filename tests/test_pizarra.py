@@ -156,12 +156,13 @@ def test_el_texto_para_el_material_va_en_orden_con_tope_y_sin_fotos_es_vacio(g):
         db.add_all([
             FotoPizarra(grabacion_id=gid, segundo=900, estado="leida", texto="segunda"),
             FotoPizarra(grabacion_id=gid, segundo=60, estado="leida", texto="primera"),
+            FotoPizarra(grabacion_id=gid, segundo=500, estado="leida", texto="intermedia"),
             FotoPizarra(grabacion_id=gid, segundo=100, estado="error", error="x"),
             FotoPizarra(grabacion_id=gid, segundo=200, estado="leida", texto="   "),
         ])
         db.commit()
         t = sp.texto_para_el_material(db, gid)
-        assert t.index("primera") < t.index("segunda") and "x" not in t.split("segunda")[1]
+        assert t.index("primera") < t.index("intermedia") < t.index("segunda") and "x" not in t.split("segunda")[1]
         db.add(FotoPizarra(grabacion_id=gid, segundo=1000, estado="leida", texto="z" * 10_000))
         db.commit()
         assert len(sp.texto_para_el_material(db, gid)) < sp.MAX_CARACTERES_AL_MATERIAL + 1000
