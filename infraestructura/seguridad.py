@@ -3,9 +3,10 @@ import os
 import secrets
 
 import jwt
-from passlib.context import CryptContext
+from argon2 import PasswordHasher
+from argon2.exceptions import InvalidHashError, VerificationError
 
-_contexto_hash = CryptContext(schemes=["argon2"], deprecated="auto")
+_hasher = PasswordHasher()  # argon2id; el mismo formato que guardaba passlib, así que los hashes ya guardados siguen sirviendo
 
 ALGORITMO = "HS256"
 EXPIRACION_HORAS = 12
@@ -34,11 +35,14 @@ JWT_SECRET_KEY = cargar_clave_jwt(os.environ.get("JWT_SECRET_KEY"))
 
 
 def hashear_secreto(secreto: str) -> str:
-    return _contexto_hash.hash(secreto)
+    return _hasher.hash(secreto)
 
 
 def verificar_secreto(secreto: str, hash_guardado: str) -> bool:
-    return _contexto_hash.verify(secreto, hash_guardado)
+    try:
+        return _hasher.verify(hash_guardado, secreto)
+    except (VerificationError, InvalidHashError):
+        return False
 
 
 _HASH_FALSO = hashear_secreto("relleno-para-igualar-tiempos")
@@ -47,7 +51,7 @@ _HASH_FALSO = hashear_secreto("relleno-para-igualar-tiempos")
 def verificar_secreto_falso(secreto: str) -> None:
     """Gasta lo mismo que una verificación real. Se llama cuando el RUT no existe,
     para que el tiempo de respuesta no delate qué RUT están registrados."""
-    _contexto_hash.verify(secreto, _HASH_FALSO)
+    verificar_secreto(secreto, _HASH_FALSO)
 
 
 def crear_token(payload: dict) -> str:
