@@ -6,6 +6,7 @@ from sqlalchemy import (
     Date,
     DateTime,
     Enum,
+    Float,
     ForeignKey,
     Integer,
     JSON,
@@ -32,6 +33,16 @@ class TipoBloque(str, enum.Enum):
     CLASE = "CLASE"
     RECREO = "RECREO"
     ALMUERZO = "ALMUERZO"
+
+
+class EstadoGrabacion(str, enum.Enum):
+    ESPERANDO = "esperando"  # sesión creada, aún no se inicia
+    GRABANDO = "grabando"
+    PAUSADA = "pausada"
+    TERMINANDO = "terminando"  # se pidió terminar: el equipo grabador sube lo último y finaliza
+    PROCESANDO = "procesando"  # transcribiendo y generando el material
+    TERMINADA = "terminada"
+    ERROR = "error"
 
 
 class Colegio(Base):
@@ -141,6 +152,38 @@ class Clase(Base):
     contenido: Mapped["ContenidoClase | None"] = relationship(
         back_populates="clase", cascade="all, delete-orphan", uselist=False
     )
+    grabacion: Mapped["Grabacion | None"] = relationship(
+        back_populates="clase", cascade="all, delete-orphan", uselist=False
+    )
+
+
+class Grabacion(Base):
+    """Sesión de grabación de una clase. El estado que guarda el servidor es el que manda: quien controla
+    (el celular del profesor, o el mismo equipo que graba) lo cambia con comandos, y el equipo grabador
+    (un PC de la sala o el celular) lo consulta y obedece. El audio no se guarda aquí: son trozos temporales
+    en disco que se borran al terminar de procesarse."""
+
+    __tablename__ = "grabaciones"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    clase_id: Mapped[int] = mapped_column(ForeignKey("clases.id"), nullable=False, unique=True)
+    estado: Mapped[EstadoGrabacion] = mapped_column(Enum(EstadoGrabacion), default=EstadoGrabacion.ESPERANDO, nullable=False)
+    silenciada: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # Hora local (la del horario del colegio, sin zona) en que se corta sola la grabación si el profesor olvida terminarla.
+    corte_en: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=False)
+    # Equipo que está grabando (un id al azar que genera su navegador) y su último latido (UTC, sin zona).
+    grabador_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    latido_en: Mapped[datetime.datetime | None] = mapped_column(DateTime, nullable=True)
+    segundos_grabados: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    nivel: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)  # volumen del micrófono, 0 a 1
+    trozos: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    bytes_recibidos: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    mime: Mapped[str | None] = mapped_column(String, nullable=True)
+    creada_en: Mapped[datetime.datetime] = mapped_column(DateTime, default=_ahora_utc, nullable=False)
+    terminando_desde: Mapped[datetime.datetime | None] = mapped_column(DateTime, nullable=True)
+    error: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    clase: Mapped["Clase"] = relationship(back_populates="grabacion")
 
 
 class ContenidoClase(Base):
