@@ -1,6 +1,6 @@
 # Fase 3 — Frontend (React + TypeScript + Vite + Tailwind + shadcn/ui)
 
-**Estado (2026-10-01): completa y probada en navegador (PC y marco de teléfono).** Solo faltan dos cosas que no dependen del código: la prueba en un teléfono físico y que el equipo configure el contacto real (`VITE_CONTACTO`).
+**Estado (2026-10-01): completa y probada en navegador (PC y marco de teléfono).** Solo falta algo que no depende del código: la prueba en un teléfono físico.
 
 Requisito previo: Fase 2 (login y JWT funcionando en el backend). El código vive en `frontend/` (ver `frontend/README.md` para correrlo).
 
@@ -19,7 +19,7 @@ Requisito previo: Fase 2 (login y JWT funcionando en el backend). El código viv
 - [x] **Formularios**: validación también en el cliente (RUT; contraseña de staff de 10 a 128 caracteres, sin el RUT y con ≥ 4 caracteres distintos; PIN de 6 dígitos que no sea repetido ni secuencia; horas de bloque), con mensajes claros. Es comodidad: la validación que cuenta es la del backend.
 - [x] **Seguridad del cliente**: sin `dangerouslySetInnerHTML` ni `innerHTML` (el contenido generado por la IA se renderiza como texto), sin llamadas a servicios externos ni trackers, `npm audit` sin vulnerabilidades.
 - [x] **Archivos estáticos**: favicon con el logo, `robots.txt` con `Disallow: /` y `<meta name="robots" content="noindex, nofollow">`.
-- [x] **Páginas**: política de privacidad y términos y condiciones (`#/privacidad`, `#/terminos`), enlazadas en el pie. Son el **respaldo** del "Aviso para el colegio" del `README.md`, que el colegio acepta al instalar y usar la plataforma (esa es la versión que vale). Falta solo que el equipo ponga un contacto real en `frontend/.env` (`VITE_CONTACTO`, ver `.env.example`).
+- [x] **Páginas**: política de privacidad y términos y condiciones (`#/privacidad`, `#/terminos`), enlazadas en el pie. Son el **respaldo** del "Aviso para el colegio" del `README.md`, que el colegio acepta al instalar y usar la plataforma (esa es la versión que vale). El contacto (tambotconpatas@proton.me) viene de `VITE_CONTACTO` en `frontend/.env.production`.
 - [x] **Accesibilidad automática**: `axe-core` (WCAG 2.0/2.1 A y AA) sin violaciones en entrada, alumno, profesor, UTP y páginas legales (se corrigió el texto alternativo del QR). *Falta* una prueba manual con lector de pantalla y revisión de contraste con ojos humanos: axe no lo cubre todo.
 - [x] **Desactivar personal** (pestaña Personal): `POST /usuarios/{id}/desactivar|activar` (solo UTP, no a uno mismo, así siempre queda un UTP activo). Una cuenta desactivada no entra y **su sesión abierta se corta de inmediato**; su nombre se conserva en horarios y clases y no se le asignan bloques nuevos. No se borra personal: borrarlo arrastraría su historial.
 - [ ] **Teléfono real**: lo probado fue un marco del tamaño de un teléfono, no un aparato (ver "Verificación").
