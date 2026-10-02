@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { AlertTriangle, ArrowLeft, Check, CheckCircle2, ChevronRight, Clock, EyeOff, FileText, Layers, ListChecks, Loader2, MapPin, Network, PenLine, Pencil, RotateCcw, Sparkles } from 'lucide-react'
 import { Cargando, ErrorForm, Vacio } from '@/components/comunes'
 import { FotoLeida } from '@/components/FotoLeida'
+import { DescargarClase } from '@/components/DescargarClase'
 import { EditorMapa, MapaDibujado } from '@/components/MapaConceptual'
 import { EditorMaterial, type MaterialEditable } from '@/components/EditorMaterial'
 import { Button } from '@/components/ui/button'
@@ -242,6 +243,8 @@ function DetalleClase({ id, onVolver, onCambio }: { id: number; onVolver: () => 
           Retiraste este material: los alumnos no lo ven y no se publicará solo. Puedes aprobarlo si cambias de opinión.
         </Aviso>
       )}
+      {k && !editando && <DescargarClase clase={c} />}
+
       {esProfesor && c.contenido && (
         <div className="space-y-2">
           <div className="flex flex-wrap gap-2">

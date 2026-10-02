@@ -135,3 +135,21 @@
     -webkit-tap-highlight-color: transparent;
     }
 }
+/* Guardar como PDF: la hoja de la clase (#impresion, ver VistaImpresion) está oculta en pantalla y es lo único que se imprime. */
+#impresion {
+  display: none;
+}
+@media print {
+  @page {
+    margin: 16mm;
+  }
+  body > #root {
+    display: none !important;
+  }
+  #impresion {
+    display: block;
+  }
+  body {
+    background: #fff;
+  }
+}
