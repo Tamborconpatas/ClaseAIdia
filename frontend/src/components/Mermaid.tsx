@@ -1,20 +1,23 @@
 import { useEffect, useRef, useState } from 'react'
 import { empezarDibujo } from '@/lib/dibujos'
 import { dibujarDiagrama } from '@/lib/mermaid'
+import { useTema } from '@/lib/tema'
 
 /**
  * Dibuja un diagrama Mermaid. El SVG ya viene pasado por DOMPurify y se agrega al DOM como nodos, sin `innerHTML` ni
  * `dangerouslySetInnerHTML`. Si el código no se entiende (un diagrama que escribió la IA a mano alzada) se muestra el
  * código tal cual en vez de dejar un hueco o el ícono de error de Mermaid.
  */
-export function Mermaid({ codigo, descripcion }: { codigo: string; descripcion: string }) {
+export function Mermaid({ codigo, descripcion, tema }: { codigo: string; descripcion: string; tema?: 'claro' | 'oscuro' }) {
+  const { oscuro: temaOscuro } = useTema()
+  const oscuro = tema ? tema === 'oscuro' : temaOscuro // la hoja del PDF pide siempre «claro»
   const ref = useRef<HTMLDivElement>(null)
   const [fallo, setFallo] = useState(false)
 
   useEffect(() => {
     let vivo = true
     const terminar = empezarDibujo()
-    dibujarDiagrama(codigo)
+    dibujarDiagrama(codigo, oscuro)
       .then((svg) => {
         if (!vivo || !ref.current) return
         const dibujo = new DOMParser().parseFromString(svg, 'image/svg+xml').documentElement
@@ -27,7 +30,7 @@ export function Mermaid({ codigo, descripcion }: { codigo: string; descripcion: 
       vivo = false
       terminar()
     }
-  }, [codigo])
+  }, [codigo, oscuro])
 
   if (fallo) {
     return (

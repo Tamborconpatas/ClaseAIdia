@@ -152,6 +152,10 @@
   body {
     background: #fff;
   }
+  /* Sobre papel siempre claro, aunque se haya elegido el tema oscuro. */
+  :root {
+    color-scheme: light !important;
+  }
 }
 
 /* Accesibilidad: quien pide menos movimiento en su sistema no ve giros ni transiciones (los íconos de «cargando» quedan fijos). */

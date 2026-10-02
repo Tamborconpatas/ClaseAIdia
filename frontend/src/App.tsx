@@ -67,7 +67,7 @@ function Principal({ usuario, rol, onSalir }: { usuario: Usuario; rol: Rol; onSa
       {equipoActivo(equipo.info) && id !== 'grabar' && (
         <button
           onClick={() => cambiar('grabar')}
-          className="mb-4 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-red-100 px-3 text-sm font-medium text-red-900 ring-1 ring-red-200"
+          className="mb-4 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-red-100 dark:bg-red-950/60 px-3 text-sm font-medium text-red-900 dark:text-red-200 ring-1 ring-red-200 dark:ring-red-800"
         >
           <span className="size-2 animate-pulse rounded-full bg-red-600" /> Este equipo está grabando una clase: volver a los controles
         </button>

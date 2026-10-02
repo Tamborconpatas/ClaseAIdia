@@ -20,14 +20,14 @@ export const esAhora = (b: Bloque) =>
 
 // Un color estable por asignatura. Clases literales para que Tailwind las detecte.
 const PALETAS = [
-  'bg-indigo-50 text-indigo-950 border-indigo-400',
-  'bg-emerald-50 text-emerald-950 border-emerald-400',
-  'bg-amber-50 text-amber-950 border-amber-400',
-  'bg-rose-50 text-rose-950 border-rose-400',
-  'bg-sky-50 text-sky-950 border-sky-400',
-  'bg-violet-50 text-violet-950 border-violet-400',
-  'bg-teal-50 text-teal-950 border-teal-400',
-  'bg-orange-50 text-orange-950 border-orange-400',
+  'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-950 dark:text-indigo-100 border-indigo-400 dark:border-indigo-500',
+  'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-950 dark:text-emerald-100 border-emerald-400 dark:border-emerald-500',
+  'bg-amber-50 dark:bg-amber-950/40 text-amber-950 dark:text-amber-100 border-amber-400 dark:border-amber-500',
+  'bg-rose-50 dark:bg-rose-950/40 text-rose-950 dark:text-rose-100 border-rose-400 dark:border-rose-500',
+  'bg-sky-50 dark:bg-sky-950/40 text-sky-950 dark:text-sky-100 border-sky-400 dark:border-sky-500',
+  'bg-violet-50 dark:bg-violet-950/40 text-violet-950 dark:text-violet-100 border-violet-400 dark:border-violet-500',
+  'bg-teal-50 dark:bg-teal-950/40 text-teal-950 dark:text-teal-100 border-teal-400 dark:border-teal-500',
+  'bg-orange-50 dark:bg-orange-950/40 text-orange-950 dark:text-orange-100 border-orange-400 dark:border-orange-500',
 ]
 export function colorAsignatura(nombre: string | null): string {
   let h = 0

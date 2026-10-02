@@ -16,6 +16,7 @@ import { DescargarClase } from '@/components/DescargarClase'
 import { EditorMapa, MapaDibujado } from '@/components/MapaConceptual'
 import { EditorPizarra } from '@/components/EditorPizarra'
 import { FotoLeida } from '@/components/FotoLeida'
+import { SelectorTema } from '@/components/SelectorTema'
 import { TextoConFormulas } from '@/components/TextoConFormulas'
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -64,6 +65,25 @@ describe('accesibilidad de lo nuevo', () => {
     expect(bloque!.getAttribute('tabindex')).toBe('0') // una fórmula ancha se desplaza con el teclado
     expect(c.textContent).toContain('Ver como lista') // el diagrama de flechas también va en texto
     expect(c.textContent).toContain('Idea')
+  })
+
+  it('el selector de tema: grupo con nombre, cada opción con su texto y su estado, y cambia la página', async () => {
+    vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener: () => {}, removeEventListener: () => {} }))
+    for (const conTexto of [false, true]) {
+      const c = await montar(<SelectorTema conTexto={conTexto} />)
+      expect(await violaciones(c)).toEqual([])
+      expect(c.querySelector('[role=group]')?.getAttribute('aria-label')).toBe('Tema de color')
+      const botones = [...c.querySelectorAll('button')]
+      expect(botones.map((b) => b.textContent)).toEqual(['Sistema', 'Claro', 'Oscuro']) // con texto visible o solo para el lector de pantalla
+      await act(async () => botones[2].click())
+      expect(botones.map((b) => b.getAttribute('aria-pressed'))).toEqual(['false', 'false', 'true'])
+      expect(document.documentElement.classList.contains('dark')).toBe(true)
+      await act(async () => botones[1].click())
+      expect(document.documentElement.classList.contains('dark')).toBe(false)
+      raices.splice(0).forEach((r) => act(() => r.unmount()))
+      document.body.innerHTML = ''
+    }
+    vi.unstubAllGlobals()
   })
 
   it('el mapa conceptual: dibujo con descripción y lista de relaciones, sin violaciones', async () => {

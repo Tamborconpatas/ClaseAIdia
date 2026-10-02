@@ -18,12 +18,12 @@ const mmss = (s: number) => {
 
 const ESTADO: Record<Grabacion['estado'], { texto: string; clase: string }> = {
   esperando: { texto: 'Lista para empezar', clase: 'bg-muted text-muted-foreground' },
-  grabando: { texto: 'Grabando', clase: 'bg-red-100 text-red-900' },
-  pausada: { texto: 'En pausa', clase: 'bg-amber-100 text-amber-900' },
-  terminando: { texto: 'Terminando…', clase: 'bg-amber-100 text-amber-900' },
+  grabando: { texto: 'Grabando', clase: 'bg-red-100 dark:bg-red-950/60 text-red-900 dark:text-red-200' },
+  pausada: { texto: 'En pausa', clase: 'bg-amber-100 dark:bg-amber-950/60 text-amber-900 dark:text-amber-200' },
+  terminando: { texto: 'Terminando…', clase: 'bg-amber-100 dark:bg-amber-950/60 text-amber-900 dark:text-amber-200' },
   procesando: { texto: 'Procesando', clase: 'bg-muted text-muted-foreground' },
-  terminada: { texto: 'Lista', clase: 'bg-emerald-100 text-emerald-900' },
-  error: { texto: 'Con error', clase: 'bg-red-200 text-red-950' },
+  terminada: { texto: 'Lista', clase: 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-900 dark:text-emerald-200' },
+  error: { texto: 'Con error', clase: 'bg-red-200 dark:bg-red-900/60 text-red-950 dark:text-red-100' },
 }
 
 /**
@@ -263,7 +263,7 @@ function Sesion({ id, onSalir, onAbrirClase }: { id: number; onSalir: () => void
       )}
       {g.estado === 'terminada' && (
         <section className="space-y-3 rounded-2xl border bg-card p-5 text-center">
-          <CheckCircle2 className="mx-auto size-8 text-emerald-600" />
+          <CheckCircle2 className="mx-auto size-8 text-emerald-600 dark:text-emerald-400" />
           <p className="font-medium">¡Listo! El material de la clase quedó por aprobar.</p>
           <p className="text-sm text-muted-foreground">Revísalo, corrígelo si hace falta y apruébalo para que lo vean los alumnos.</p>
           <ResumenFotos g={g} />
@@ -388,7 +388,7 @@ function EquipoGrabador(p: PropsEquipo) {
       {p.esteGraba ? (
         <>
           <p className="flex items-center gap-2 text-sm">
-            <Wifi className="size-4 text-emerald-600" /> Este equipo está grabando
+            <Wifi className="size-4 text-emerald-600 dark:text-emerald-400" /> Este equipo está grabando
             {p.pendientes > 0 && <span className="text-muted-foreground">· subiendo ({p.pendientes} pendiente{p.pendientes === 1 ? '' : 's'})</span>}
           </p>
           <Aviso icono={Info} tono="azul">
@@ -399,8 +399,8 @@ function EquipoGrabador(p: PropsEquipo) {
         </>
       ) : (
         <>
-          <p className={cn('flex items-center gap-2 text-sm', p.iniciada && !p.conectado && 'text-amber-800')}>
-            {p.conectado ? <Wifi className="size-4 text-emerald-600" /> : <WifiOff className="size-4" />}
+          <p className={cn('flex items-center gap-2 text-sm', p.iniciada && !p.conectado && 'text-amber-800 dark:text-amber-300')}>
+            {p.conectado ? <Wifi className="size-4 text-emerald-600 dark:text-emerald-400" /> : <WifiOff className="size-4" />}
             {p.eraEste
               ? 'Este equipo estaba grabando y se interrumpió'
               : p.conectado
@@ -504,8 +504,8 @@ function Controles({
 }
 
 const TONOS = {
-  ambar: 'bg-amber-50 text-amber-950 ring-amber-200',
-  azul: 'bg-sky-50 text-sky-950 ring-sky-200',
+  ambar: 'bg-amber-50 dark:bg-amber-950/40 text-amber-950 dark:text-amber-100 ring-amber-200 dark:ring-amber-800',
+  azul: 'bg-sky-50 dark:bg-sky-950/40 text-sky-950 dark:text-sky-100 ring-sky-200 dark:ring-sky-800',
   gris: 'bg-muted/60 text-foreground ring-border',
 }
 function Aviso({ icono: Icono, tono, girar = false, children }: { icono: typeof Info; tono: keyof typeof TONOS; girar?: boolean; children: React.ReactNode }) {

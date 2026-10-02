@@ -1,3 +1,4 @@
+import { SelectorTema } from '@/components/SelectorTema'
 import type { ReactNode } from 'react'
 import { LogOut, type LucideIcon } from 'lucide-react'
 import { Logo } from '@/components/comunes'
@@ -68,6 +69,7 @@ export function AppShell({ items, activo, onCambiar, usuario, etiquetaRol, onSal
             </button>
           ))}
         </nav>
+        <SelectorTema conTexto className="mb-3 w-full" />
         <div className="flex items-center gap-3 rounded-xl border bg-card p-3">
           <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">
             {usuario ? iniciales(usuario.nombre) : '·'}
@@ -102,7 +104,7 @@ export function AppShell({ items, activo, onCambiar, usuario, etiquetaRol, onSal
             {usuario && <p className="text-sm text-muted-foreground">Hola, {usuario.nombre.split(' ')[0]}</p>}
           </div>
           {children}
-          <PieLegal className="mt-10" />
+          <PieLegal className="mt-10" tema="telefono" />
         </div>
       </main>
 

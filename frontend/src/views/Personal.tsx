@@ -215,7 +215,7 @@ function FormPersonal({ onCreado, mensajeCreado, onCerrarMensaje }: { onCreado: 
       <Campo etiqueta="Repite la contraseña" type="password" value={password2} error={errores.password2} autoComplete="new-password" onChange={(e) => setPassword2(e.target.value)} />
       <ErrorForm mensaje={error} />
       {mensajeCreado && (
-        <div role="status" className="flex items-start gap-2 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-950 ring-1 ring-emerald-200">
+        <div role="status" className="flex items-start gap-2 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 p-3 text-sm text-emerald-950 dark:text-emerald-100 ring-1 ring-emerald-200 dark:ring-emerald-800">
           <CheckCircle2 className="mt-0.5 size-4 shrink-0" />
           <span>{mensajeCreado} fue agregado. {rol === 'PROFESOR' ? 'Ya puedes asignarle bloques en el Horario.' : 'Ya puede entrar como UTP.'}</span>
         </div>

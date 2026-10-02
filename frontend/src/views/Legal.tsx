@@ -1,3 +1,4 @@
+import { SelectorTema } from '@/components/SelectorTema'
 import type { ReactNode } from 'react'
 import { ArrowLeft, Mail } from 'lucide-react'
 import { Logo } from '@/components/comunes'
@@ -28,16 +29,22 @@ export function Contacto() {
 }
 
 /** Enlaces discretos a las páginas legales: pie de la entrada y de cada pantalla con sesión. */
-export function PieLegal({ className }: { className?: string }) {
+export function PieLegal({ className, tema = 'siempre' }: { className?: string; tema?: 'siempre' | 'telefono' }) {
   return (
-    <nav aria-label="Información legal" className={`flex flex-wrap justify-center gap-x-5 gap-y-1 text-xs text-muted-foreground ${className ?? ''}`}>
-      <a href="#/privacidad" className="hover:text-foreground hover:underline">
-        Privacidad
-      </a>
-      <a href="#/terminos" className="hover:text-foreground hover:underline">
-        Términos y condiciones
-      </a>
-    </nav>
+    <div className={`space-y-4 ${className ?? ''}`}>
+      <nav aria-label="Información legal" className="flex flex-wrap justify-center gap-x-5 gap-y-1 text-xs text-muted-foreground">
+        <a href="#/privacidad" className="hover:text-foreground hover:underline">
+          Privacidad
+        </a>
+        <a href="#/terminos" className="hover:text-foreground hover:underline">
+          Términos y condiciones
+        </a>
+      </nav>
+      {/* El tema es opcional; en el PC de la sala, con la barra lateral, ya está a mano en el menú. */}
+      <div className={`flex justify-center ${tema === 'telefono' ? 'desk:hidden' : ''}`}>
+        <SelectorTema conTexto />
+      </div>
+    </div>
   )
 }
 

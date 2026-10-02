@@ -11,12 +11,16 @@ const cargarMermaid = () =>
 
 let contador = 0
 
-/** SVG del diagrama, ya pasado por DOMPurify (perfil SVG). Lanza si el código no se entiende. */
-export async function dibujarDiagrama(codigo: string): Promise<string> {
+/**
+ * SVG del diagrama, ya pasado por DOMPurify (perfil SVG). Lanza si el código no se entiende. `oscuro` pide los colores del
+ * tema oscuro (en pantalla); el Word y el PDF usan siempre el claro, que es el que se ve bien sobre papel.
+ */
+export async function dibujarDiagrama(codigo: string, oscuro = false): Promise<string> {
   const id = `mermaid-${++contador}`
   try {
     const [m, purify] = await Promise.all([cargarMermaid(), import('dompurify')])
-    const { svg } = await m.render(id, codigo)
+    // La directiva `init` cambia solo el tema de este diagrama; con `securityLevel: 'strict'` Mermaid no deja cambiar nada de seguridad.
+    const { svg } = await m.render(id, oscuro ? `%%{init: {"theme": "dark"}}%%\n${codigo}` : codigo)
     return purify.default.sanitize(svg, { USE_PROFILES: { svg: true, svgFilters: true } })
   } catch (e) {
     document.getElementById(`d${id}`)?.remove() // Mermaid deja ahí su dibujo de error

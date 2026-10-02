@@ -13,13 +13,13 @@ import { useCarga } from '@/lib/usar'
 import { cn } from '@/lib/utils'
 
 const ESTADO: Record<EstadoClase, { texto: string; clase: string }> = {
-  grabando: { texto: 'Grabando', clase: 'bg-red-100 text-red-900' },
+  grabando: { texto: 'Grabando', clase: 'bg-red-100 dark:bg-red-950/60 text-red-900 dark:text-red-200' },
   procesando: { texto: 'Procesando', clase: 'bg-muted text-muted-foreground' },
-  error: { texto: 'Con error', clase: 'bg-red-200 text-red-950' },
-  por_aprobar: { texto: 'Por aprobar', clase: 'bg-amber-100 text-amber-900' },
-  provisoria: { texto: 'Provisoria', clase: 'bg-orange-100 text-orange-900' },
-  publicada: { texto: 'Publicada', clase: 'bg-emerald-100 text-emerald-900' },
-  retirada: { texto: 'Retirada', clase: 'bg-rose-100 text-rose-900' },
+  error: { texto: 'Con error', clase: 'bg-red-200 dark:bg-red-900/60 text-red-950 dark:text-red-100' },
+  por_aprobar: { texto: 'Por aprobar', clase: 'bg-amber-100 dark:bg-amber-950/60 text-amber-900 dark:text-amber-200' },
+  provisoria: { texto: 'Provisoria', clase: 'bg-orange-100 dark:bg-orange-950/60 text-orange-900 dark:text-orange-200' },
+  publicada: { texto: 'Publicada', clase: 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-900 dark:text-emerald-200' },
+  retirada: { texto: 'Retirada', clase: 'bg-rose-100 dark:bg-rose-950/60 text-rose-900 dark:text-rose-200' },
 }
 
 /**
@@ -364,9 +364,9 @@ function DetalleClase({ id, onVolver, onCambio }: { id: number; onVolver: () => 
 }
 
 const TONOS = {
-  ambar: 'bg-amber-50 text-amber-950 ring-amber-200',
-  naranja: 'bg-orange-50 text-orange-950 ring-orange-300',
-  rosa: 'bg-rose-50 text-rose-950 ring-rose-200',
+  ambar: 'bg-amber-50 dark:bg-amber-950/40 text-amber-950 dark:text-amber-100 ring-amber-200 dark:ring-amber-800',
+  naranja: 'bg-orange-50 dark:bg-orange-950/40 text-orange-950 dark:text-orange-100 ring-orange-300 dark:ring-orange-700',
+  rosa: 'bg-rose-50 dark:bg-rose-950/40 text-rose-950 dark:text-rose-100 ring-rose-200 dark:ring-rose-800',
 }
 
 function Aviso({ icono: Icono, tono, children }: { icono: typeof FileText; tono: keyof typeof TONOS; children: React.ReactNode }) {
