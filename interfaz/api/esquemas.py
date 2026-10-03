@@ -473,6 +473,93 @@ class AjusteFotosOut(BaseModel):
     descarga: DescargaOut | None = None
 
 
+# --- Estado del servidor (panel del UTP) ---------------------------------------------------------
+
+
+class EstadoClaseOut(BaseModel):
+    clase_id: int
+    asignatura: str | None
+    curso: str
+    fecha: datetime.date
+
+
+class EstadoEnVivoOut(EstadoClaseOut):
+    estado: str
+
+
+class EstadoProcesandoOut(EstadoClaseOut):
+    turno: Literal["ahora", "espera"]
+    minutos: int | None  # desde que el trabajador arrancó con esta clase; None si todavía espera su turno
+
+
+class EstadoReintentoOut(EstadoClaseOut):
+    intentos: int
+    reintento_en: datetime.datetime  # UTC
+    error: str | None
+
+
+class EstadoErrorOut(EstadoClaseOut):
+    error: str | None
+
+
+class EstadoProcesamientoOut(BaseModel):
+    en_vivo: list[EstadoEnVivoOut]
+    procesando: list[EstadoProcesandoOut]
+    con_reintento: list[EstadoReintentoOut]
+    con_error: list[EstadoErrorOut]
+    terminadas_24h: int
+
+
+class EstadoOllamaOut(BaseModel):
+    responde: bool
+    modelo_texto: str
+    modelo_texto_instalado: bool
+
+
+class EstadoDiscoOut(BaseModel):
+    libre_gb: float
+    total_gb: float
+    audio_temporal_mb: float
+    fotos_temporales_mb: float
+    base_de_datos_mb: float | None
+
+
+class EstadoRespaldosOut(BaseModel):
+    carpeta: str
+    cantidad: int
+    mb: float
+    ultimo: datetime.date | None
+    hace_dias: int | None
+    en_el_mismo_disco: bool | None
+
+
+class EstadoMemoriaOut(BaseModel):
+    total_gb: float | None
+    libre_gb: float | None
+
+
+class EstadoVigilanciaOut(BaseModel):
+    ultima_pasada: datetime.datetime | None  # UTC
+    activa: bool | None  # None: la vigilancia no está encendida en este servidor (solo pasa en pruebas)
+
+
+class EstadoAlertaOut(BaseModel):
+    tema: Literal["disco", "ollama", "respaldos", "memoria", "vigilancia", "clases"]  # a qué parte del panel se refiere
+    nivel: Literal["critico", "aviso"]
+    texto: str
+
+
+class EstadoServidorOut(BaseModel):
+    generado_en: datetime.datetime  # UTC
+    alertas: list[EstadoAlertaOut]
+    procesamiento: EstadoProcesamientoOut
+    ollama: EstadoOllamaOut
+    disco: EstadoDiscoOut
+    respaldos: EstadoRespaldosOut
+    memoria: EstadoMemoriaOut
+    vigilancia: EstadoVigilanciaOut
+
+
 class GrabacionCrear(BaseModel):
     bloque_id: int
 

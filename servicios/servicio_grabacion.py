@@ -614,7 +614,12 @@ def procesar_generacion(grabacion_id: int, fabrica: sessionmaker) -> None:
 # --- Vigilancia: corte automático y limpieza -------------------------------------------------------
 
 
+ARRANQUE = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+ultima_vigilancia: datetime.datetime | None = None  # el «pulso»: el panel del UTP avisa si deja de latir
+
+
 def vigilar(db: Session, fabrica: sessionmaker, utc: datetime.datetime | None = None, local: datetime.datetime | None = None) -> None:
+    global ultima_vigilancia
     utc, local = utc or ahora_utc(), local or ahora_local()
     for g in db.query(Grabacion).filter(Grabacion.estado.in_(ACTIVAS)).all():
         if g.estado == E.ESPERANDO and local > g.corte_en:
@@ -628,6 +633,7 @@ def vigilar(db: Session, fabrica: sessionmaker, utc: datetime.datetime | None = 
             _iniciar_procesamiento(db, g, fabrica)  # el equipo no finalizó: se procesa lo que llegó
     for g in db.query(Grabacion).filter(Grabacion.estado == E.ERROR, Grabacion.reintento_en.is_not(None), Grabacion.reintento_en <= utc).all():
         _reintentar(db, g, fabrica)
+    ultima_vigilancia = ahora_utc()  # al terminar la pasada (si falla a medias, el pulso no se renueva y el panel lo avisa)
 
 
 def _reintentar(db: Session, g: Grabacion, fabrica: sessionmaker) -> None:

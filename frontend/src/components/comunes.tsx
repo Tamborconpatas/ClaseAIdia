@@ -1,5 +1,5 @@
 import type { ComponentProps, ReactNode } from 'react'
-import { AlertCircle, Loader2, type LucideIcon } from 'lucide-react'
+import { AlertCircle, AlertTriangle, CheckCircle2, Loader2, type LucideIcon } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
@@ -50,6 +50,23 @@ export function ErrorForm({ mensaje }: { mensaje?: string | null }) {
       <AlertCircle className="mt-0.5 size-4 shrink-0" />
       <span>{mensaje}</span>
     </div>
+  )
+}
+
+/** Una fila de «lista de revisión»: ícono verde si está en orden, ámbar si falta algo (y se anuncia con texto, no solo con color). */
+export function Requisito({ ok, titulo, children }: { ok: boolean | null; titulo: string; children: ReactNode }) {
+  const Icono = ok ? CheckCircle2 : AlertTriangle
+  return (
+    <li className="flex items-start gap-2.5">
+      <Icono className={cn('mt-0.5 size-4 shrink-0', ok ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400')} aria-hidden />
+      <div className="min-w-0 flex-1 text-sm leading-relaxed">
+        <p className="font-medium">
+          {titulo}
+          <span className="sr-only">: {ok ? 'en orden' : 'falta revisar'}</span>
+        </p>
+        <div className="text-muted-foreground [overflow-wrap:anywhere]">{children}</div>
+      </div>
+    </li>
   )
 }
 

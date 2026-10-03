@@ -1,6 +1,6 @@
-import { useState, type ReactNode } from 'react'
-import { AlertTriangle, CheckCircle2, Download, Info } from 'lucide-react'
-import { Cargando, ErrorForm } from '@/components/comunes'
+import { useState } from 'react'
+import { Download, Info } from 'lucide-react'
+import { Cargando, ErrorForm, Requisito } from '@/components/comunes'
 import { Button } from '@/components/ui/button'
 import { api, type AjusteFotos } from '@/lib/api'
 import { useSondeo } from '@/lib/usar'
@@ -124,22 +124,6 @@ export function Ajustes() {
         <ErrorForm mensaje={error} />
       </section>
     </div>
-  )
-}
-
-function Requisito({ ok, titulo, children }: { ok: boolean | null; titulo: string; children: ReactNode }) {
-  const Icono = ok ? CheckCircle2 : AlertTriangle
-  return (
-    <li className="flex items-start gap-2.5">
-      <Icono className={cn('mt-0.5 size-4 shrink-0', ok ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400')} aria-hidden />
-      <div className="min-w-0 flex-1 text-sm leading-relaxed">
-        <p className="font-medium">
-          {titulo}
-          <span className="sr-only">: {ok ? 'en orden' : 'falta revisar'}</span>
-        </p>
-        <div className="text-muted-foreground">{children}</div>
-      </div>
-    </li>
   )
 }
 

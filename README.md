@@ -180,6 +180,12 @@ El servidor del colegio funciona sin que nadie lo atienda. En la carpeta `script
 
 Para que el equipo **vuelva solo tras un corte de luz** hacen falta dos ajustes que ningún script puede hacer por ti: (1) en la BIOS/UEFI, «Restore on AC Power Loss / Power On after power failure» = *Power On*; (2) que Windows inicie sesión solo en la cuenta del servidor (`netplwiz`, desmarcar «los usuarios deben escribir su nombre y contraseña»; en un equipo compartido, usa una cuenta dedicada solo para el servidor). Además, si Ollama se cae, el servidor lo vuelve a abrir solo al necesitarlo, y cada día se guarda un respaldo de la base en `respaldos\` (conviene apuntar `CARPETA_RESPALDOS` a otro disco).
 
+### Panel de estado (UTP)
+
+El servidor corre sin que nadie lo mire, así que el UTP ve cómo está desde la propia aplicación: «Estado» en el menú (se actualiza solo cada 10 segundos). Arriba salen los **avisos**, con lo urgente primero y en palabras de persona; debajo, **qué clases se están grabando o procesando** (y cuál ya está en marcha o espera su turno), cuáles **fallaron y se reintentan solas** y cuáles **quedaron con error sin reintento**; y el **estado del equipo**: programa de IA (Ollama) y modelo de resúmenes, espacio en disco (con lo que ocupan el audio y las fotos temporales y la base de datos), respaldos (el último, cuántos, en qué carpeta y si están en el mismo disco que la base), memoria y la «vigilancia automática» (la que corta las grabaciones olvidadas y lanza los reintentos).
+
+Avisa cuando: quedan menos de 5 GB en el disco (urgente bajo 2 GB); el último respaldo tiene más de 2 días, o no hay ninguno; los respaldos están en el mismo disco que la base; Ollama no responde o falta el modelo de resúmenes; queda poca memoria (menos de 1,5 GB); la vigilancia dejó de latir (más de un minuto); queda audio guardado sin ninguna clase que lo necesite; o hay clases con error sin reintento. Es solo de lectura: desde ahí no se cambia nada (el profesor reintenta una clase desde «Grabar»).
+
 ## Despliegue con Docker (opción alternativa)
 
 Instalación con un solo comando, incluyendo un **cluster local de Ollama** (varias instancias en la misma máquina, balanceadas con nginx) para acelerar la generación de material de estudio cuando hay varias clases en cola. **Requiere Docker instalado** (en Windows implica admin + WSL2/Hyper-V) — es una alternativa para colegios con soporte técnico, no reemplaza el objetivo de instalación portátil sin admin (pendiente vía PyInstaller).

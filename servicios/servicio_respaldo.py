@@ -12,6 +12,22 @@ from pathlib import Path
 DIAS_POR_DEFECTO = 14
 
 
+def carpeta_de_respaldos() -> Path:
+    return Path(os.environ.get("CARPETA_RESPALDOS", "respaldos"))
+
+
+def estado(carpeta: Path) -> dict:
+    """Lo que se ve de los respaldos que hay: la fecha del último (por el nombre del archivo), cuántos y cuánto ocupan."""
+    copias = sorted(carpeta.glob("escuela-*.db")) if carpeta.is_dir() else []
+    ultimo = None
+    if copias:
+        try:
+            ultimo = datetime.date.fromisoformat(copias[-1].stem.removeprefix("escuela-"))
+        except ValueError:
+            ultimo = None
+    return {"ultimo": ultimo, "cantidad": len(copias), "mb": round(sum(c.stat().st_size for c in copias) / 1e6, 1)}
+
+
 def respaldar_si_toca(origen: Path, carpeta: Path, ahora: datetime.datetime, conservar: int = DIAS_POR_DEFECTO) -> Path | None:
     """Copia `origen` a `carpeta/escuela-AAAA-MM-DD.db` si hoy aún no hay copia, y borra las más antiguas."""
     if not origen.is_file():
