@@ -18,6 +18,7 @@ from pathlib import Path
 from sqlalchemy.orm import Session, sessionmaker
 
 from infraestructura.seguridad import ahora_utc as reloj_de_revision
+from nucleo.disco import espacio_en_disco
 from nucleo.memoria import esperar_memoria
 from servicios.trabajador import CODIGO_SIN_MEMORIA
 
@@ -48,6 +49,12 @@ COMANDO_TRABAJADOR = [sys.executable, "-m", "servicios.trabajador"]
 MEMORIA_MINIMA_GB = float(os.environ.get("MEMORIA_MINIMA_PROCESAMIENTO_GB", "2.5"))  # libre para empezar (Whisper por tramos usa < 2)
 ESPERA_MEMORIA_S = 600  # cuánto espera a que haya esa memoria antes de dejar la clase en error
 TIEMPO_MAXIMO_S = float(os.environ.get("TIEMPO_MAXIMO_PROCESAMIENTO_HORAS", "4")) * 3600  # un procesamiento atascado no bloquea al servidor
+# Espacio libre que hace falta (el servidor es un equipo modesto y un disco lleno corrompe la base y pierde clases). Con menos de
+# GRABAR no se empieza a grabar una clase nueva; con menos de SUBIR ni siquiera se acepta más audio (el equipo grabador lo
+# conserva y reintenta); con menos de PROCESAR no se lanza el procesamiento (se reintenta a los 5, 15 y 45 min).
+DISCO_MINIMO_PARA_GRABAR_GB = 2.0
+DISCO_MINIMO_PARA_SUBIR_GB = 0.3
+DISCO_MINIMO_PARA_PROCESAR_GB = 1.0
 LATIDO_VIGENTE_S = 15  # un equipo sin latido por más de esto se considera desconectado
 ESPERA_FINALIZAR_S = 45  # tras pedir terminar, lo que se espera al equipo grabador antes de procesar lo que llegó
 MAX_SIN_GRABADOR_S = 600  # grabando sin ningún equipo conectado por tanto tiempo: se termina con lo recibido
@@ -100,6 +107,11 @@ def _pizarra():
 # --- Crear y controlar la sesión ------------------------------------------------------------------
 
 
+def espacio_libre_gb() -> float:
+    """GB libres en el disco donde se guarda el audio."""
+    return espacio_en_disco(CARPETA_AUDIO)[0]
+
+
 def _corte_de(bloque: Bloque, hoy: datetime.date) -> datetime.datetime:
     return datetime.datetime.combine(hoy, bloque.hora_fin) + datetime.timedelta(minutes=GRACIA_CORTE_MIN)
 
@@ -113,6 +125,9 @@ def estado_de_hoy(bloque: Bloque, ahora: datetime.datetime) -> tuple[bool, str |
         return False, "Este bloque no es de hoy"
     if ahora > _corte_de(bloque, ahora.date()):
         return False, f"El bloque terminó hace más de {GRACIA_CORTE_MIN} minutos"
+    libre = espacio_libre_gb()
+    if libre < DISCO_MINIMO_PARA_GRABAR_GB:
+        return False, f"El disco del servidor casi no tiene espacio libre ({libre:.1f} GB): no se puede empezar a grabar. Avisa al UTP para que libere espacio."
     return True, None
 
 
@@ -266,6 +281,8 @@ def guardar_trozo(db: Session, g: Grabacion, dispositivo: str, n: int, datos: by
     if n == 0 and not _con_firma(datos[:16], mime):
         raise ErrorGrabacion("El archivo no es audio del tipo indicado", 415)
 
+    if espacio_libre_gb() < DISCO_MINIMO_PARA_SUBIR_GB:
+        raise ErrorGrabacion("El disco del servidor está lleno: no se puede guardar más audio. Avisa al UTP para que libere espacio.", 507)
     carpeta = _carpeta(g.id)
     carpeta.mkdir(parents=True, exist_ok=True)
     destino = carpeta / f"{n:06d}.parte"
@@ -429,6 +446,10 @@ def _trabajar_aparte(modo: str, grabacion_id: int, fabrica: sessionmaker) -> Non
     try:
         if not esperar_memoria(MEMORIA_MINIMA_GB, ESPERA_MEMORIA_S):
             _fallo(grabacion_id, fabrica, MENSAJE_SIN_MEMORIA)
+            return
+        libre = espacio_libre_gb()
+        if modo == "clase" and libre < DISCO_MINIMO_PARA_PROCESAR_GB:  # transcribir escribe copias temporales del audio
+            _fallo(grabacion_id, fabrica, f"El disco del servidor casi no tiene espacio libre ({libre:.1f} GB): no se puede procesar la clase por ahora.")
             return
         proceso = subprocess.Popen([*COMANDO_TRABAJADOR, modo, str(grabacion_id)], cwd=RAIZ_DEL_PROYECTO)
         _anotar_proceso(grabacion_id, proceso.pid)

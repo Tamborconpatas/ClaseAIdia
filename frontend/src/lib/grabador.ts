@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from 'react'
 import { api, ApiError, subirTrozo, type Grabacion } from '@/lib/api'
+import { mensajeDeSubidaFallida } from '@/lib/subida'
 
 /**
  * El equipo que graba: un PC de la sala o el celular del profesor (es el mismo código en los dos).
@@ -245,7 +246,7 @@ export class Grabador {
             this.poner({ pendientes: this.cola.length, mensaje: `Un trozo de audio fue rechazado: ${e.message}` })
             continue
           }
-          this.poner({ mensaje: 'Sin conexión con el servidor: el audio se sigue guardando aquí y se subirá cuando vuelva.' })
+          this.poner({ mensaje: mensajeDeSubidaFallida(e) })
           await new Promise((r) => setTimeout(r, 2_000)) // sin red o servidor caído: reintentar
           if (!this.activo && !this.cerrando) break
         }
