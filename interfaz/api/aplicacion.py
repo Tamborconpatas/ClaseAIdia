@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from interfaz.api import (
+    rutas_ajustes,
     rutas_auth,
     rutas_bloques,
     rutas_clases,
@@ -20,7 +21,7 @@ from interfaz.api import (
     rutas_grabaciones,
     rutas_usuarios,
 )
-from servicios import servicio_grabacion, servicio_respaldo
+from servicios import servicio_grabacion, servicio_modelos, servicio_respaldo
 
 # Orígenes explícitos de desarrollo (nunca "*" en producción, por CLAUDE.md).
 # Se amplía cuando exista el frontend real (Vite) y el dominio del túnel.
@@ -96,6 +97,10 @@ def crear_app(vigilar: bool = False) -> FastAPI:
         errores = [{k: v for k, v in e.items() if k not in ("input", "ctx")} for e in exc.errors()]
         return JSONResponse(status_code=422, content={"detail": jsonable_encoder(errores)})
 
+    @app.exception_handler(servicio_modelos.ErrorModelo)
+    async def _error_modelo(_request, exc: servicio_modelos.ErrorModelo):
+        return JSONResponse(status_code=exc.estado, content={"detail": exc.detalle})
+
     @app.exception_handler(servicio_grabacion.ErrorGrabacion)
     async def _error_grabacion(_request, exc: servicio_grabacion.ErrorGrabacion):
         return JSONResponse(status_code=exc.estado, content={"detail": exc.detalle})
@@ -111,5 +116,6 @@ def crear_app(vigilar: bool = False) -> FastAPI:
     app.include_router(rutas_bloques.router)
     app.include_router(rutas_clases.router)
     app.include_router(rutas_grabaciones.router)
+    app.include_router(rutas_ajustes.router)
 
     return app

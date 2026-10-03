@@ -50,6 +50,9 @@ class Colegio(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     nombre: Mapped[str] = mapped_column(String, nullable=False)
+    # Ajuste del colegio (lo cambia el UTP en «Ajustes», no un archivo de configuración): ¿los profesores pueden sacar fotos de la
+    # pizarra? Es opcional porque pide un modelo aparte (3,2 GB) y mucha memoria; apagado por defecto.
+    fotos_pizarra: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     usuarios: Mapped[list["Usuario"]] = relationship(back_populates="colegio")
     cursos: Mapped[list["Curso"]] = relationship(back_populates="colegio")

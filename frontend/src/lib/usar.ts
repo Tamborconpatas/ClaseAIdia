@@ -55,5 +55,7 @@ export function useSondeo<T>(consultar: () => Promise<T>, cadaMs: number, deps: 
   }, [...deps, version])
 
   const actualizar = useCallback(() => setVersion((v) => v + 1), [])
-  return { datos, sinConexion, actualizar }
+  /** Pone ya un dato que se acaba de recibir por otro lado (la respuesta de un cambio), sin esperar a la próxima consulta. */
+  const fijar = useCallback((nuevo: T) => setDatos(nuevo), [])
+  return { datos, sinConexion, actualizar, fijar }
 }

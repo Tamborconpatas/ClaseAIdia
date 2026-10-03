@@ -73,14 +73,16 @@ El hardware objetivo de este proyecto no tiene GPU — `faster-whisper` corre bi
 
 ### 4. Opcional: leer la pizarra con una foto
 
-**Está apagada por defecto: cada colegio elige si la quiere** (ver «Rendimiento medido» más abajo para decidir). La transcripción y el resumen funcionan igual sin ella. Para activarla, poner `FOTOS_PIZARRA=si` en el `.env` e instalar el modelo (abajo); con `no` el botón ni aparece y el servidor rechaza las fotos.
+**Está apagada por defecto: cada colegio elige si la quiere** (ver «Rendimiento medido» más abajo para decidir), y lo decide **el UTP dentro de la aplicación**, en «Ajustes» (menú de la izquierda). No hay que editar archivos ni escribir comandos: la aplicación se reparte portable y el colegio no tiene por qué saber hacerlo. La transcripción y el resumen funcionan igual sin ella.
 
-Con ella activada, el profesor puede sacar fotos de la pizarra con su celular durante la clase («Foto de la pizarra» en la pantalla de grabar); un modelo de visión las lee después de la clase y suma lo escrito al material (la imagen se borra apenas se lee). Para eso hay que instalar el modelo una vez, en el equipo del servidor:
+En «Ajustes» el UTP ve lo que necesita para decidir y lo deja listo desde ahí:
 
-```bash
-ollama pull qwen2.5vl:3b      # 3,2 GB de disco; el nombre se puede cambiar con MODELO_VISION en el .env
-```
-Necesita unos **4,5 GB de memoria libres** además de lo que ya usa el sistema: en un equipo de 16 GB sobra, en uno de 8 GB lo normal es que no alcance y las fotos se saltan (la clase se procesa igual, sin ellas; el profesor ve «no tenía memoria suficiente» junto a cada foto). Si el modelo no está instalado, pasa lo mismo y el aviso dice qué comando falta. Lee bien letra clara, listas y esquemas; en matemática escrita a mano conserva la estructura pero **puede cambiar cifras**, por eso el profesor revisa y corrige antes de aprobar.
+- **Memoria del equipo**: dice cuánta tiene y si alcanza (se recomiendan 16 GB; con menos, lo normal es que las fotos se salten solas al procesar y la clase se procese igual, sin ellas).
+- **Programa de IA (Ollama)**: si está funcionando en el equipo (Ollama es el único programa que hay que instalar aparte, desde ollama.com).
+- **Modelo de lectura de imágenes** (3,2 GB de disco): si falta, un botón «Descargar el modelo» lo baja con una barra de avance. Hace falta internet, una sola vez.
+- El interruptor «Permitir fotos de la pizarra». Apagado, el botón no aparece y el servidor rechaza las fotos.
+
+Con ella activada, el profesor puede sacar fotos de la pizarra con su celular durante la clase («Foto de la pizarra» en la pantalla de grabar); un modelo de visión las lee después de la clase y suma lo escrito al material (la imagen se borra apenas se lee). Necesita unos **4,5 GB de memoria libre** además de lo que ya usa el sistema: en un equipo de 16 GB sobra, en uno de 8 GB lo normal es que no alcance. Si el modelo no está instalado, las fotos quedan con un aviso y la clase se procesa igual. Lee bien letra clara, listas y esquemas; en matemática escrita a mano conserva la estructura pero **puede cambiar cifras**, por eso el profesor revisa y corrige antes de aprobar.
 
 ### 5. Opcional: modo de limpieza de audio "DeepFilterNet"
 `requirements.txt` no incluye `deepfilternet` a propósito — su dependencia `deepfilterlib` compila una extensión nativa en Rust y romper esto rompería la instalación de *todo* el resto de dependencias si Cargo no está presente (confirmado 2026-09-03). Sin este paso, la app funciona igual con los demás modos de limpieza de audio (DSP/MMSE). Para tener el modo `deepfilter` (máxima calidad) también:
@@ -118,10 +120,10 @@ Seis fotos reales (tarea con letra clara, mapa conceptual en pantalla, pizarra d
 | 8 núcleos (4 rápidos + 4 lentos) | 19 s | de 8 a 49 s (mediana 42 s) | **3,1 min** | 3,4 GB |
 
 - Se suma **a la clase, después de transcribir**: una clase con 10 fotos tarda unos 6 minutos más. Más núcleos no la aceleran (leer una imagen depende de la velocidad de la memoria, no de cuántos núcleos haya).
-- Pide **3,2 GB de disco** (el modelo) y unos **4,5 GB de memoria libre** además de lo que ya usa el sistema: con 16 GB sobra; con 8 GB casi seguro que no alcanza, y las fotos se saltan solas (la clase se procesa igual, sin ellas).
+- Pide **3,2 GB de disco** (el modelo, que el UTP baja desde «Ajustes») y unos **4,5 GB de memoria libre** además de lo que ya usa el sistema: con 16 GB sobra; con 8 GB casi seguro que no alcanza, y las fotos se saltan solas (la clase se procesa igual, sin ellas).
 - Calidad (ver `QA.md`): lee bien letra clara, listas y esquemas; en matemática escrita a mano **puede cambiar cifras**, por eso el profesor revisa y corrige antes de aprobar. Con la pizarra de cálculo más densa el modelo a veces se repite; la aplicación lo limpia y reintenta sola (en estas seis lecturas no hizo falta).
 
-**Para decidir**: si el equipo del colegio tiene 8 GB, o el profesorado no va a usar la pizarra de esa manera, déjenla apagada (`FOTOS_PIZARRA=no`, que es lo normal): no se instala nada más ni se gasta tiempo. Si tiene 16 GB y quieren que lo escrito en la pizarra llegue al material, actívenla.
+**Para decidir**: si el equipo del colegio tiene 8 GB, o el profesorado no va a usar la pizarra de esa manera, déjenla apagada (es lo normal: no se descarga nada más ni se gasta tiempo). Si tiene 16 GB y quieren que lo escrito en la pizarra llegue al material, el UTP la activa en «Ajustes».
 
 ## Uso
 

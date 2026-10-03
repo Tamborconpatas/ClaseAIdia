@@ -11,6 +11,7 @@ from test_grabaciones import EQUIPO_A, _comando, _crear, _en_curso, _estado, _te
 
 
 _leer_real = sp._leer  # el `entorno` de abajo lo reemplaza en cada prueba
+_activadas_real = sp.activadas
 
 
 def foto(ancho=2000, alto=1000, formato="JPEG", orientacion=None):
@@ -26,7 +27,7 @@ def foto(ancho=2000, alto=1000, formato="JPEG", orientacion=None):
 
 @pytest.fixture(autouse=True)
 def entorno(monkeypatch, tmp_path):
-    monkeypatch.setenv("FOTOS_PIZARRA", "si")  # las pruebas parten con la función activada; una prueba aparte la apaga
+    monkeypatch.setattr(sp, "activadas", lambda colegio: True)  # las pruebas parten con la función activada; las del final usan la real
     monkeypatch.setattr(sp, "CARPETA_FOTOS", tmp_path / "fotos")
     monkeypatch.setattr(sp, "esperar_memoria", lambda *a, **k: True)
     monkeypatch.setattr(sp.cliente_ollama, "descargar_modelo", lambda *a, **k: None)
@@ -112,7 +113,7 @@ def test_una_foto_que_no_se_puede_leer_no_frena_la_clase(g, monkeypatch, tmp_pat
     subir(g, gid)
     s = _terminar_con_audio(g, gid)
     assert s["estado"] == "terminada"
-    assert s["fotos"][0]["estado"] == "error" and "ollama pull qwen2.5vl:3b" in s["fotos"][0]["error"]
+    assert s["fotos"][0]["estado"] == "error" and "el UTP puede descargarlo en Ajustes" in s["fotos"][0]["error"]
     assert archivos(tmp_path) == []
 
 
@@ -303,25 +304,41 @@ def test_la_lectura_real_limpia_las_repeticiones_y_en_el_reintento_manda_la_foto
     assert max(tamano(normal)) == 1024 and max(tamano(reducida)) == sp.LADO_REINTENTO == 768
 
 
-# --- Opcional: el colegio elige si tener las fotos ------------------------------------------------------------------------
+# --- Opcional: el UTP elige en «Ajustes» si el colegio tiene las fotos -----------------------------------------------------------
 
 
 def test_sin_activar_las_fotos_el_servidor_las_rechaza_y_la_pantalla_lo_sabe(g, monkeypatch, tmp_path):
+    monkeypatch.setattr(sp, "activadas", _activadas_real)  # la función de verdad, que mira el ajuste del colegio
     gid = _en_curso(g)
-    assert _estado(g, gid)["fotos_habilitadas"] is True
-    monkeypatch.setenv("FOTOS_PIZARRA", "no")
+    assert _estado(g, gid)["fotos_habilitadas"] is False  # un colegio nuevo la tiene apagada
     r = subir(g, gid)
     assert r.status_code == 403 and "no están activadas" in r.json()["detail"]
     assert archivos(tmp_path) == []
-    assert _estado(g, gid)["fotos_habilitadas"] is False  # la pantalla de grabar no muestra el botón
+
+    # lo que hace el UTP en Ajustes (por la API, como lo hace la pantalla)
+    assert g["c"].put("/ajustes/fotos-pizarra", json={"activada": True}, headers=g["utp"]).status_code == 200
+    assert _estado(g, gid)["fotos_habilitadas"] is True  # ahora la pantalla de grabar muestra el botón
+    assert subir(g, gid).status_code == 201
+    g["c"].put("/ajustes/fotos-pizarra", json={"activada": False}, headers=g["utp"])
+    assert subir(g, gid).status_code == 403 and _estado(g, gid)["fotos_habilitadas"] is False  # y si lo apaga, deja de aceptarlas
 
 
-@pytest.mark.parametrize("valor,activada", [("si", True), ("SÍ", True), ("1", True), ("true", True), (" Yes ", True), ("no", False), ("", False), ("0", False), ("quizas", False)])
-def test_como_se_activa(monkeypatch, valor, activada):
-    monkeypatch.setenv("FOTOS_PIZARRA", valor)
-    assert sp.activadas() is activada
+def test_la_funcion_depende_del_colegio_y_sin_colegio_esta_apagada():
+    class Colegio:
+        fotos_pizarra = True
+
+    assert _activadas_real(Colegio()) is True
+    Colegio.fotos_pizarra = False
+    assert _activadas_real(Colegio()) is False
+    assert _activadas_real(None) is False
 
 
-def test_por_defecto_viene_apagada(monkeypatch):
-    monkeypatch.delenv("FOTOS_PIZARRA", raising=False)
-    assert sp.activadas() is False
+def test_la_direccion_de_ollama_usa_127_0_0_1_y_respeta_una_remota(monkeypatch):
+    """`localhost` en Windows prueba IPv6 primero y, con Ollama cerrado, cada consulta tarda el doble (medido)."""
+    monkeypatch.delenv("OLLAMA_URL", raising=False)
+    monkeypatch.setattr(sp.app_config, "get_param", lambda clave: "http://localhost:11434")
+    assert sp.url_ollama() == "http://127.0.0.1:11434"
+    monkeypatch.setenv("OLLAMA_URL", "http://servidor-ia.colegio:11434")
+    assert sp.url_ollama() == "http://servidor-ia.colegio:11434"
+    monkeypatch.setenv("OLLAMA_URL", "http://localhost:9999")
+    assert sp.url_ollama() == "http://127.0.0.1:9999"
