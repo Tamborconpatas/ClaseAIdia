@@ -71,7 +71,9 @@ export function Estado() {
         </Grupo>
         <Grupo titulo="Procesándose">
           {p.procesando.map((c) => (
-            <Clase key={c.clase_id} c={c}>{c.turno === 'ahora' ? `procesándose ahora${c.minutos !== null ? ` (hace ${c.minutos} min)` : ''}.` : 'en espera de su turno.'}</Clase>
+            <Clase key={c.clase_id} c={c}>{c.turno === 'ahora'
+                ? `procesándose ahora${c.minutos !== null ? ` (hace ${c.minutos} min)` : ''}.`
+                : `en espera de su turno${c.posicion !== null ? ` (la n.º ${c.posicion} de la cola)` : ''}${c.prioritaria ? ', marcada como prioritaria' : ''}.`}</Clase>
           ))}
         </Grupo>
         <Grupo titulo="Fallaron y se reintentan solas">

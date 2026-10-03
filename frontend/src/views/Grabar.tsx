@@ -1,9 +1,11 @@
 import { useRef, useState } from 'react'
 import { AlertTriangle, ArrowLeft, Camera, CheckCircle2, Clock, Info, Loader2, Mic, MicOff, MonitorSmartphone, Pause, Play, Square, Timer, Wifi, WifiOff } from 'lucide-react'
+import { CasillaPrioritaria } from '@/components/CasillaPrioritaria'
 import { Cargando, ErrorForm, Vacio } from '@/components/comunes'
 import { Button } from '@/components/ui/button'
 import { api, subirFoto, type AccionGrabacion, type BloqueDeHoy, type Grabacion } from '@/lib/api'
 import { activarEquipo, equipoActivo, idDeEsteEquipo, puedeGrabarAqui, soltarEquipo, useEquipo } from '@/lib/grabador'
+import { mensajeDeProcesamiento } from '@/lib/cola'
 import { colorAsignatura, hhmm } from '@/lib/horario'
 import { useCarga, useSondeo } from '@/lib/usar'
 import { cn } from '@/lib/utils'
@@ -257,9 +259,12 @@ function Sesion({ id, onSalir, onAbrirClase }: { id: number; onSalir: () => void
         </Aviso>
       )}
       {g.estado === 'procesando' && (
-        <Aviso icono={Loader2} tono="gris" girar>
-          Procesando la clase: se transcribe y se genera el material. Puede tardar unos minutos y puedes cerrar esta pantalla.
-        </Aviso>
+        <>
+          <Aviso icono={Loader2} tono="gris" girar>{mensajeDeProcesamiento(g.posicion_en_cola)}</Aviso>
+          {g.posicion_en_cola !== null && (
+            <CasillaPrioritaria marcada={g.prioritaria} deshabilitada={trabajando !== null} onCambiar={(m) => void comando(m ? 'marcar_prioritaria' : 'quitar_prioritaria')} />
+          )}
+        </>
       )}
       {g.estado === 'terminada' && (
         <section className="space-y-3 rounded-2xl border bg-card p-5 text-center">
@@ -487,18 +492,7 @@ function Controles({
           )}
         </>
       )}
-      <label className="flex min-h-10 items-center gap-3 text-sm">
-        <input
-          type="checkbox"
-          className="size-5 rounded border-input accent-primary"
-          checked={g.prioritaria}
-          disabled={ocupado}
-          onChange={(e) => onComando(e.target.checked ? 'marcar_prioritaria' : 'quitar_prioritaria')}
-        />
-        <span>
-          Clase prioritaria <span className="text-muted-foreground">(se procesa antes que las demás)</span>
-        </span>
-      </label>
+      <CasillaPrioritaria marcada={g.prioritaria} deshabilitada={ocupado} onCambiar={(m) => onComando(m ? 'marcar_prioritaria' : 'quitar_prioritaria')} />
     </section>
   )
 }

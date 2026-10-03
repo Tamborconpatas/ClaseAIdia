@@ -1,5 +1,15 @@
 # Fase 5 — Cola de procesamiento (EDF)
 
+**Estado (2026-10-03): hecha y probada con el servidor, el trabajador, Whisper y Ollama reales; detalle y mediciones en `QA.md` («Fase 5»).** Cómo quedó: `servicios/servicio_grabacion.py` (`clave_de_cola`, `cola`, `despachar`, `_recoger_perdidos`), columna `grabaciones.iniciada_en` (migración `c5f7a9b1d3e6`), `posicion_en_cola` en «Grabar» y la cola en orden en «Estado». Lo que sigue pendiente de esta fase: ver el cluster de Ollama de Docker corriendo con la aplicación real (el compose de hoy es el del prototipo Gradio; pasa a la Fase 6).
+
+- [x] Orden EDF por la próxima vez que se dicta el mismo bloque (fecha de la clase + 7 días, a la hora de inicio); a igual plazo, la que se grabó antes.
+- [x] `Clase.prioritaria` se salta el orden (la marca el profesor durante la clase o mientras espera).
+- [x] Despachador con lugares configurables (`PROCESAMIENTOS_SIMULTANEOS`, 1 por defecto): una clase en marcha nunca se interrumpe; la cola vive en la base y sobrevive a un reinicio.
+- [x] Una clase tomada cuyo trabajador desapareció se recoge y se reintenta sola.
+- [ ] Cluster de Ollama de Docker con la aplicación real: queda para la Fase 6 (empaquetado).
+
+## Plan original de la fase
+
 Solo tiene sentido una vez que exista más de una `Clase` disparándose para procesar al mismo tiempo (Fase 4 en funcionamiento). Decisión ya tomada: cola de una sola máquina para este semestre — la versión distribuida multi-servidor queda fuera de alcance.
 
 ## Qué debe tener

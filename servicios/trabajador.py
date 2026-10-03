@@ -13,6 +13,7 @@ import sys
 import threading
 import time
 
+from nucleo.consola import salida_segura
 from nucleo.memoria import memoria_del_proceso_gb, memoria_total_gb
 
 CODIGO_SIN_MEMORIA = 75  # código de salida de «me pasé del tope de memoria»; el servidor lo reconoce
@@ -55,6 +56,7 @@ def vigilar_memoria(limite_gb: float, intervalo_s: float = 1.0, leer=memoria_del
 
 
 def main(argv: list[str]) -> int:
+    salida_segura()  # el trabajador hereda la salida redirigida del servidor: sin esto un print con ✓ o emoji hacía fallar la clase
     if len(argv) != 2 or argv[0] not in ("clase", "generacion") or not argv[1].isdigit():
         print("uso: python -m servicios.trabajador (clase|generacion) <id de la grabación>", file=sys.stderr)
         return 2

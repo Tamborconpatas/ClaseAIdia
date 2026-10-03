@@ -248,88 +248,138 @@ def test_el_trabajador_recibe_el_modo_y_el_id(sesion_procesando, monkeypatch, tm
     assert salida.read_text() == f"generacion {sesion_procesando['id']}"
 
 
+def test_al_terminar_el_trabajador_su_pid_ya_no_queda_aunque_el_audio_se_conserve(sesion_procesando, monkeypatch):
+    _con_hijo(monkeypatch, "import sys; sys.exit(1)")  # falla: queda un reintento programado y el audio se conserva
+    sg._trabajar_aparte("clase", sesion_procesando["id"], sesion_procesando["fabrica"])
+    assert (sesion_procesando["carpeta"] / "000000.parte").exists()
+    assert not (sesion_procesando["carpeta"] / "trabajador.pid").exists()  # un pid viejo podría reusarse y hacer creer que sigue vivo
+
+
+def test_al_regenerar_solo_el_material_se_sabe_que_el_trabajador_vive_y_despues_no_queda_nada(sesion_procesando, monkeypatch, tmp_path):
+    sg.borrar_audio(sesion_procesando["id"])  # no hay carpeta de audio: solo falta el material
+    visto = tmp_path / "visto.txt"
+    pid = sesion_procesando["carpeta"] / "trabajador.pid"
+    _con_hijo(monkeypatch, f"import os; open(r'{visto}', 'w').write(str(os.path.exists(r'{pid}')))")
+    sg._trabajar_aparte("generacion", sesion_procesando["id"], sesion_procesando["fabrica"])
+    assert visto.read_text() == "True"  # mientras trabaja, el servidor puede comprobar que sigue vivo (también tras un reinicio)
+    assert not sesion_procesando["carpeta"].exists()  # y al terminar no deja una carpeta vacía
+
+
 def test_regenerar_no_borra_el_audio_porque_no_hay_audio_pero_si_la_transcripcion(sesion_procesando, monkeypatch):
     _con_hijo(monkeypatch, "import sys; sys.exit(0)")
     sg._trabajar_aparte("generacion", sesion_procesando["id"], sesion_procesando["fabrica"])
     assert sesion_procesando["carpeta"].exists()  # el modo «generacion» no toca la carpeta (otro flujo la maneja)
 
 
-def test_se_procesa_una_clase_a_la_vez_aunque_lleguen_dos(sesion_procesando, monkeypatch, tmp_path):
-    registro = tmp_path / "registro.txt"
-    _con_hijo(monkeypatch, f"import time; a = time.time(); time.sleep(0.8); open(r'{registro}', 'a').write(f'{{a}} {{time.time()}}\\n')")
-    hilos = [threading.Thread(target=sg._trabajar_aparte, args=("clase", sesion_procesando["id"], sesion_procesando["fabrica"])) for _ in range(2)]
-    for h in hilos:
-        h.start()
-    for h in hilos:
-        h.join(timeout=60)
-    (a1, b1), (a2, b2) = sorted(tuple(map(float, linea.split())) for linea in registro.read_text().splitlines())
-    assert a2 >= b1 - 0.05  # el segundo empezó cuando el primero ya había terminado
-
-
 # --- Cómo se elige dónde correr ------------------------------------------------------------------
 
 
-def test_por_defecto_el_procesamiento_va_a_un_proceso_aparte(monkeypatch):
-    llamados = []
+def test_por_defecto_el_procesamiento_va_a_un_proceso_aparte_y_al_terminar_deja_pasar_a_la_siguiente(monkeypatch):
+    llamados, despachos = [], []
     monkeypatch.delenv("PROCESAMIENTO_EN_HILO", raising=False)
     monkeypatch.setattr(sg, "_trabajar_aparte", lambda *a: llamados.append(a))
-    sg._lanzar(sg.procesar, 7, "fabrica")
-    sg._lanzar(sg.procesar_generacion, 8, "fabrica")
-    assert _esperar(lambda: len(llamados) == 2)
-    assert sorted(llamados) == [("clase", 7, "fabrica"), ("generacion", 8, "fabrica")]
+    monkeypatch.setattr(sg, "despachar", lambda fabrica: despachos.append(fabrica))
+    sg._hilos[7] = "hilo de mentira"
+    sg._hilo_de_trabajo("clase", 7, "fabrica")
+    sg._hilo_de_trabajo("generacion", 8, "fabrica")
+    assert llamados == [("clase", 7, "fabrica"), ("generacion", 8, "fabrica")]
+    assert despachos == ["fabrica", "fabrica"] and 7 not in sg._hilos
+
+
+def test_aunque_el_trabajo_falle_la_cola_sigue(monkeypatch):
+    despachos = []
+    monkeypatch.delenv("PROCESAMIENTO_EN_HILO", raising=False)
+    monkeypatch.setattr(sg, "_trabajar_aparte", lambda *a: 1 / 0)
+    monkeypatch.setattr(sg, "despachar", lambda fabrica: despachos.append(fabrica))
+    with pytest.raises(ZeroDivisionError):
+        sg._hilo_de_trabajo("clase", 7, "fabrica")
+    assert despachos == ["fabrica"]
 
 
 def test_en_desarrollo_se_puede_procesar_en_un_hilo(monkeypatch):
     llamados = []
     monkeypatch.setenv("PROCESAMIENTO_EN_HILO", "1")
     monkeypatch.setattr(sg, "_trabajar_aparte", lambda *a: pytest.fail("no debía usar el proceso aparte"))
-    sg._lanzar(lambda *a: llamados.append(a), 7, "fabrica")
-    assert _esperar(lambda: llamados == [(7, "fabrica")])
+    monkeypatch.setattr(sg, "despachar", lambda fabrica: None)
+    monkeypatch.setattr(sg, "procesar", lambda *a: llamados.append(("clase", *a)))
+    monkeypatch.setattr(sg, "procesar_generacion", lambda *a: llamados.append(("generacion", *a)))
+    sg._hilo_de_trabajo("clase", 7, "fabrica")
+    sg._hilo_de_trabajo("generacion", 8, "fabrica")
+    assert llamados == [("clase", 7, "fabrica"), ("generacion", 8, "fabrica")]
 
 
 # --- Un reinicio del servidor (por ejemplo un corte de luz) no pierde la clase -------------------
 
 
-def test_tras_un_reinicio_una_clase_con_audio_en_disco_se_vuelve_a_procesar(sesion_procesando, monkeypatch):
-    relanzados = []
-    monkeypatch.setattr(sg, "_lanzar", lambda f, *a: relanzados.append((f.__name__, a[0])))
+@pytest.fixture()
+def despachos(monkeypatch):
+    """`recuperar_al_iniciar` pide despachar al final: se anota en vez de arrancar nada."""
+    anotados = []
+    monkeypatch.setattr(sg, "despachar", lambda fabrica: anotados.append(fabrica))
+    return anotados
+
+
+def _tomada(s):
+    """Deja la clase como la deja un trabajador en marcha: ya la tomó."""
+    with s["fabrica"]() as db:
+        db.get(Grabacion, s["id"]).iniciada_en = datetime.datetime(2026, 9, 28, 12, 0)
+        db.commit()
+
+
+def _iniciada_en(s):
+    with s["fabrica"]() as db:
+        return db.get(Grabacion, s["id"]).iniciada_en
+
+
+def test_tras_un_reinicio_una_clase_con_audio_en_disco_vuelve_a_la_cola(sesion_procesando, despachos):
+    _tomada(sesion_procesando)  # el trabajador murió con el servidor
     sg.recuperar_al_iniciar(sesion_procesando["db"], sesion_procesando["fabrica"])
-    assert relanzados == [("procesar", sesion_procesando["id"])]
+    assert _iniciada_en(sesion_procesando) is None  # de nuevo esperando su turno
+    assert despachos == [sesion_procesando["fabrica"]]  # y el despachador la toma
     assert (sesion_procesando["carpeta"] / "000000.parte").exists()  # el audio no se borra mientras se procesa
     assert _estado(sesion_procesando)[0] == E.PROCESANDO
 
 
-def test_tras_un_reinicio_si_el_trabajador_sigue_vivo_no_se_duplica_el_trabajo(sesion_procesando, monkeypatch):
-    relanzados = []
-    monkeypatch.setattr(sg, "_lanzar", lambda f, *a: relanzados.append(f.__name__))
+def test_tras_un_reinicio_una_clase_que_esperaba_su_turno_sigue_esperando(sesion_procesando, despachos):
+    sg.recuperar_al_iniciar(sesion_procesando["db"], sesion_procesando["fabrica"])
+    assert _iniciada_en(sesion_procesando) is None and _estado(sesion_procesando)[0] == E.PROCESANDO
+
+
+def test_tras_un_reinicio_si_el_trabajador_sigue_vivo_no_se_duplica_el_trabajo(sesion_procesando, despachos):
+    _tomada(sesion_procesando)
     (sesion_procesando["carpeta"] / "trabajador.pid").write_text(str(os.getpid()))  # un proceso que sí está vivo
     sg.recuperar_al_iniciar(sesion_procesando["db"], sesion_procesando["fabrica"])
-    assert relanzados == [] and sesion_procesando["carpeta"].exists()
+    assert _iniciada_en(sesion_procesando) is not None  # sigue «tomada»: no vuelve a la cola ni ocupa dos lugares
+    assert sesion_procesando["carpeta"].exists()
     assert _estado(sesion_procesando)[0] == E.PROCESANDO
 
 
-def test_tras_un_reinicio_sin_audio_pero_con_transcripcion_solo_se_regenera_el_material(sesion_procesando, monkeypatch):
-    relanzados = []
-    monkeypatch.setattr(sg, "_lanzar", lambda f, *a: relanzados.append(f.__name__))
+def test_tras_un_reinicio_sin_audio_pero_con_transcripcion_solo_se_regenera_el_material(sesion_procesando, despachos):
     sg.borrar_audio(sesion_procesando["id"])
     with sesion_procesando["fabrica"]() as db:
         db.get(Grabacion, sesion_procesando["id"]).clase.contenido = ContenidoClase(transcripcion_texto="hola", retirado=True)
         db.commit()
+    _tomada(sesion_procesando)
     sg.recuperar_al_iniciar(sesion_procesando["db"], sesion_procesando["fabrica"])
-    assert relanzados == ["procesar_generacion"]
+    with sesion_procesando["fabrica"]() as db:
+        g = db.get(Grabacion, sesion_procesando["id"])
+        assert (g.estado, g.iniciada_en, sg._modo_de(g)) == (E.PROCESANDO, None, "generacion")
 
 
-def test_tras_un_reinicio_sin_audio_ni_transcripcion_queda_en_error(sesion_procesando, monkeypatch):
-    monkeypatch.setattr(sg, "_lanzar", lambda *a: pytest.fail("no hay nada que reanudar"))
+def test_tras_un_reinicio_sin_audio_ni_transcripcion_queda_en_error(sesion_procesando, despachos):
     sg.borrar_audio(sesion_procesando["id"])
     sg.recuperar_al_iniciar(sesion_procesando["db"], sesion_procesando["fabrica"])
     estado, error = _estado(sesion_procesando)
     assert estado == E.ERROR and "reinició" in error
 
 
-def test_tras_un_reinicio_el_audio_de_una_sesion_con_reintento_pendiente_se_conserva(sesion_procesando, monkeypatch):
+def test_sin_fabrica_no_se_reanuda_nada_ni_se_despacha(sesion_procesando, despachos):
+    sg.recuperar_al_iniciar(sesion_procesando["db"])
+    assert _estado(sesion_procesando)[0] == E.ERROR and despachos == []
+
+
+def test_tras_un_reinicio_el_audio_de_una_sesion_con_reintento_pendiente_se_conserva(sesion_procesando, despachos):
     """Encontrado probando con el servidor real: reiniciar borraba el audio que el reintento automático necesitaba."""
-    monkeypatch.setattr(sg, "_lanzar", lambda *a: None)
     with sesion_procesando["fabrica"]() as db:
         sg.programar_reintento(db.get(Grabacion, sesion_procesando["id"]), "falló")
         db.commit()
@@ -337,8 +387,7 @@ def test_tras_un_reinicio_el_audio_de_una_sesion_con_reintento_pendiente_se_cons
     assert (sesion_procesando["carpeta"] / "000000.parte").exists()
 
 
-def test_el_audio_de_una_sesion_que_nadie_procesa_ni_graba_se_borra_al_arrancar(sesion_procesando, monkeypatch):
-    monkeypatch.setattr(sg, "_lanzar", lambda *a: None)
+def test_el_audio_de_una_sesion_que_nadie_procesa_ni_graba_se_borra_al_arrancar(sesion_procesando, despachos):
     huerfano = sg.CARPETA_AUDIO / "999"
     huerfano.mkdir(parents=True)
     (huerfano / "000000.parte").write_bytes(b"x")

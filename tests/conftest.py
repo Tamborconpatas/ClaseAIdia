@@ -27,6 +27,14 @@ def _crear_motor_prueba():
     return engine
 
 
+@pytest.fixture(autouse=True)
+def sin_trabajadores_de_verdad(monkeypatch):
+    """Ninguna prueba arranca un trabajador (Whisper, Ollama) de verdad: lo que llega a la cola se queda ahí, salvo que la prueba diga otra cosa."""
+    from servicios import servicio_grabacion as sg
+
+    monkeypatch.setattr(sg, "_arrancar", lambda *a: None)
+
+
 @pytest.fixture()
 def cliente():
     """Cliente de pruebas contra la API (rutas CRUD que sí existen)."""

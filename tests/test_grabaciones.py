@@ -26,7 +26,7 @@ def tiempo(monkeypatch, tmp_path):
     monkeypatch.setattr(sg, "ahora_local", lambda: reloj["local"])
     monkeypatch.setattr(sg, "ahora_utc", lambda: reloj["utc"])
     monkeypatch.setattr(sg, "CARPETA_AUDIO", tmp_path / "audio")
-    monkeypatch.setattr(sg, "_lanzar", lambda f, *a: f(*a))  # sin hilos: el procesamiento corre al instante
+    monkeypatch.setattr(sg, "_arrancar", lambda modo, i, fabrica: (sg.procesar if modo == "clase" else sg.procesar_generacion)(i, fabrica))  # sin hilos: el procesamiento corre al instante
     monkeypatch.setattr(sg, "generar_mapa", lambda resumen, puntos, asignatura: [])  # sin tocar Ollama
     monkeypatch.setattr(sg, "transcribir", lambda ruta: ("Hoy vimos la fotosíntesis.", "1\n00:00:00,000 --> 00:00:02,000\nHoy vimos la fotosíntesis.\n"))
     monkeypatch.setattr(sg, "generar_material", lambda t, asignatura=None, pizarra="": ("Resumen X", "- punto", "hoja", [{"pregunta": "¿P?", "respuesta": "R"}]))
@@ -353,6 +353,20 @@ def _terminar_con_audio(g, gid):
     _comando(g, gid, "terminar")
     assert g["c"].post(f"/grabaciones/{gid}/finalizar", json={"dispositivo": EQUIPO_A}, headers=g["ana"]).status_code == 200
     return _estado(g, gid)
+
+
+def test_el_profesor_ve_su_lugar_en_la_cola_hasta_que_la_toma_un_trabajador(g, monkeypatch):
+    monkeypatch.setattr(sg, "PROCESAMIENTOS_SIMULTANEOS", 0)  # sin lugares libres: espera
+    monkeypatch.setattr(sg, "_arrancar", lambda *a: None)
+    gid = _en_curso(g)
+    s = _terminar_con_audio(g, gid)
+    assert (s["estado"], s["posicion_en_cola"]) == ("procesando", 1)
+    assert _comando(g, gid, "marcar_prioritaria").status_code == 200  # también se puede marcar mientras espera
+    assert _estado(g, gid)["prioritaria"] is True
+    monkeypatch.setattr(sg, "PROCESAMIENTOS_SIMULTANEOS", 1)
+    sg.despachar(g["c"].sesion)
+    s = _estado(g, gid)
+    assert (s["estado"], s["posicion_en_cola"]) == ("procesando", None)  # ya la tomó un trabajador: no está en la cola
 
 
 def test_un_fallo_del_procesamiento_se_reintenta_solo_y_el_audio_se_conserva_solo_mientras_queden_intentos(g, monkeypatch, tiempo):
