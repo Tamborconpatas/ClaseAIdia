@@ -18,6 +18,7 @@ from PIL import Image, ImageOps
 from sqlalchemy.orm import Session, sessionmaker
 
 from infraestructura import cliente_ollama
+from nucleo import configuracion as app_config
 from nucleo.memoria import esperar_memoria
 from infraestructura.modelos_orm import EstadoGrabacion as E
 from infraestructura.modelos_orm import FotoPizarra, Grabacion
@@ -50,10 +51,19 @@ _ENCABEZADO_AL_MATERIAL = (
 )
 
 
-def activadas() -> bool:
-    """Las fotos de la pizarra son opcionales: el colegio las activa con `FOTOS_PIZARRA=si` en el `.env` (por defecto no), porque
-    piden un modelo aparte (3,2 GB de disco) y unos 4,5 GB de memoria libre al procesar."""
-    return os.environ.get("FOTOS_PIZARRA", "no").strip().lower() in ("si", "sí", "1", "true", "yes")
+MEMORIA_RECOMENDADA_GB = 16.0  # con menos, lo normal es que las fotos se salten por falta de memoria (medido; ver el README)
+
+
+def activadas(colegio) -> bool:
+    """Las fotos de la pizarra son opcionales y las activa el UTP del colegio en «Ajustes» (por defecto, apagadas): piden un modelo
+    aparte (3,2 GB de disco) y unos 4,5 GB de memoria libre al procesar. No es un archivo de configuración: la app se reparte
+    portable y el colegio no edita archivos ni corre comandos."""
+    return bool(colegio is not None and colegio.fotos_pizarra)
+
+
+def url_ollama() -> str:
+    # `127.0.0.1` y no `localhost`: en Windows `localhost` prueba primero IPv6 y, con Ollama cerrado, cada consulta tarda el doble (medido).
+    return (os.environ.get("OLLAMA_URL") or app_config.get_param("ollama_url")).replace("//localhost", "//127.0.0.1")
 
 
 def _carpeta(grabacion_id: int) -> Path:
@@ -84,7 +94,7 @@ def _normalizar(datos: bytes) -> bytes:
 
 
 def guardar_foto(db: Session, g: Grabacion, datos: bytes, segundo: int = 0) -> FotoPizarra:
-    if not activadas():
+    if not activadas(g.clase.bloque.curso.colegio):
         raise ErrorGrabacion("Las fotos de la pizarra no están activadas en este colegio", 403)
     if g.estado not in ESTADOS_QUE_ACEPTAN_FOTOS:
         raise ErrorGrabacion(f"No se pueden agregar fotos con la grabación {g.estado.value}")
@@ -152,7 +162,7 @@ def _leer_con_reintento(ruta: Path, ollama_url: str) -> str:
 
 def leer_pendientes(grabacion_id: int, fabrica: sessionmaker, ollama_url: str | None = None) -> None:
     """Lee las fotos que faltan, una a una. Nunca lanza: una foto que falla queda en `error` con el motivo."""
-    ollama_url = ollama_url or os.environ.get("OLLAMA_URL") or "http://localhost:11434"
+    ollama_url = ollama_url or url_ollama()
     with fabrica() as db:
         ids = [f.id for f in db.query(FotoPizarra).filter_by(grabacion_id=grabacion_id, estado="pendiente").order_by(FotoPizarra.segundo, FotoPizarra.id)]
     if ids and not esperar_memoria(MEMORIA_MINIMA_GB, ESPERA_MEMORIA_S):
@@ -191,7 +201,7 @@ def descartar_pendientes(db: Session, grabacion_id: int) -> None:
 def _motivo(e: Exception) -> str:
     texto = str(e)
     if "not found" in texto.lower() or "pull" in texto.lower():
-        return f"Falta el modelo de lectura de imágenes: ejecuta «ollama pull {MODELO_VISION}»"
+        return "Falta el modelo de lectura de imágenes: el UTP puede descargarlo en Ajustes"
     return f"No se pudo leer la foto: {texto[:200]}"
 
 

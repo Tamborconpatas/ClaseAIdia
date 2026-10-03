@@ -126,6 +126,21 @@ export interface Grabacion {
   /** El colegio activó las fotos de la pizarra (FOTOS_PIZARRA=si en el servidor). */
   fotos_habilitadas: boolean
 }
+export interface DescargaModelo {
+  estado: 'descargando' | 'lista' | 'error'
+  porcentaje: number
+  mensaje: string
+}
+/** Lo que el UTP necesita para decidir si activa las fotos de la pizarra y dejarlas listas sin una consola. */
+export interface AjusteFotos {
+  activada: boolean
+  modelo: string
+  ollama_responde: boolean
+  modelo_instalado: boolean
+  memoria_total_gb: number | null
+  memoria_recomendada_gb: number
+  descarga: DescargaModelo | null
+}
 export interface BloqueDeHoy {
   bloque_id: number
   asignatura: string | null

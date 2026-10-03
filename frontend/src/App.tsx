@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { BookOpen, CalendarDays, Mic, Sparkles, Users } from 'lucide-react'
+import { BookOpen, CalendarDays, Mic, Settings, Sparkles, Users } from 'lucide-react'
 import { AppShell, type ItemNav } from '@/components/AppShell'
 import { Cargando } from '@/components/comunes'
 import { api, type Curso, type Rol, type Usuario } from '@/lib/api'
@@ -7,6 +7,7 @@ import { equipoActivo, soltarEquipo, useEquipo } from '@/lib/grabador'
 import { SesionProvider, useSesion } from '@/lib/sesion'
 import { useCarga } from '@/lib/usar'
 import { Clases } from '@/views/Clases'
+import { Ajustes } from '@/views/Ajustes'
 import { Cursos } from '@/views/Cursos'
 import { Entrada } from '@/views/Entrada'
 import { Grabar } from '@/views/Grabar'
@@ -19,12 +20,13 @@ const CURSOS: ItemNav = { id: 'cursos', etiqueta: 'Cursos', icono: BookOpen }
 const CLASES: ItemNav = { id: 'clases', etiqueta: 'Clases', icono: Sparkles }
 const PERSONAL: ItemNav = { id: 'personal', etiqueta: 'Personal', icono: Users }
 const GRABAR: ItemNav = { id: 'grabar', etiqueta: 'Grabar', icono: Mic }
+const AJUSTES: ItemNav = { id: 'ajustes', etiqueta: 'Ajustes', icono: Settings }
 
 // El alumno tiene un solo curso, así que no hay pestaña de cursos: su curso se muestra junto a su nombre.
 const NAV: Record<Rol, ItemNav[]> = {
   ALUMNO: [HORARIO, CLASES],
   PROFESOR: [{ ...HORARIO, etiqueta: 'Mi horario' }, GRABAR, CURSOS, CLASES],
-  UTP: [CURSOS, HORARIO, CLASES, PERSONAL],
+  UTP: [CURSOS, HORARIO, CLASES, PERSONAL, AJUSTES],
 }
 const ETIQUETA_ROL: Record<Rol, string> = { ALUMNO: 'Alumno', PROFESOR: 'Profesor', UTP: 'UTP' }
 
@@ -76,6 +78,7 @@ function Principal({ usuario, rol, onSalir }: { usuario: Usuario; rol: Rol; onSa
       {id === 'grabar' && <Grabar onAbrirClase={abrirClase} />}
       {id === 'cursos' && <Cursos esUtp={rol === 'UTP'} esProfesor={rol === 'PROFESOR'} onVerClases={verClases} />}
       {id === 'personal' && <Personal />}
+      {id === 'ajustes' && rol === 'UTP' && <Ajustes />}
       {id === 'clases' && <Clases key={`${cursoClases}-${claseInicial}`} cursoInicial={cursoClases} claseInicial={claseInicial} />}
     </AppShell>
   )

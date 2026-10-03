@@ -451,6 +451,28 @@ AccionGrabacion = Literal[
 _ID_DISPOSITIVO = Field(min_length=8, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
 
 
+class AjusteFotosEditar(BaseModel):
+    activada: bool
+
+
+class DescargaOut(BaseModel):
+    estado: Literal["descargando", "lista", "error"]
+    porcentaje: float
+    mensaje: str
+
+
+class AjusteFotosOut(BaseModel):
+    """Lo que el UTP necesita para decidir si activa las fotos de la pizarra, y para dejarlas listas sin una consola."""
+
+    activada: bool
+    modelo: str
+    ollama_responde: bool
+    modelo_instalado: bool
+    memoria_total_gb: float | None
+    memoria_recomendada_gb: float
+    descarga: DescargaOut | None = None
+
+
 class GrabacionCrear(BaseModel):
     bloque_id: int
 
@@ -506,7 +528,7 @@ class GrabacionOut(BaseModel):
     error: str | None
     reintento_en: datetime.datetime | None = None  # cuándo se reintenta sola (UTC), si hay un reintento programado
     fotos: list[FotoPizarraOut] = []  # fotos de la pizarra de esta clase (la imagen no se guarda: solo el texto leído)
-    fotos_habilitadas: bool = False  # el colegio activó las fotos de la pizarra (FOTOS_PIZARRA=si)
+    fotos_habilitadas: bool = False  # el UTP activó las fotos de la pizarra en Ajustes
 
 
 class BloqueDeHoyOut(BaseModel):
