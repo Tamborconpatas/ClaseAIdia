@@ -125,7 +125,8 @@ def test_payloads_en_nombres_se_guardan_como_texto_y_no_se_ejecutan(cliente, col
 
 def test_no_hay_sql_armado_a_mano_en_el_backend():
     """Guardia contra regresiones: todo acceso a datos va por el ORM. La única excepción
-    es el PRAGMA fijo de basedatos.py y el historial de Gradio (todo con `?`)."""
+    es el PRAGMA fijo de basedatos.py, el historial de Gradio (todo con `?`) y la verificación de un respaldo
+    (un PRAGMA y un SELECT fijos sobre el archivo de la copia, sin datos de nadie)."""
     patron = re.compile(r"\btext\(|exec_driver_sql|\.execute\(|executescript|\.raw\(")
     encontrados = {}
     for carpeta in ["interfaz", "infraestructura", "servicios", "nucleo"]:
@@ -133,7 +134,10 @@ def test_no_hay_sql_armado_a_mano_en_el_backend():
             n = len(patron.findall(archivo.read_text(encoding="utf-8")))
             if n:
                 encontrados[archivo.relative_to(RAIZ).as_posix()] = n
-    assert encontrados == {"infraestructura/basedatos.py": 1, "infraestructura/repositorio_historial.py": 3}
+    assert encontrados == {"infraestructura/basedatos.py": 1, "infraestructura/repositorio_historial.py": 3, "servicios/servicio_respaldo.py": 2}
+
+    respaldo = (RAIZ / "servicios" / "servicio_respaldo.py").read_text(encoding="utf-8")
+    assert not re.search(r"""\.execute\(\s*(f['"]|['"][^'"]*['"]\s*[+%]|[^'"\s])""", respaldo), "el SQL de la verificación debe ser solo texto fijo"
 
     historial = (RAIZ / "infraestructura" / "repositorio_historial.py").read_text(encoding="utf-8")
     assert not re.search(r"""\bf['"]|\.format\(|%s|\+\s*['"]""", historial), "SQL del historial debe usar solo `?`"

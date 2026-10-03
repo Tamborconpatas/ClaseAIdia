@@ -6,7 +6,6 @@ palabras de persona. No carga los modelos de IA ni PyTorch: solo lee estado.
 """
 import datetime
 import os
-import shutil
 from pathlib import Path
 
 from sqlalchemy.orm import Session
@@ -14,12 +13,13 @@ from sqlalchemy.orm import Session
 from infraestructura import basedatos
 from infraestructura.modelos_orm import Bloque, Clase, Curso, EstadoGrabacion as E, Grabacion
 from nucleo import configuracion as app_config
+from nucleo.disco import ancestro_existente, espacio_en_disco
 from nucleo.memoria import memoria_libre_gb, memoria_total_gb
 from servicios import servicio_grabacion as sg
 from servicios import servicio_modelos, servicio_pizarra, servicio_respaldo
 
 DISCO_AVISO_GB = 5.0
-DISCO_CRITICO_GB = 2.0
+DISCO_CRITICO_GB = sg.DISCO_MINIMO_PARA_GRABAR_GB  # con menos no se puede empezar a grabar: el aviso y el bloqueo hablan del mismo número
 MEMORIA_AVISO_GB = 1.5
 RESPALDO_ATRASADO_DIAS = 2
 AUDIO_SOBRANTE_MB = 1500
@@ -36,15 +36,7 @@ def _mb(ruta: Path) -> float:
 
 def _misma_unidad(a: Path, b: Path) -> bool | None:
     """¿Las dos rutas están en el mismo disco? None si no se puede saber. (Un respaldo en el disco de la base no sirve si el disco falla.)"""
-    def existente(p: Path) -> Path | None:
-        p = p.resolve()
-        while not p.exists():
-            if p.parent == p:
-                return None
-            p = p.parent
-        return p
-
-    x, y = existente(a), existente(b)
+    x, y = ancestro_existente(a), ancestro_existente(b)
     if x is None or y is None:
         return None
     return os.stat(x).st_dev == os.stat(y).st_dev
@@ -101,11 +93,10 @@ def _ollama() -> dict:
 
 
 def _disco() -> dict:
-    raiz = Path.cwd()
-    uso = shutil.disk_usage(raiz)
+    libre, total = espacio_en_disco(sg.CARPETA_AUDIO)  # el disco donde se escribe el audio (el mismo que mira el bloqueo de grabar)
     base = Path(basedatos.engine.url.database) if basedatos.engine.url.get_backend_name() == "sqlite" and basedatos.engine.url.database else None
     return {
-        "libre_gb": round(uso.free / 1e9, 1), "total_gb": round(uso.total / 1e9, 1),
+        "libre_gb": round(libre, 1), "total_gb": round(total, 1),
         "audio_temporal_mb": _mb(sg.CARPETA_AUDIO), "fotos_temporales_mb": _mb(servicio_pizarra.CARPETA_FOTOS),
         "base_de_datos_mb": _mb(base) if base else None,
     }
@@ -132,7 +123,7 @@ def construir_alertas(e: dict) -> list[dict]:
 
     d, r, o, m, p, v = e["disco"], e["respaldos"], e["ollama"], e["memoria"], e["procesamiento"], e["vigilancia"]
     if d["libre_gb"] < DISCO_CRITICO_GB:
-        alerta("disco", "critico", f"Quedan solo {d['libre_gb']} GB libres en el disco: las grabaciones y los respaldos pueden fallar. Libera espacio ya.")
+        alerta("disco", "critico", f"Quedan solo {d['libre_gb']} GB libres en el disco: no se pueden empezar clases nuevas y el procesamiento y los respaldos pueden fallar. Libera espacio ya.")
     elif d["libre_gb"] < DISCO_AVISO_GB:
         alerta("disco", "aviso", f"Quedan {d['libre_gb']} GB libres en el disco. Conviene liberar espacio pronto.")
     if d["audio_temporal_mb"] > AUDIO_SOBRANTE_MB and not (p["procesando"] or p["en_vivo"] or p["con_reintento"]):
