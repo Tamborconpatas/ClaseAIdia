@@ -18,6 +18,7 @@ from interfaz.api import (
     rutas_clases,
     rutas_colegios,
     rutas_cursos,
+    rutas_estado,
     rutas_grabaciones,
     rutas_usuarios,
 )
@@ -42,7 +43,7 @@ def _respaldar():
         return
     try:
         servicio_respaldo.respaldar_si_toca(
-            Path(engine.url.database), Path(os.environ.get("CARPETA_RESPALDOS", "respaldos")), datetime.datetime.now(),
+            Path(engine.url.database), servicio_respaldo.carpeta_de_respaldos(), datetime.datetime.now(),
             int(os.environ.get("DIAS_DE_RESPALDO", servicio_respaldo.DIAS_POR_DEFECTO)),
         )
     except Exception:  # un respaldo fallido no debe frenar la vigilancia de las grabaciones
@@ -82,6 +83,7 @@ def crear_app(vigilar: bool = False) -> FastAPI:
             tarea.cancel()
 
     app = FastAPI(title="ClaseAIdia API", lifespan=ciclo)
+    app.state.vigilando = vigilar  # el panel de estado solo exige el latido de la vigilancia si está encendida
 
     app.add_middleware(
         CORSMiddleware,
@@ -117,5 +119,6 @@ def crear_app(vigilar: bool = False) -> FastAPI:
     app.include_router(rutas_clases.router)
     app.include_router(rutas_grabaciones.router)
     app.include_router(rutas_ajustes.router)
+    app.include_router(rutas_estado.router)
 
     return app

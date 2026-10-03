@@ -22,8 +22,8 @@ class ErrorModelo(Exception):
         self.detalle, self.estado = detalle, estado
 
 
-def instalado(modelo: str, url: str) -> bool | None:
-    """True/False según Ollama; None si Ollama no responde (no se sabe)."""
+def modelos_instalados(url: str) -> set[str] | None:
+    """Los modelos que tiene Ollama, o None si Ollama no responde (no se sabe)."""
     try:
         # Conectar con espera corta: en Windows un puerto cerrado tarda ~2 s en rechazar (medido) y la pantalla de Ajustes pregunta a menudo.
         r = requests.get(f"{url}/api/tags", timeout=(1, 3))
@@ -31,8 +31,17 @@ def instalado(modelo: str, url: str) -> bool | None:
         modelos = r.json().get("models", [])
     except (requests.RequestException, ValueError):
         return None
-    nombres = {m.get("name") for m in modelos} | {m.get("model") for m in modelos}
+    return {m.get("name") for m in modelos} | {m.get("model") for m in modelos}
+
+
+def esta_en(modelo: str, nombres: set[str]) -> bool:
     return modelo in nombres or f"{modelo}:latest" in nombres
+
+
+def instalado(modelo: str, url: str) -> bool | None:
+    """True/False según Ollama; None si Ollama no responde (no se sabe)."""
+    nombres = modelos_instalados(url)
+    return None if nombres is None else esta_en(modelo, nombres)
 
 
 def estado_de_descarga(modelo: str) -> dict | None:

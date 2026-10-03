@@ -123,7 +123,7 @@ export interface Grabacion {
   /** Si el fallo se reintenta solo, cuándo (UTC); null si ya no quedan intentos. */
   reintento_en: string | null
   fotos: FotoPizarra[]
-  /** El colegio activó las fotos de la pizarra (FOTOS_PIZARRA=si en el servidor). */
+  /** El UTP activó las fotos de la pizarra en «Ajustes». */
   fotos_habilitadas: boolean
 }
 export interface DescargaModelo {
@@ -140,6 +140,31 @@ export interface AjusteFotos {
   memoria_total_gb: number | null
   memoria_recomendada_gb: number
   descarga: DescargaModelo | null
+}
+/** Panel de estado del servidor (solo el UTP). Las alertas ya vienen redactadas por el servidor. */
+interface ClaseEnEstado {
+  clase_id: number
+  asignatura: string | null
+  curso: string
+  fecha: string
+}
+export interface EstadoServidor {
+  /** UTC, con zona. */
+  generado_en: string
+  alertas: { tema: 'disco' | 'ollama' | 'respaldos' | 'memoria' | 'vigilancia' | 'clases'; nivel: 'critico' | 'aviso'; texto: string }[]
+  procesamiento: {
+    en_vivo: (ClaseEnEstado & { estado: string })[]
+    procesando: (ClaseEnEstado & { turno: 'ahora' | 'espera'; minutos: number | null })[]
+    con_reintento: (ClaseEnEstado & { intentos: number; reintento_en: string; error: string | null })[]
+    con_error: (ClaseEnEstado & { error: string | null })[]
+    terminadas_24h: number
+  }
+  ollama: { responde: boolean; modelo_texto: string; modelo_texto_instalado: boolean }
+  disco: { libre_gb: number; total_gb: number; audio_temporal_mb: number; fotos_temporales_mb: number; base_de_datos_mb: number | null }
+  respaldos: { carpeta: string; cantidad: number; mb: number; ultimo: string | null; hace_dias: number | null; en_el_mismo_disco: boolean | null }
+  memoria: { total_gb: number | null; libre_gb: number | null }
+  /** `activa` es null si la vigilancia no está encendida en ese servidor. */
+  vigilancia: { ultima_pasada: string | null; activa: boolean | null }
 }
 export interface BloqueDeHoy {
   bloque_id: number
