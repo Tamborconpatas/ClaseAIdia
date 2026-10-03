@@ -1,7 +1,7 @@
 import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from sqlalchemy.orm import Session, selectinload, sessionmaker
+from sqlalchemy.orm import Session, object_session, selectinload, sessionmaker
 
 from infraestructura.basedatos import obtener_db
 from infraestructura.modelos_orm import Bloque, Clase, Grabacion, RolNombre, TipoBloque, Usuario
@@ -33,6 +33,7 @@ def _salida(g: Grabacion) -> dict:
         "segundos_grabados": g.segundos_grabados, "nivel": g.nivel, "trozos": g.trozos, "grabador_id": g.grabador_id,
         "grabador_conectado": sg.grabador_conectado(g), "error": g.error,
         "reintento_en": g.reintento_en.replace(tzinfo=datetime.timezone.utc) if g.reintento_en else None,
+        "posicion_en_cola": sg.posicion_en_cola(object_session(g), g),
         "fotos": g.fotos,
         "fotos_habilitadas": servicio_pizarra.activadas(b.curso.colegio),
     }

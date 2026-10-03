@@ -32,6 +32,7 @@ if ((Test-Path 'certs\cert.pem') -and (Test-Path 'certs\key.pem')) {
     $argumentos = @('-m', 'uvicorn', 'api:app', '--host', '0.0.0.0', '--port', '8000', '--no-access-log')
 }
 
+$env:PYTHONUTF8 = '1'  # la salida va a archivos de registro: sin esto Python usa cp1252 y un print con ✓ o emoji lanza error
 $espera = 5
 while ($true) {
     Rotar 'logs\servidor.log'

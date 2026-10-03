@@ -490,6 +490,8 @@ class EstadoEnVivoOut(EstadoClaseOut):
 class EstadoProcesandoOut(EstadoClaseOut):
     turno: Literal["ahora", "espera"]
     minutos: int | None  # desde que el trabajador arrancó con esta clase; None si todavía espera su turno
+    posicion: int | None  # lugar en la cola (1 = la próxima); None si ya está en marcha
+    prioritaria: bool
 
 
 class EstadoReintentoOut(EstadoClaseOut):
@@ -614,6 +616,7 @@ class GrabacionOut(BaseModel):
     grabador_conectado: bool
     error: str | None
     reintento_en: datetime.datetime | None = None  # cuándo se reintenta sola (UTC), si hay un reintento programado
+    posicion_en_cola: int | None = None  # procesando y esperando turno: su lugar (1 = la próxima); None si ya la procesan o no aplica
     fotos: list[FotoPizarraOut] = []  # fotos de la pizarra de esta clase (la imagen no se guarda: solo el texto leído)
     fotos_habilitadas: bool = False  # el UTP activó las fotos de la pizarra en Ajustes
 

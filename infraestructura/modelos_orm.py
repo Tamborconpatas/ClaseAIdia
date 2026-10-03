@@ -189,6 +189,8 @@ class Grabacion(Base):
     # reintenta solo (con esperas crecientes) mientras queden intentos; el audio se conserva hasta el último.
     intentos: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     reintento_en: Mapped[datetime.datetime | None] = mapped_column(DateTime, nullable=True)
+    # Cola de procesamiento: PROCESANDO sin `iniciada_en` = esperando su turno; con ella (UTC), un trabajador ya la tomó.
+    iniciada_en: Mapped[datetime.datetime | None] = mapped_column(DateTime, nullable=True)
 
     clase: Mapped["Clase"] = relationship(back_populates="grabacion")
     fotos: Mapped[list["FotoPizarra"]] = relationship(back_populates="grabacion", cascade="all, delete-orphan", order_by="FotoPizarra.segundo")

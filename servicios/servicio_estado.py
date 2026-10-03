@@ -63,17 +63,18 @@ def _procesamiento(db: Session, colegio_id: int) -> dict:
         return {"clase_id": g.clase_id, "asignatura": b.asignatura, "curso": b.curso.nombre, "fecha": g.clase.fecha}
 
     ahora = sg.ahora_utc()
+    turnos = {x.id: n for n, x in enumerate(sg.cola(db), start=1)}  # el orden real en que se van a procesar
     en_vivo, procesando, con_reintento, con_error = [], [], [], []
     for g in filas:
         if g.estado in sg.ACTIVAS:
             en_vivo.append({**base(g), "estado": g.estado.value})
         elif g.estado == E.PROCESANDO:
-            pid = sg._carpeta(g.id) / "trabajador.pid"  # existe cuando ya le tocó su turno y arrancó el trabajador
-            if pid.exists():
-                minutos = max(0, int((ahora - datetime.datetime.fromtimestamp(pid.stat().st_mtime, datetime.timezone.utc).replace(tzinfo=None)).total_seconds() // 60))
-                procesando.append({**base(g), "turno": "ahora", "minutos": minutos})
+            prioritaria = g.clase.prioritaria
+            if g.iniciada_en is not None:  # ya la tomó un trabajador
+                minutos = max(0, int((ahora - g.iniciada_en).total_seconds() // 60))
+                procesando.append({**base(g), "turno": "ahora", "minutos": minutos, "posicion": None, "prioritaria": prioritaria})
             else:
-                procesando.append({**base(g), "turno": "espera", "minutos": None})
+                procesando.append({**base(g), "turno": "espera", "minutos": None, "posicion": turnos.get(g.id), "prioritaria": prioritaria})
         elif g.reintento_en is not None:
             con_reintento.append({**base(g), "intentos": g.intentos + 1, "reintento_en": g.reintento_en.replace(tzinfo=datetime.timezone.utc), "error": g.error})
         else:
@@ -83,6 +84,7 @@ def _procesamiento(db: Session, colegio_id: int) -> dict:
         db.query(Grabacion).join(Clase, Clase.id == Grabacion.clase_id).join(Bloque, Bloque.id == Clase.bloque_id).join(Curso, Curso.id == Bloque.curso_id)
         .filter(Curso.colegio_id == colegio_id, Grabacion.estado == E.TERMINADA, Grabacion.creada_en >= desde).count()
     )
+    procesando.sort(key=lambda c: (c["posicion"] is not None, c["posicion"] or 0))  # primero las que ya están en marcha, luego la cola en orden
     return {"en_vivo": en_vivo, "procesando": procesando, "con_reintento": con_reintento, "con_error": con_error, "terminadas_24h": terminadas}
 
 

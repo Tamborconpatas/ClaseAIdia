@@ -122,6 +122,8 @@ export interface Grabacion {
   error: string | null
   /** Si el fallo se reintenta solo, cuándo (UTC); null si ya no quedan intentos. */
   reintento_en: string | null
+  /** Procesando y esperando turno: su lugar en la cola (1 = la próxima). null si ya la procesan o no aplica. */
+  posicion_en_cola: number | null
   fotos: FotoPizarra[]
   /** El UTP activó las fotos de la pizarra en «Ajustes». */
   fotos_habilitadas: boolean
@@ -154,7 +156,7 @@ export interface EstadoServidor {
   alertas: { tema: 'disco' | 'ollama' | 'respaldos' | 'memoria' | 'vigilancia' | 'clases'; nivel: 'critico' | 'aviso'; texto: string }[]
   procesamiento: {
     en_vivo: (ClaseEnEstado & { estado: string })[]
-    procesando: (ClaseEnEstado & { turno: 'ahora' | 'espera'; minutos: number | null })[]
+    procesando: (ClaseEnEstado & { turno: 'ahora' | 'espera'; minutos: number | null; posicion: number | null; prioritaria: boolean })[]
     con_reintento: (ClaseEnEstado & { intentos: number; reintento_en: string; error: string | null })[]
     con_error: (ClaseEnEstado & { error: string | null })[]
     terminadas_24h: number

@@ -186,6 +186,12 @@ El servidor corre sin que nadie lo mire, así que el UTP ve cómo está desde la
 
 Avisa cuando: quedan menos de 5 GB en el disco (urgente bajo 2 GB); el último respaldo tiene más de 2 días, o no hay ninguno; los respaldos están en el mismo disco que la base; Ollama no responde o falta el modelo de resúmenes; queda poca memoria (menos de 1,5 GB); la vigilancia dejó de latir (más de un minuto); queda audio guardado sin ninguna clase que lo necesite; o hay clases con error sin reintento. Es solo de lectura: desde ahí no se cambia nada (el profesor reintenta una clase desde «Grabar»).
 
+### Cola de procesamiento
+
+Las clases terminadas se procesan **de a una** (el servidor es un equipo modesto: dos modelos de IA a la vez lo ahogarían), en este orden: primero las marcadas como **prioritarias** (el profesor lo hace con la casilla «Clase prioritaria», durante la clase o mientras la suya espera); luego la de **plazo más cercano** (el plazo de una clase es la próxima vez que se dicta ese mismo bloque según el horario: una semana después, a la misma hora); y a igual plazo, la que se grabó antes. Una clase que ya se está procesando no se interrumpe. El orden se recalcula cada vez que queda un lugar libre, y la cola vive en la base de datos: si el servidor se reinicia, sigue donde estaba. El profesor ve en «Grabar» cuántas clases hay antes que la suya, y el UTP ve toda la cola, en orden, en «Estado». Si un trabajador se cierra por fuera y la clase queda «tomada» sin nadie procesándola, a los 30 segundos se da por perdida y se reintenta sola (5, 15 y 45 minutos, como cualquier otra falla).
+
+Quien administra el servidor puede subir `PROCESAMIENTOS_SIMULTANEOS` (por defecto 1) cuando hay varias instancias de Ollama (el cluster del despliegue con Docker, abajo) y memoria de sobra: cada clase en marcha es un proceso aparte con su propio tope de memoria. Es un ajuste de quien administra, no de la aplicación, a propósito: un colegio con un solo equipo debe dejarlo en 1.
+
 ## Despliegue con Docker (opción alternativa)
 
 Instalación con un solo comando, incluyendo un **cluster local de Ollama** (varias instancias en la misma máquina, balanceadas con nginx) para acelerar la generación de material de estudio cuando hay varias clases en cola. **Requiere Docker instalado** (en Windows implica admin + WSL2/Hyper-V) — es una alternativa para colegios con soporte técnico, no reemplaza el objetivo de instalación portátil sin admin (pendiente vía PyInstaller).
@@ -219,7 +225,7 @@ flowchart LR
     O2 -.->|"volumen"| V2[("ollama_data_2")]
 ```
 
-Cada instancia de Ollama es un contenedor completo con su propio modelo cargado en memoria — el balanceador solo reparte peticiones entre las que ya están levantadas, no coordina memoria entre ellas. Hoy este cluster no acelera nada por sí solo (la app procesa una clase a la vez, sin cola concurrente) — es capacidad lista para cuando exista la cola de procesamiento EDF planificada en `CLAUDE.md`.
+Cada instancia de Ollama es un contenedor completo con su propio modelo cargado en memoria — el balanceador solo reparte peticiones entre las que ya están levantadas, no coordina memoria entre ellas. Este cluster solo acelera algo con `PROCESAMIENTOS_SIMULTANEOS` mayor que 1 (ver «Cola de procesamiento» más arriba): la cola de la aplicación real procesa de a una clase por defecto, y cada instancia extra permite generar el material de una clase más en paralelo (la transcripción con Whisper corre en el equipo de la aplicación y compite por su CPU o GPU: el cluster acelera la generación, no la transcripción). El `docker-compose.yml` de hoy levanta el prototipo Gradio; empaquetar la aplicación real con este cluster es parte de la Fase 6.
 
 ### Arquitectura en Capas
 

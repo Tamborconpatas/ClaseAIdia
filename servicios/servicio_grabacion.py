@@ -294,14 +294,99 @@ def finalizar(db: Session, g: Grabacion, dispositivo: str, fabrica: sessionmaker
 # --- Procesar ---------------------------------------------------------------------------------------
 
 
-def _lanzar(funcion, *args) -> None:
+# La cola: las clases PROCESANDO sin `iniciada_en` esperan su turno; el despachador toma la primera según el orden de
+# `clave_de_cola` cada vez que hay un lugar libre. El orden se recalcula en cada despacho (lo que se marca como
+# prioritario mientras espera cuenta), y la cola vive en la base: un reinicio no la pierde.
+PROCESAMIENTOS_SIMULTANEOS = max(1, int(os.environ.get("PROCESAMIENTOS_SIMULTANEOS", "1")))  # >1 solo con varias instancias de Ollama y memoria de sobra
+GRACIA_PERDIDO_S = 30  # una clase «tomada» sin trabajador vivo por más de esto se da por perdida
+_despacho = threading.Lock()
+_hilos: dict[int, threading.Thread] = {}
+
+
+def fecha_limite(g: Grabacion) -> datetime.datetime:
+    """Para cuándo conviene tener lista la clase: la próxima vez que se dicta ese mismo bloque (el horario es semanal)."""
+    return datetime.datetime.combine(g.clase.fecha + datetime.timedelta(days=7), g.clase.bloque.hora_inicio)
+
+
+def clave_de_cola(g: Grabacion) -> tuple:
+    """EDF (el plazo más próximo primero). Lo marcado como prioritario va antes que todo lo demás; a igual plazo, la que se grabó antes."""
+    return (not g.clase.prioritaria, fecha_limite(g), g.id)
+
+
+def cola(db: Session) -> list[Grabacion]:
+    """Las clases que esperan su turno, en el orden en que se van a procesar."""
+    esperando = db.query(Grabacion).filter(Grabacion.estado == E.PROCESANDO, Grabacion.iniciada_en.is_(None)).all()
+    return sorted(esperando, key=clave_de_cola)
+
+
+def posicion_en_cola(db: Session, g: Grabacion) -> int | None:
+    """1 = la próxima en procesarse. None si no está esperando (no se procesa, o ya la tomó un trabajador)."""
+    return next((i for i, otra in enumerate(cola(db), start=1) if otra.id == g.id), None)
+
+
+def _modo_de(g: Grabacion) -> str | None:
+    """Qué falta hacer con la clase: `generacion` si ya está la transcripción (solo el material, sin audio), `clase` si hay audio, None si no queda nada."""
+    k = g.clase.contenido
+    if k is not None and (k.transcripcion_texto or "").strip() and not k.resumen:
+        return "generacion"
+    return "clase" if any(_carpeta(g.id).glob("*.parte")) else None
+
+
+def _encolar(db: Session, g: Grabacion) -> None:
+    g.estado, g.error, g.reintento_en, g.iniciada_en = E.PROCESANDO, None, None, None
+    db.commit()
+
+
+def despachar(fabrica: sessionmaker) -> None:
+    """Llena los lugares libres con lo primero de la cola. Se llama cuando entra una clase, cuando termina un trabajo y en cada
+    pasada de la vigilancia (por si algo se quedó sin despachar)."""
+    with _despacho:
+        while True:
+            with fabrica() as db:
+                en_marcha = db.query(Grabacion).filter(Grabacion.estado == E.PROCESANDO, Grabacion.iniciada_en.is_not(None)).count()
+                esperando = cola(db) if en_marcha < PROCESAMIENTOS_SIMULTANEOS else []
+                if not esperando:
+                    return
+                g = esperando[0]
+                modo = _modo_de(g)
+                if modo is None:
+                    g.estado, g.error = E.ERROR, "No quedó ni el audio ni la transcripción de esta clase: hay que grabarla de nuevo."
+                    db.commit()
+                    continue
+                g.iniciada_en = ahora_utc()
+                db.commit()
+                _arrancar(modo, g.id, fabrica)
+
+
+def _arrancar(modo: str, grabacion_id: int, fabrica: sessionmaker) -> None:
+    hilo = threading.Thread(target=_hilo_de_trabajo, args=(modo, grabacion_id, fabrica), daemon=True)
+    _hilos[grabacion_id] = hilo
+    hilo.start()
+
+
+def _hilo_de_trabajo(modo: str, grabacion_id: int, fabrica: sessionmaker) -> None:
     """Procesa la clase en un proceso aparte (lo normal). `PROCESAMIENTO_EN_HILO=1` lo hace en un hilo del servidor:
-    solo para desarrollo, porque sin el proceso aparte una falta de memoria se lleva también al servidor."""
-    if os.environ.get("PROCESAMIENTO_EN_HILO") == "1":
-        threading.Thread(target=funcion, args=args, daemon=True).start()
-        return
-    modo = "generacion" if funcion is procesar_generacion else "clase"
-    threading.Thread(target=_trabajar_aparte, args=(modo, args[0], args[1]), daemon=True).start()
+    solo para desarrollo, porque sin el proceso aparte una falta de memoria se lleva también al servidor. Al terminar,
+    deja pasar a la que sigue en la cola."""
+    try:
+        if os.environ.get("PROCESAMIENTO_EN_HILO") == "1":
+            (procesar if modo == "clase" else procesar_generacion)(grabacion_id, fabrica)
+        else:
+            _trabajar_aparte(modo, grabacion_id, fabrica)
+    finally:
+        _hilos.pop(grabacion_id, None)
+        despachar(fabrica)
+
+
+def _recoger_perdidos(db: Session, utc: datetime.datetime) -> None:
+    """Una clase que un trabajador tomó pero que ya no tiene trabajador (se cerró por fuera, tras un reinicio del servidor)
+    no puede quedar «procesándose» para siempre ocupando un lugar: se reintenta."""
+    for g in db.query(Grabacion).filter(Grabacion.estado == E.PROCESANDO, Grabacion.iniciada_en.is_not(None)).all():
+        hilo = _hilos.get(g.id)
+        if (hilo is not None and hilo.is_alive()) or (utc - g.iniciada_en).total_seconds() < GRACIA_PERDIDO_S or _trabajador_vivo(_carpeta(g.id)):
+            continue
+        programar_reintento(g, "El procesamiento se interrumpió inesperadamente.")
+        db.commit()
 
 
 # Esperas (minutos) antes de cada reintento automático de un procesamiento que falló. Nadie está frente al computador
@@ -340,32 +425,33 @@ def _fallo(grabacion_id: int, fabrica: sessionmaker, mensaje: str) -> None:
 
 
 def _trabajar_aparte(modo: str, grabacion_id: int, fabrica: sessionmaker) -> None:
-    with _cerrojo_modelo:  # uno a la vez (la cola con prioridad es la Fase 5)
+    """Corre el trabajador de una clase y se entera de cómo terminó. Cuántas a la vez lo decide el despachador, no esta función."""
+    try:
+        if not esperar_memoria(MEMORIA_MINIMA_GB, ESPERA_MEMORIA_S):
+            _fallo(grabacion_id, fabrica, MENSAJE_SIN_MEMORIA)
+            return
+        proceso = subprocess.Popen([*COMANDO_TRABAJADOR, modo, str(grabacion_id)], cwd=RAIZ_DEL_PROYECTO)
+        _anotar_proceso(grabacion_id, proceso.pid)
         try:
-            if not esperar_memoria(MEMORIA_MINIMA_GB, ESPERA_MEMORIA_S):
-                _fallo(grabacion_id, fabrica, MENSAJE_SIN_MEMORIA)
-                return
-            proceso = subprocess.Popen([*COMANDO_TRABAJADOR, modo, str(grabacion_id)], cwd=RAIZ_DEL_PROYECTO)
-            _anotar_proceso(grabacion_id, proceso.pid)
-            try:
-                codigo = proceso.wait(timeout=TIEMPO_MAXIMO_S)
-            except subprocess.TimeoutExpired:
-                proceso.kill()
-                proceso.wait()
-                _fallo(grabacion_id, fabrica, f"El procesamiento tardó más de {TIEMPO_MAXIMO_S / 3600:g} horas y se canceló.")
-                return
-            if codigo != 0:
-                _fallo(
-                    grabacion_id, fabrica,
-                    MENSAJE_SIN_MEMORIA if codigo == CODIGO_SIN_MEMORIA
-                    else f"El procesamiento se interrumpió inesperadamente (código {codigo}).",
-                )
-        except Exception:
-            traceback.print_exc()
-            _fallo(grabacion_id, fabrica, "No se pudo iniciar el procesamiento de la clase")
-        finally:
-            if modo == "clase":
-                _borrar_audio_si_ya_no_hace_falta(grabacion_id, fabrica)
+            codigo = proceso.wait(timeout=TIEMPO_MAXIMO_S)
+        except subprocess.TimeoutExpired:
+            proceso.kill()
+            proceso.wait()
+            _fallo(grabacion_id, fabrica, f"El procesamiento tardó más de {TIEMPO_MAXIMO_S / 3600:g} horas y se canceló.")
+            return
+        if codigo != 0:
+            _fallo(
+                grabacion_id, fabrica,
+                MENSAJE_SIN_MEMORIA if codigo == CODIGO_SIN_MEMORIA
+                else f"El procesamiento se interrumpió inesperadamente (código {codigo}).",
+            )
+    except Exception:
+        traceback.print_exc()
+        _fallo(grabacion_id, fabrica, "No se pudo iniciar el procesamiento de la clase")
+    finally:
+        _soltar_trabajador(grabacion_id)
+        if modo == "clase":
+            _borrar_audio_si_ya_no_hace_falta(grabacion_id, fabrica)
 
 
 def _borrar_audio_si_ya_no_hace_falta(grabacion_id: int, fabrica: sessionmaker) -> None:
@@ -382,11 +468,22 @@ def _borrar_audio_si_ya_no_hace_falta(grabacion_id: int, fabrica: sessionmaker) 
                 _pizarra().descartar_pendientes(db, grabacion_id)  # si la clase no se procesó, sus fotos tampoco se van a leer
 
 
+def _soltar_trabajador(grabacion_id: int) -> None:
+    """El trabajador terminó: su pid ya no dice nada (podría reusarse). Si la carpeta quedó vacía (al regenerar solo el material
+    no había audio) se va también; con audio dentro no se toca."""
+    carpeta = _carpeta(grabacion_id)
+    (carpeta / "trabajador.pid").unlink(missing_ok=True)
+    try:
+        carpeta.rmdir()
+    except OSError:
+        pass
+
+
 def _anotar_proceso(grabacion_id: int, pid: int) -> None:
     """Para saber, tras un reinicio del servidor, si el trabajador sigue vivo."""
     carpeta = _carpeta(grabacion_id)
-    if carpeta.exists():
-        (carpeta / "trabajador.pid").write_text(str(pid), encoding="utf-8")
+    carpeta.mkdir(parents=True, exist_ok=True)  # al regenerar solo el material ya no hay audio, pero igual hay que saber que el trabajador vive
+    (carpeta / "trabajador.pid").write_text(str(pid), encoding="utf-8")
 
 
 def _proceso_vivo(pid: int) -> bool:
@@ -406,13 +503,12 @@ def _iniciar_procesamiento(db: Session, g: Grabacion, fabrica: sessionmaker) -> 
         borrar_audio(g.id)
         db.commit()
         return
-    g.estado, g.error = E.PROCESANDO, None
-    db.commit()
-    _lanzar(procesar, g.id, fabrica)
+    _encolar(db, g)
+    despachar(fabrica)
 
 
 _servicio = None
-_cerrojo_modelo = threading.Lock()  # un solo procesamiento a la vez (la cola con prioridad es la Fase 5)
+_cerrojo_modelo = threading.Lock()  # dentro del trabajador (o en el modo de desarrollo en hilo): un solo modelo cargado a la vez
 
 
 def modo_de_limpieza() -> str:
@@ -579,9 +675,8 @@ def regenerar(db: Session, g: Grabacion, fabrica: sessionmaker) -> Grabacion:
     k = g.clase.contenido
     if g.estado != E.ERROR or k is None or not (k.transcripcion_texto or "").strip() or k.resumen:
         raise ErrorGrabacion("Solo se puede regenerar cuando falló la generación del material")
-    g.estado, g.error, g.reintento_en = E.PROCESANDO, None, None
-    db.commit()
-    _lanzar(procesar_generacion, g.id, fabrica)
+    _encolar(db, g)
+    despachar(fabrica)
     return g
 
 
@@ -632,25 +727,21 @@ def vigilar(db: Session, fabrica: sessionmaker, utc: datetime.datetime | None = 
         elif g.estado == E.TERMINANDO and (utc - (g.terminando_desde or utc)).total_seconds() > ESPERA_FINALIZAR_S:
             _iniciar_procesamiento(db, g, fabrica)  # el equipo no finalizó: se procesa lo que llegó
     for g in db.query(Grabacion).filter(Grabacion.estado == E.ERROR, Grabacion.reintento_en.is_not(None), Grabacion.reintento_en <= utc).all():
-        _reintentar(db, g, fabrica)
+        _reintentar(db, g)
+    _recoger_perdidos(db, utc)
+    despachar(fabrica)  # por si algo quedó esperando con un lugar libre
     ultima_vigilancia = ahora_utc()  # al terminar la pasada (si falla a medias, el pulso no se renueva y el panel lo avisa)
 
 
-def _reintentar(db: Session, g: Grabacion, fabrica: sessionmaker) -> None:
-    k = g.clase.contenido
-    if k is not None and (k.transcripcion_texto or "").strip() and not k.resumen:
-        funcion = procesar_generacion  # la transcripción está: solo falta el material, sin audio
-    elif any(_carpeta(g.id).glob("*.parte")):
-        funcion = procesar
-    else:
+def _reintentar(db: Session, g: Grabacion) -> None:
+    """Vuelve a poner la clase en la cola (conserva su lugar según el plazo: no se va al final)."""
+    if _modo_de(g) is None:
         g.reintento_en = None
         g.error = f"{g.error or ''} No queda audio para reintentar: hay que grabar la clase de nuevo.".strip()
         db.commit()
         return
     g.intentos += 1
-    g.estado, g.error, g.reintento_en = E.PROCESANDO, None, None
-    db.commit()
-    _lanzar(funcion, g.id, fabrica)
+    _encolar(db, g)
 
 
 def reintentar_ahora(db: Session, g: Grabacion) -> Grabacion:
@@ -681,11 +772,9 @@ def recuperar_al_iniciar(db: Session, fabrica: sessionmaker | None = None) -> No
         carpeta = _carpeta(g.id)
         if _trabajador_vivo(carpeta):
             en_proceso.add(str(g.id))
-        elif fabrica is not None and any(carpeta.glob("*.parte")):
+        elif fabrica is not None and _modo_de(g) is not None:
             en_proceso.add(str(g.id))
-            _lanzar(procesar, g.id, fabrica)
-        elif fabrica is not None and g.clase.contenido is not None and (g.clase.contenido.transcripcion_texto or "").strip() and not g.clase.contenido.resumen:
-            _lanzar(procesar_generacion, g.id, fabrica)
+            g.iniciada_en = None  # vuelve a la cola (si estaba esperando, ahí sigue)
         else:
             g.estado, g.error = E.ERROR, "El servidor se reinició mientras se procesaba la clase"
     db.commit()
@@ -696,3 +785,5 @@ def recuperar_al_iniciar(db: Session, fabrica: sessionmaker | None = None) -> No
         for d in CARPETA_AUDIO.iterdir():
             if d.is_dir() and d.name not in vivas:
                 shutil.rmtree(d, ignore_errors=True)
+    if fabrica is not None:
+        despachar(fabrica)

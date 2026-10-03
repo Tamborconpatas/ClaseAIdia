@@ -5,7 +5,7 @@ import types
 
 import pytest
 
-from infraestructura.modelos_orm import EstadoGrabacion as E, Grabacion
+from infraestructura.modelos_orm import Clase, EstadoGrabacion as E, Grabacion
 from servicios import servicio_estado as se
 from servicios import servicio_grabacion as sg
 from servicios import servicio_modelos as sm
@@ -174,31 +174,35 @@ def test_un_servidor_sano_y_ocioso_se_ve_asi(cliente, esc, equipo):
     assert d["generado_en"].endswith(("Z", "+00:00"))
 
 
-def test_cada_clase_aparece_en_su_grupo_con_el_curso_y_la_asignatura(cliente, esc, equipo, tmp_path):
+def test_cada_clase_aparece_en_su_grupo_con_el_curso_y_la_asignatura(cliente, esc, equipo):
     i = esc["ids"]
+    ahora = sg.ahora_utc()
     with cliente.sesion() as db:
         extra_error = _clase(db, esc["bloques"]["mat"], 20)
         extra_lista = _clase(db, esc["bloques"]["mat"], 21)
+        extra_antigua = _clase(db, esc["bloques"]["mat"], 40)  # el plazo más cercano de las que esperan
+        extra_urgente = _clase(db, esc["bloques"]["mat"], 3)
+        db.get(Clase, extra_urgente).prioritaria = True  # el profesor la marcó: pasa por delante de todas
+        db.get(Clase, i["por_aprobar"]).prioritaria = True  # esta ya está en marcha: el aviso lo dice igual
         _grabacion(db, i["publicada"], E.GRABANDO)
-        _grabacion(db, i["por_aprobar"], E.PROCESANDO)  # ya le tocó: el trabajador arrancó
-        _grabacion(db, i["procesando"], E.PROCESANDO)  # sigue esperando su turno
-        _grabacion(db, i["publicada_8b"], E.ERROR, intentos=1, reintento_en=datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None) + datetime.timedelta(minutes=15), error="Ollama apagado")
+        _grabacion(db, i["por_aprobar"], E.PROCESANDO, iniciada_en=ahora - datetime.timedelta(minutes=7, seconds=5))  # ya la tomó un trabajador
+        _grabacion(db, i["procesando"], E.PROCESANDO)  # esperan su turno
+        _grabacion(db, extra_antigua, E.PROCESANDO)
+        _grabacion(db, extra_urgente, E.PROCESANDO)
+        _grabacion(db, i["publicada_8b"], E.ERROR, intentos=1, reintento_en=ahora + datetime.timedelta(minutes=15), error="Ollama apagado")
         _grabacion(db, extra_error, E.ERROR, error="No se oyó voz")
         _grabacion(db, extra_lista, E.TERMINADA)
         db.commit()
-        grabacion_ahora = db.query(Grabacion.id).filter_by(clase_id=i["por_aprobar"]).scalar()
-    carpeta = sg.CARPETA_AUDIO / str(grabacion_ahora)
-    carpeta.mkdir(parents=True)
-    pid = carpeta / "trabajador.pid"
-    pid.write_text("123")
-    hace_7 = (datetime.datetime.now() - datetime.timedelta(minutes=7, seconds=5)).timestamp()
-    os.utime(pid, (hace_7, hace_7))
 
     p = ver(cliente, esc["utp"]).json()["procesamiento"]
     assert [(c["clase_id"], c["estado"], c["curso"], c["asignatura"]) for c in p["en_vivo"]] == [(i["publicada"], "grabando", "8A", "Matemática")]
-    por_clase = {c["clase_id"]: c for c in p["procesando"]}
-    assert por_clase[i["por_aprobar"]]["turno"] == "ahora" and por_clase[i["por_aprobar"]]["minutos"] == 7
-    assert por_clase[i["procesando"]]["turno"] == "espera" and por_clase[i["procesando"]]["minutos"] is None
+    # primero la que ya está en marcha, luego la cola en el orden en que se va a procesar
+    assert [(c["clase_id"], c["turno"], c["minutos"], c["posicion"], c["prioritaria"]) for c in p["procesando"]] == [
+        (i["por_aprobar"], "ahora", 7, None, True),
+        (extra_urgente, "espera", None, 1, True),
+        (extra_antigua, "espera", None, 2, False),
+        (i["procesando"], "espera", None, 3, False),
+    ]
     assert [(c["clase_id"], c["intentos"], c["error"], c["curso"], c["asignatura"]) for c in p["con_reintento"]] == [(i["publicada_8b"], 2, "Ollama apagado", "8B", "Historia")]
     assert p["con_reintento"][0]["reintento_en"].endswith(("Z", "+00:00"))
     assert [(c["clase_id"], c["error"]) for c in p["con_error"]] == [(extra_error, "No se oyó voz")]

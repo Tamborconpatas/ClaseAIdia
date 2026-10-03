@@ -154,7 +154,7 @@ describe('Panel de estado del UTP', () => {
       ...sano,
       procesamiento: {
         en_vivo: [clase('8A', 'Matemática', { clase_id: 1, estado: 'grabando' })],
-        procesando: [clase('8B', 'Historia', { clase_id: 2, turno: 'ahora', minutos: 7 }), clase('7A', 'Lenguaje', { clase_id: 3, turno: 'espera', minutos: null })],
+        procesando: [clase('8B', 'Historia', { clase_id: 2, turno: 'ahora', minutos: 7, posicion: null, prioritaria: false }), clase('7A', 'Lenguaje', { clase_id: 3, turno: 'espera', minutos: null, posicion: 2, prioritaria: false })],
         con_reintento: [clase('1M', 'Física', { clase_id: 4, intentos: 2, reintento_en: '2026-10-02T15:15:00Z', error: 'Ollama apagado. Se reintentará sola.' })],
         con_error: [clase('2M', 'Química', { clase_id: 5, error: 'No se oyó voz.' })],
         terminadas_24h: 0,
@@ -168,7 +168,7 @@ describe('Panel de estado del UTP', () => {
     expect(texto).toContain('8B · Historia')
     expect(texto).toContain('procesándose ahora (hace 7 min).')
     expect(texto).toContain('7A · Lenguaje')
-    expect(texto).toContain('en espera de su turno.')
+    expect(texto).toContain('en espera de su turno (la n.º 2 de la cola).')
     expect(texto).toContain('reintento en unos 15 min (intento 2).')
     expect(texto).toContain('Ollama apagado. Se reintentará sola.')
     expect(texto).toContain('No se oyó voz.')
@@ -178,14 +178,36 @@ describe('Panel de estado del UTP', () => {
   })
 
   it('una clase procesándose ahora sin minutos conocidos no escribe «hace null min»', async () => {
-    const c = await montar({ ...sano, procesamiento: { ...sano.procesamiento, procesando: [clase('8A', 'Matemática', { turno: 'ahora', minutos: null })] } })
+    const c = await montar({ ...sano, procesamiento: { ...sano.procesamiento, procesando: [clase('8A', 'Matemática', { turno: 'ahora', minutos: null, posicion: null, prioritaria: false })] } })
     expect(c.textContent).toContain('procesándose ahora.')
     expect(c.textContent).not.toMatch(/null|hace \d+ min/)
   })
 
   it('sin clases con problemas, solo se dibujan los grupos que tienen algo', async () => {
-    const c = await montar({ ...sano, procesamiento: { ...sano.procesamiento, procesando: [clase('8A', 'Matemática', { turno: 'espera', minutos: null })] } })
+    const c = await montar({ ...sano, procesamiento: { ...sano.procesamiento, procesando: [clase('8A', 'Matemática', { turno: 'espera', minutos: null, posicion: 1, prioritaria: false })] } })
     expect([...c.querySelectorAll('h3')].map((h) => h.textContent)).toEqual(['Procesándose'])
+  })
+
+  it('la cola se ve en orden, con el lugar de cada clase y las prioritarias señaladas', async () => {
+    const espera = (clase_id: number, posicion: number | null, prioritaria: boolean) => clase('8A', `Asig ${clase_id}`, { clase_id, turno: 'espera', minutos: null, posicion, prioritaria })
+    const c = await montar({
+      ...sano,
+      procesamiento: {
+        ...sano.procesamiento,
+        procesando: [
+          clase('8A', 'En marcha', { clase_id: 1, turno: 'ahora', minutos: 3, posicion: null, prioritaria: false }),
+          espera(2, 1, true),
+          espera(3, 2, false),
+          espera(4, null, false), // sin lugar conocido (ya no está en la cola): no inventa uno
+        ],
+      },
+    })
+    const lineas = [...c.querySelectorAll('h3 + ul li')].map((li) => li.textContent!)
+    expect(lineas[0]).toContain('procesándose ahora (hace 3 min).')
+    expect(lineas[1]).toContain('en espera de su turno (la n.º 1 de la cola), marcada como prioritaria.')
+    expect(lineas[2]).toContain('en espera de su turno (la n.º 2 de la cola).')
+    expect(lineas[2]).not.toContain('prioritaria')
+    expect(lineas[3]).toMatch(/en espera de su turno\.$/)
   })
 
   it('el reintento nunca dice «0 min» aunque falte menos de un minuto', async () => {
@@ -249,7 +271,7 @@ describe('Panel de estado del UTP', () => {
     const una = clase('8A', 'Matemática')
     const grupos: Partial<EstadoServidor['procesamiento']>[] = [
       { en_vivo: [{ ...una, estado: 'grabando' }] },
-      { procesando: [{ ...una, turno: 'espera', minutos: null }] },
+      { procesando: [{ ...una, turno: 'espera', minutos: null, posicion: 1, prioritaria: false }] },
       { con_reintento: [{ ...una, intentos: 1, reintento_en: '2026-10-02T15:05:00Z', error: null }] },
       { con_error: [{ ...una, error: null }] },
     ]
