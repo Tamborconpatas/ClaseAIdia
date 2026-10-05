@@ -133,6 +133,10 @@ python app.py
 ```
 Abre tu navegador web en la URL Local proporcionada por la consola (generalmente `http://127.0.0.1:7862`).
 
+### Inicio rápido (Windows): un solo doble clic
+
+`iniciar.bat` levanta el servidor y la interfaz juntos y abre el navegador en `http://localhost:5173`; se detiene todo con Ctrl+C o cerrando la ventana. Prepara solo lo que falta: el `.env` con su clave de sesión (si no existe), la base de datos al día y las dependencias de la interfaz (la primera vez). Variantes: `iniciar.bat demo` (datos de ejemplo; rehace `escuela_demo.db` en cada arranque y no toca la base real) e `iniciar.bat celular` (https en la red del colegio, para grabar con el celular; crea el certificado si falta). Es para usar y probar la aplicación; el servidor 24/7 del colegio sigue siendo `scripts\windows\instalar_servidor.bat`. `app.py` es el prototipo Gradio anterior, no la aplicación actual. Los pasos de abajo son lo mismo hecho a mano.
+
 ### Backend (API FastAPI)
 
 ```bash
