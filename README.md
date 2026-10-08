@@ -208,6 +208,8 @@ Las clases terminadas se procesan **de a una** (el servidor es un equipo modesto
 
 Quien administra el servidor puede subir `PROCESAMIENTOS_SIMULTANEOS` (por defecto 1) cuando hay varias instancias de Ollama (el cluster del despliegue con Docker, abajo) y memoria de sobra: cada clase en marcha es un proceso aparte con su propio tope de memoria. Es un ajuste de quien administra, no de la aplicación, a propósito: un colegio con un solo equipo debe dejarlo en 1.
 
+**Con GPU: transcribir en la GPU y resumir en la CPU.** Si el equipo tiene una GPU, Whisper la usa solo (es la parte lenta de una clase). Poniendo `OLLAMA_DISPOSITIVO=cpu` en el `.env`, Ollama deja de usar la GPU: genera el resumen en la CPU con el modelo liviano de 1B (la aplicación lo elige sola) y la GPU queda libre para Whisper. Junto con `PROCESAMIENTOS_SIMULTANEOS=2`, una clase puede transcribirse en la GPU mientras otra genera su material en la CPU. Con el valor por defecto (`auto`) todo queda como antes: Ollama decide, y con GPU usa el modelo de 3B. Está probado que Ollama recibe la orden y corre al 100 % en CPU; **no se midió todavía** cuánto tiempo gana en un equipo con GPU, y nada impide que dos transcripciones coincidan en la GPU (con 4 GB de video, mejor dejarlo en 1).
+
 ## Despliegue con Docker (opción alternativa)
 
 Instalación con un solo comando de la aplicación completa, incluyendo un **cluster local de Ollama** (varias instancias en la misma máquina, balanceadas con nginx) para acelerar la generación de material de estudio cuando hay varias clases en cola. **Requiere Docker instalado** (en Windows implica admin + WSL2/Hyper-V) — es una alternativa para colegios con soporte técnico, no reemplaza el objetivo de instalación portátil sin admin (pendiente vía PyInstaller).
@@ -236,6 +238,8 @@ OLLAMA_MODEL=qwen2.5:7b docker compose -f docker/docker-compose.yml up --build
 python -m scripts.generar_certificado
 docker compose -f docker/docker-compose.yml -f docker/docker-compose.https.yml up -d --build
 ```
+
+**Solo Whisper en la GPU (NVIDIA)**: `docker/docker-compose.gpu-nvidia-whisper.yml` le da la GPU únicamente a `app` y fija `OLLAMA_DISPOSITIVO=cpu`, para transcribir en la GPU y resumir en la CPU (ver «Cola de procesamiento»). Se usa en lugar de `docker-compose.gpu-nvidia.yml`, no junto con él.
 
 **GPU dentro de Docker**: por defecto la imagen usa solo CPU y ningún contenedor tiene acceso a la GPU del host, aunque exista una — hay que habilitarlo explícitamente con un archivo adicional (`docker/docker-compose.gpu-nvidia.yml` o `docker/docker-compose.gpu-amd.yml`; además instalan la versión de PyTorch que corresponde), y para NVIDIA además instalar el NVIDIA Container Toolkit en el host. Ver el detalle paso a paso en `docs/Notas_de_Instalacion.md`.
 

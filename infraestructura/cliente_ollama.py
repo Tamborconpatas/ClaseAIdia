@@ -25,6 +25,13 @@ _VENTANA_MINIMA = 4096
 _VENTANA_MAXIMA = 16384  # más allá, el caché de contexto no cabe en una GPU de 4 GB junto al modelo
 
 
+def ollama_solo_cpu() -> bool:
+    """Con `OLLAMA_DISPOSITIVO=cpu` Ollama genera solo con la CPU aunque el equipo tenga GPU: así la GPU queda para
+    Whisper (la parte lenta de una clase) y los resúmenes corren en paralelo sin pelear por la misma memoria de video.
+    Cualquier otro valor (por defecto `auto`) deja que Ollama decida."""
+    return os.environ.get("OLLAMA_DISPOSITIVO", "auto").strip().lower() == "cpu"
+
+
 def ventana_necesaria(prompt: str, max_tokens: int) -> int:
     """Tokens de contexto que hacen falta para el prompt y la respuesta, en múltiplos de 1024."""
     tokens = len(prompt) // _CARACTERES_POR_TOKEN + max_tokens + _MARGEN_TOKENS
@@ -96,6 +103,7 @@ def generate(
             "num_ctx": ventana or ventana_necesaria(prompt, max_tokens),
             "temperature": _TEMPERATURA,
             "num_thread": hilos_de_procesamiento(),  # un núcleo libre para que el servidor siga atendiendo
+            **({"num_gpu": 0} if ollama_solo_cpu() else {}),  # 0 capas en la GPU
             **(opciones or {}),
         }
     }

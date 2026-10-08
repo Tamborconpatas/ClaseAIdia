@@ -18,6 +18,9 @@ _OLLAMA_MODEL_GPU = "llama3.2:3b"
 def _resolve_ollama_model(configured: str) -> str:
     if configured != "auto":
         return configured
+    # El modelo depende de dónde corre Ollama, no de si hay GPU: con OLLAMA_DISPOSITIVO=cpu se usa el liviano.
+    if ollama_client.ollama_solo_cpu():
+        return _OLLAMA_MODEL_CPU
     return _OLLAMA_MODEL_GPU if hardware.detect_gpu_vendor() != "none" else _OLLAMA_MODEL_CPU
 
 

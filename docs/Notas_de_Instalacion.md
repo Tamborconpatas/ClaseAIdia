@@ -146,6 +146,12 @@ El último paso reinicia el daemon de Docker — tira abajo cualquier contenedor
 docker compose -f docker/docker-compose.yml -f docker/docker-compose.gpu-nvidia.yml up -d --build
 ```
 
+**NVIDIA, GPU solo para Whisper** — misma instalación del NVIDIA Container Toolkit de arriba, pero con otro archivo: la GPU va solo a `app` (Whisper) y Ollama resume en la CPU con el modelo de 1B (`OLLAMA_DISPOSITIVO=cpu`). Úsalo en lugar de `docker-compose.gpu-nvidia.yml`:
+```bash
+docker compose -f docker/docker-compose.yml -f docker/docker-compose.gpu-nvidia-whisper.yml up -d --build
+```
+Sin Docker, el mismo efecto se logra poniendo `OLLAMA_DISPOSITIVO=cpu` en el `.env`.
+
 **AMD (ROCm)** — requiere los drivers ROCm instalados en el host (ver sección 3 más arriba) y correr con:
 ```bash
 docker compose -f docker/docker-compose.yml -f docker/docker-compose.gpu-amd.yml up -d --build

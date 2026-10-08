@@ -1,0 +1,19 @@
+# GPU NVIDIA solo para Whisper (la transcripción, lo más lento de una clase); el resumen se genera en la CPU con Ollama
+# y el modelo liviano de 1B. Así una clase puede transcribirse en la GPU mientras otra genera su material en la CPU,
+# sin que los dos peleen por la memoria de video. Alternativa a docker-compose.gpu-nvidia.yml (que le da la GPU también a
+# Ollama): se usa uno u otro, no los dos.
+#   docker compose -f docker/docker-compose.yml -f docker/docker-compose.gpu-nvidia-whisper.yml up --build
+services:
+  app:
+    build:
+      args:
+        TORCH_INDEX: https://download.pytorch.org/whl/cu126
+    environment:
+      - OLLAMA_DISPOSITIVO=cpu
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
