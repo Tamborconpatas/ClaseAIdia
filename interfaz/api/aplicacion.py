@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from interfaz.api import (
+    limite_cuerpo,
     limites,
     rutas_ajustes,
     rutas_auth,
@@ -94,6 +95,8 @@ def crear_app(vigilar: bool = False) -> FastAPI:
 
     app.middleware("http")(limites.limitar_por_ip)
 
+    app.add_middleware(limite_cuerpo.LimiteDeCuerpo)
+
     app.add_middleware(
         CORSMiddleware,
         allow_origins=ORIGENES_PERMITIDOS,
@@ -107,6 +110,14 @@ def crear_app(vigilar: bool = False) -> FastAPI:
         # mal formado viajaría de vuelta y quedaría en cualquier proxy que guarde respuestas.
         errores = [{k: v for k, v in e.items() if k not in ("input", "ctx")} for e in exc.errors()]
         return JSONResponse(status_code=422, content={"detail": jsonable_encoder(errores)})
+
+    @app.exception_handler(OverflowError)
+    async def _numero_fuera_de_rango(_request, exc: OverflowError):
+        # Un id como 99999999999999999999 en la URL o en el cuerpo no cabe en un entero de SQLite y llegaba como error 500.
+        if "SQLite INTEGER" in str(exc):
+            return JSONResponse(status_code=422, content={"detail": "Número fuera de rango"})
+        traceback.print_exception(exc)
+        return JSONResponse(status_code=500, content={"detail": "Error interno"})
 
     @app.exception_handler(servicio_modelos.ErrorModelo)
     async def _error_modelo(_request, exc: servicio_modelos.ErrorModelo):

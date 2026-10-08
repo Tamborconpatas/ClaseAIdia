@@ -37,7 +37,8 @@ services:
     volumes:
       # Base de datos, respaldos, audio temporal y modelos de Whisper. Crea la carpeta antes (`mkdir datos`) para que
       # no la cree Docker como root.
-      - ../datos:/data
+      # `:z` para hosts con SELinux (Fedora, RHEL): sin él, el contenedor no puede leer ni escribir la carpeta. Docker sin SELinux lo ignora.
+      - ../datos:/data:z
     depends_on:
       - ollama-lb
     restart: unless-stopped
@@ -68,7 +69,7 @@ services:
   ollama-lb:
     image: nginx:alpine
     volumes:
-      - ./nginx-ollama.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx-ollama.conf:/etc/nginx/nginx.conf:ro,z
     depends_on:
       - ollama-1
       - ollama-2

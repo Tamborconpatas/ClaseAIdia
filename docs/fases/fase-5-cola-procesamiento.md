@@ -6,7 +6,7 @@
 - [x] `Clase.prioritaria` se salta el orden (la marca el profesor durante la clase o mientras espera).
 - [x] Despachador con lugares configurables (`PROCESAMIENTOS_SIMULTANEOS`, 1 por defecto): una clase en marcha nunca se interrumpe; la cola vive en la base y sobrevive a un reinicio.
 - [x] Una clase tomada cuyo trabajador desapareció se recoge y se reintenta sola.
-- [ ] Cluster de Ollama de Docker con la aplicación real: queda para la Fase 6 (empaquetado).
+- [x] Cluster de Ollama de Docker con la aplicación real (hecho 2026-10-08, con podman compose: las dos réplicas bajan el modelo, la app genera a través del balanceador y reparte entre las dos; ver `QA.md`). Falta con GPU dentro de contenedores.
 
 ## Plan original de la fase
 

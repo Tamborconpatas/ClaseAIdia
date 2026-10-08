@@ -51,8 +51,8 @@ class ColegioOut(BaseModel):
 
 
 class UsuarioBase(BaseModel):
-    rut: str
-    nombre: str
+    rut: str = Field(max_length=20)
+    nombre: str = Field(max_length=120)
     colegio_id: int
     roles: list[RolNombre] = []
 
@@ -172,6 +172,14 @@ class BloqueBase(BaseModel):
     hora_inicio: datetime.time
     hora_fin: datetime.time
 
+    @field_validator("hora_inicio", "hora_fin")
+    @classmethod
+    def _hora_sin_zona(cls, valor: datetime.time) -> datetime.time:
+        # "09:00Z" o "09:00+02:00" no se pueden comparar con una hora sin zona (daba error 500): el horario es local.
+        if valor.tzinfo is not None:
+            raise ValueError("La hora no lleva zona horaria (usa HH:MM)")
+        return valor
+
     @field_validator("dia_semana")
     @classmethod
     def _validar_dia_semana(cls, valor: int) -> int:
@@ -195,7 +203,9 @@ class BloqueBase(BaseModel):
 
 
 class BloqueCrear(BloqueBase):
-    pass
+    # Solo al entrar: BloqueOut hereda de BloqueBase y no debe fallar con textos largos que ya estuvieran guardados.
+    asignatura: str | None = Field(default=None, max_length=100)
+    sala: str | None = Field(default=None, max_length=50)
 
 
 class BloqueOut(BloqueBase):
@@ -216,10 +226,10 @@ class TokenOut(BaseModel):
 class SetupIn(BaseModel):
     """Primera ejecución del servidor: crea el colegio y su primer UTP."""
 
-    colegio_nombre: str
-    rut: str
-    nombre: str
-    password: str
+    colegio_nombre: str = Field(max_length=120)
+    rut: str = Field(max_length=20)
+    nombre: str = Field(max_length=120)
+    password: str = Field(max_length=LARGO_MAX_SECRETO)
 
     @field_validator("password")
     @classmethod
@@ -238,7 +248,7 @@ class SetupIn(BaseModel):
 
 
 class LoginStaffIn(BaseModel):
-    rut: str
+    rut: str = Field(max_length=20)
     # Sin mínimo (no se delata la política en el login), pero con tope.
     password: str = Field(max_length=LARGO_MAX_SECRETO)
 
@@ -249,8 +259,8 @@ class LoginStaffIn(BaseModel):
 
 
 class LoginAlumnoIn(BaseModel):
-    rut: str
-    pin: str
+    rut: str = Field(max_length=20)
+    pin: str = Field(max_length=64)
 
     @field_validator("rut")
     @classmethod
@@ -273,9 +283,9 @@ class ResetPinOut(BaseModel):
 class RestablecerPasswordIn(BaseModel):
     """El personal fija una contraseña nueva con el código de un solo uso que le dio un UTP."""
 
-    rut: str
-    codigo: str
-    password: str
+    rut: str = Field(max_length=20)
+    codigo: str = Field(max_length=32)
+    password: str = Field(max_length=LARGO_MAX_SECRETO)
 
     @field_validator("rut")
     @classmethod
@@ -299,9 +309,9 @@ class RestablecerPasswordIn(BaseModel):
 
 
 class RestablecerPinIn(BaseModel):
-    rut: str
-    codigo: str
-    pin: str
+    rut: str = Field(max_length=20)
+    codigo: str = Field(max_length=32)
+    pin: str = Field(max_length=64)
 
     @field_validator("rut")
     @classmethod
@@ -320,10 +330,10 @@ class RestablecerPinIn(BaseModel):
 
 
 class UnirseCursoIn(BaseModel):
-    codigo_invitacion: str
-    rut: str
-    nombre: str
-    pin: str
+    codigo_invitacion: str = Field(max_length=32)
+    rut: str = Field(max_length=20)
+    nombre: str = Field(max_length=120)
+    pin: str = Field(max_length=64)
 
     @field_validator("pin")
     @classmethod

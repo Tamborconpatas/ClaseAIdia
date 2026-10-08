@@ -28,7 +28,13 @@ def usuario_actual(
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Token inválido")
 
-    usuario = db.get(Usuario, int(payload["sub"]))
+    try:
+        usuario_id = int(payload["sub"])
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=401, detail="Token inválido")
+    if not 0 < usuario_id < 2**63:  # fuera del rango de la base: tampoco puede ser un usuario
+        raise HTTPException(status_code=401, detail="Token inválido")
+    usuario = db.get(Usuario, usuario_id)
     if usuario is None:
         raise HTTPException(status_code=401, detail="Usuario no encontrado")
     if not usuario.activo:  # también corta las sesiones que ya estaban abiertas

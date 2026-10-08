@@ -159,6 +159,7 @@ El certificado es propio: la primera vez, cada celular o PC muestra «conexión 
 
 - **Sesiones**: cada sesión (token de 12 h) se cierra sola al cambiar la contraseña o el PIN, resetearlos o desactivar la cuenta, así que una sesión robada deja de servir. Cada persona puede cerrar todas las suyas con `POST /auth/cerrar-sesiones`.
 - **Intentos fallidos**: cada cuenta se bloquea tras 5 fallos (1, 2, 4... hasta 60 min). Un RUT que no existe se bloquea exactamente igual, para que la respuesta no delate quién está registrado. Además, una misma dirección con más de 30 fallos en 10 minutos (contra cualquier cuenta o código de curso) queda fuera unos minutos (`INTENTOS_LOGIN_POR_IP`, `VENTANA_LOGIN_MINUTOS`). Los contadores viven en memoria: un reinicio los borra, pero el bloqueo de cada cuenta real queda en la base.
+- **Tamaño de lo que se recibe**: un JSON no puede pasar de 1 MB y una subida de audio o de foto, de 20 MB (`413` si se pasa, también cuando el cliente manda el cuerpo por partes sin declarar el largo). Los campos de texto tienen largo máximo (nombres 120, RUT 20, asignatura 100, sala 50...) y los ids o números fuera del rango de la base responden `422` en vez de un error del servidor.
 - **Documentación de la API** (`/docs`, `/redoc`, `/openapi.json`): apagada por defecto. `API_DOCS=1` la enciende (`iniciar.sh`/`iniciar.bat` lo hacen en desarrollo).
 - **Detrás de un proxy**: el servidor ve la dirección del proxy, no la de quien pide, y la usa para el límite de intentos y para decidir qué es «la red del colegio» (la grabación de clases). Con `CABECERA_IP_CLIENTE=<cabecera>` se le dice en cuál cabecera el proxy escribe la dirección real. El nginx de Docker ya lo hace (`X-IP-Cliente`, siempre sobrescrita). **No lo configures si el servidor se puede alcanzar sin pasar por ese proxy**: cualquiera podría inventar la cabecera.
 
@@ -240,11 +241,13 @@ Por defecto se descarga `llama3.2:1b` (liviano, pensado para CPU — la app elig
 OLLAMA_MODEL=qwen2.5:7b docker compose -f docker/docker-compose.yml up --build
 ```
 
-**https para grabar con el celular**: el navegador del celular solo da acceso al micrófono por https. Crea el certificado y suma el archivo `docker/docker-compose.https.yml` (la interfaz queda en `https://<equipo>:8443`):
+**https para grabar con el celular**: el navegador del celular solo da acceso al micrófono por https. Crea el certificado y suma el archivo `docker/docker-compose.https.yml` (la interfaz queda en `https://<equipo>:8443`, y el puerto http redirige ahí):
 ```bash
 python -m scripts.generar_certificado
 docker compose -f docker/docker-compose.yml -f docker/docker-compose.https.yml up -d --build
 ```
+
+**SELinux (Fedora, RHEL)**: los montajes del compose llevan la etiqueta `:z`, necesaria para que el contenedor pueda leer `docker/*.conf` y escribir en `datos/`. En Docker sin SELinux se ignora. Si aun así aparece una alerta de SELinux, es esa carpeta sin etiquetar.
 
 **Solo Whisper en la GPU (NVIDIA)**: `docker/docker-compose.gpu-nvidia-whisper.yml` le da la GPU únicamente a `app` y fija `OLLAMA_DISPOSITIVO=cpu`, para transcribir en la GPU y resumir en la CPU (ver «Cola de procesamiento»). Se usa en lugar de `docker-compose.gpu-nvidia.yml`, no junto con él.
 
