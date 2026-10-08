@@ -75,6 +75,9 @@ class Usuario(Base):
     codigo_reset_vence: Mapped[datetime.datetime | None] = mapped_column(DateTime, nullable=True)
     # Una cuenta desactivada (personal que se fue) no entra ni con una sesión ya abierta, pero conserva su historial.
     activo: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    # Cada token de sesión lleva el número vigente al emitirse; cambiar una credencial o desactivar la cuenta lo sube
+    # y las sesiones abiertas dejan de servir (un token robado no vale hasta que venza).
+    version_sesion: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     colegio_id: Mapped[int] = mapped_column(ForeignKey("colegios.id"), nullable=False)
 
     colegio: Mapped["Colegio"] = relationship(back_populates="usuarios")

@@ -77,6 +77,7 @@ def desactivar_usuario(
     así que siempre queda al menos uno activo."""
     usuario = _personal_del_colegio(db, utp, usuario_id)
     usuario.activo = False
+    usuario.version_sesion += 1  # si se reactiva, las sesiones de antes siguen cerradas
     usuario.codigo_reset_hash = None
     usuario.codigo_reset_vence = None
     db.commit()
@@ -113,6 +114,7 @@ def resetear_password(
     codigo = generar_codigo_invitacion()
     vence = ahora_utc() + datetime.timedelta(minutes=VIGENCIA_CODIGO_RESET_MINUTOS)
     usuario.password_hash = None
+    usuario.version_sesion += 1
     usuario.codigo_reset_hash = hashear_secreto(codigo)
     usuario.codigo_reset_vence = vence
     usuario.intentos_fallidos = 0
@@ -149,6 +151,7 @@ def resetear_pin(
     codigo = generar_codigo_invitacion()
     vence = ahora_utc() + datetime.timedelta(minutes=VIGENCIA_CODIGO_RESET_MINUTOS)
     usuario.pin_hash = None
+    usuario.version_sesion += 1
     usuario.codigo_reset_hash = hashear_secreto(codigo)
     usuario.codigo_reset_vence = vence
     usuario.intentos_fallidos = 0

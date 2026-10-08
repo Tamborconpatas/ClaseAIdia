@@ -66,9 +66,11 @@ Pedido: contraseñas sólidas e invulnerables a inyección SQL y otras vulnerabi
 - **Tokens**: se exigen `exp` y `sub`; solo HS256 (rechaza `alg: none`, otros algoritmos, clave ajena, firma alterada, vencidos). `JWT_SECRET_KEY` de menos de 32 caracteres impide arrancar.
 - **RUT registrado vs no registrado**: los logins gastan lo mismo con un RUT inexistente (verificación contra un hash de relleno). Medido: 3 ms contra 57 ms antes; 59 ms ahora.
 
-### Límites conocidos (no corregidos, a propósito)
+### Límites conocidos
 
-- **Los tokens no se revocan.** Un token robado sigue valiendo hasta 12 h aunque se resetee el PIN o se bloquee la cuenta. Cerrarlo requiere una columna de "sesiones válidas desde" y su migración.
-- **El bloqueo delata cuentas existentes**: tras 5 intentos fallidos un RUT real responde 429 y uno inexistente sigue respondiendo 401. Y el mismo bloqueo permite que alguien deje fuera a un alumno concreto fallando a propósito (el bloqueo crece hasta 60 min).
-- **No hay límite por IP**: el bloqueo es por cuenta, así que probar una sola contraseña común contra muchas cuentas no lo activa. Se resuelve mejor en el túnel/proxy (Fase 6).
+Actualización (2026-10-08, Fase 6): los tres primeros se cerraron; el detalle está en `tests/test_sesiones_y_limites.py`.
+
+- ~~**Los tokens no se revocan.**~~ Cerrado: `usuarios.version_sesion` (migración `d8b3e5f7a9c2`) va dentro de cada token y se sube al cambiar la contraseña o el PIN, resetearlos, desactivar la cuenta o pedir `POST /auth/cerrar-sesiones`. Los tokens de antes de este cambio no traen el número y cuentan como la sesión 0.
+- ~~**El bloqueo delata cuentas existentes.**~~ Cerrado: un RUT inexistente (o que no sirve en esa pantalla) cuenta los intentos y se bloquea con el mismo 429 y el mismo tiempo que uno real. **Sigue en pie** que alguien puede dejar fuera a un alumno concreto fallando a propósito (el bloqueo crece hasta 60 min): es el precio de bloquear por cuenta.
+- ~~**No hay límite por IP.**~~ Cerrado: 30 fallos en 10 minutos por dirección (`INTENTOS_LOGIN_POR_IP`), en memoria. No hay un límite global (frenaría a todo el colegio durante un ataque desde muchas direcciones); eso se resuelve en el túnel.
 - `/cursos/unirse` responde 409 cuando el RUT es de personal del colegio (hace falta un código de curso válido para ver esa respuesta).

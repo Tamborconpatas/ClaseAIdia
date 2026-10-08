@@ -13,7 +13,7 @@ _bearer = HTTPBearer()
 
 def emitir_token(usuario: Usuario) -> TokenOut:
     roles = [r.rol for r in usuario.roles]
-    token = crear_token({"sub": str(usuario.id), "rut": usuario.rut, "roles": [r.value for r in roles]})
+    token = crear_token({"sub": str(usuario.id), "rut": usuario.rut, "roles": [r.value for r in roles], "v": usuario.version_sesion})
     return TokenOut(access_token=token, roles=roles, colegio_id=usuario.colegio_id)
 
 
@@ -33,6 +33,8 @@ def usuario_actual(
         raise HTTPException(status_code=401, detail="Usuario no encontrado")
     if not usuario.activo:  # también corta las sesiones que ya estaban abiertas
         raise HTTPException(status_code=401, detail="Cuenta desactivada")
+    if payload.get("v", 0) != usuario.version_sesion:  # cambió una credencial o se cerraron todas las sesiones
+        raise HTTPException(status_code=401, detail="Sesión cerrada: vuelve a ingresar")
     return usuario
 
 

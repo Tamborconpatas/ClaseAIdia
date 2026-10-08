@@ -4,11 +4,6 @@ def test_salud(cliente):
     assert r.json() == {"status": "ok"}
 
 
-def test_docs_disponible(cliente):
-    r = cliente.get("/docs")
-    assert r.status_code == 200
-
-
 def test_obtener_colegio_propio(cliente, colegio_id, headers_utp):
     r = cliente.get(f"/colegios/{colegio_id}", headers=headers_utp)
     assert r.status_code == 200

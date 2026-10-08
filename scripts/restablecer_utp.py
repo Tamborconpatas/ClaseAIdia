@@ -42,6 +42,7 @@ def restablecer_clave(db: Session, rut: str, password: str) -> Usuario:
         raise ErrorRestablecer(str(e)) from e
 
     usuario.password_hash = hashear_secreto(password)
+    usuario.version_sesion += 1  # quien tuviera una sesión abierta con la clave anterior la pierde
     usuario.intentos_fallidos = 0
     usuario.bloqueado_hasta = None
     usuario.codigo_reset_hash = None

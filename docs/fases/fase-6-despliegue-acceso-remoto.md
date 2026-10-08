@@ -18,11 +18,12 @@
 ## Pendientes detectados antes (ver `QA.md`, 2026-09-29)
 
 - [x] La API no arrancaba con la salida redirigida en Windows (`UnicodeEncodeError` por el emoji del aviso de `JWT_SECRET_KEY`) — corregido el 2026-10-01: el aviso es solo ASCII. Si se agregan otros `print` de arranque, mantenerlos ASCII hasta empaquetar el `.exe`.
-- [ ] Límites de seguridad conocidos que hay que cerrar antes de exponer el servidor (ver Fase 2, "Endurecimiento"; decidido el 2026-10-01 dejarlos para esta fase):
-  - **Revocación de tokens**: hoy un token robado vale hasta 12 h aunque se resetee el PIN o se bloquee la cuenta. Requiere una columna de "sesiones válidas desde" en `Usuario` + migración, y que `usuario_actual` compare con el `iat` del token.
-  - Límite de intentos por IP/global (mejor en el túnel/proxy) y bloqueo que no delate qué cuentas existen.
-  - Deshabilitar `/docs` y `/openapi.json` en producción.
-  - `pip-audit` y `npm audit`.
+- [x] Límites de seguridad conocidos (hecho 2026-10-08; ver Fase 2, «Límites conocidos», y `README.md`, «Seguridad del acceso»):
+  - [x] **Revocación de sesiones**: `usuarios.version_sesion` dentro del token; se sube al cambiar o resetear la clave o el PIN, desactivar la cuenta o `POST /auth/cerrar-sesiones`.
+  - [x] Límite de intentos por dirección (30 en 10 min) y bloqueo de RUT inexistentes igual al de los reales. Sin límite global, a propósito. Detrás de un proxy hace falta `CABECERA_IP_CLIENTE`; el nginx de Docker ya la fija.
+  - [x] `/docs`, `/redoc` y `/openapi.json` apagados salvo `API_DOCS=1`.
+  - [x] `pip-audit` (solo marcaba `pip`, el instalador del entorno, ya actualizado) y `npm audit` (producción en 0; quedan 7 «high» en `shadcn`, herramienta de desarrollo que no llega al navegador).
+  - [ ] Falta cuando exista el túnel: que `cloudflared` entregue la dirección real (`CF-Connecting-IP`) al límite de intentos. Hoy, por el túnel, todos parecerían venir de la misma dirección y el límite por IP afectaría a todos juntos.
 - [x] Agregar `.env` a `.dockerignore` (hecho 2026-09-29, junto con el `.env.example` de la Fase 2).
 
 ## Checklist antes de la demo

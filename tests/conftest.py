@@ -28,6 +28,16 @@ def _crear_motor_prueba():
 
 
 @pytest.fixture(autouse=True)
+def sin_contadores_de_intentos():
+    """Los contadores de intentos fallidos viven en memoria del proceso: cada prueba parte de cero."""
+    from interfaz.api import limites
+
+    limites.reiniciar()
+    yield
+    limites.reiniciar()
+
+
+@pytest.fixture(autouse=True)
 def sin_trabajadores_de_verdad(monkeypatch):
     """Ninguna prueba arranca un trabajador (Whisper, Ollama) de verdad (lo que llega a la cola se queda ahí) ni depende del disco real,
     salvo que la prueba diga otra cosa."""

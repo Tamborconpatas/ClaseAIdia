@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from interfaz.api import (
+    limites,
     rutas_ajustes,
     rutas_auth,
     rutas_bloques,
@@ -82,8 +83,16 @@ def crear_app(vigilar: bool = False) -> FastAPI:
         if tarea:
             tarea.cancel()
 
-    app = FastAPI(title="ClaseAIdia API", lifespan=ciclo)
+    # /docs, /redoc y /openapi.json muestran toda la superficie de la API: solo se publican si quien administra lo pide
+    # (API_DOCS=1; `scripts.iniciar` lo hace en desarrollo).
+    docs = os.environ.get("API_DOCS") == "1"
+    app = FastAPI(
+        title="ClaseAIdia API", lifespan=ciclo,
+        docs_url="/docs" if docs else None, redoc_url="/redoc" if docs else None, openapi_url="/openapi.json" if docs else None,
+    )
     app.state.vigilando = vigilar  # el panel de estado solo exige el latido de la vigilancia si está encendida
+
+    app.middleware("http")(limites.limitar_por_ip)
 
     app.add_middleware(
         CORSMiddleware,

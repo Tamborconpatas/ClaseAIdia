@@ -144,7 +144,7 @@ cp .env.example .env    # y completar JWT_SECRET_KEY (el archivo explica cómo g
 alembic upgrade head    # crea/actualiza escuela.db (o la base de DATABASE_URL, si está definida)
 uvicorn api:app --port 8000
 ```
-La primera vez, el servidor no tiene colegio: se crea junto con su primer UTP con `POST /auth/setup` (se puede hacer desde `http://127.0.0.1:8000/docs`). Después de eso ese endpoint se cierra solo — hacerlo **antes** de exponer el servidor a internet.
+La primera vez, el servidor no tiene colegio: se crea junto con su primer UTP con `POST /auth/setup` (la pantalla de primer arranque de la interfaz lo hace; para hacerlo a mano, arranca con `API_DOCS=1` y usa `http://127.0.0.1:8000/docs`, que por defecto no se publica). Después de eso ese endpoint se cierra solo — hacerlo **antes** de exponer el servidor a internet.
 Sin `JWT_SECRET_KEY` la API arranca igual, pero con una clave temporal: todas las sesiones se cierran en cada reinicio.
 
 **Grabar clases** (pestaña «Grabar» del profesor): solo desde la red del colegio. Hay dos formas, las dos válidas: un **PC de la sala graba** (abre la app, entra a «Grabar» y pulsa «Grabar con este equipo»; el celular del profesor solo controla), o el **celular graba** él mismo. Para grabar con el celular la app tiene que abrirse por **https** (o `localhost`): los navegadores no dan el micrófono desde `http://192.168...`; en un PC de la sala que abra la app con `localhost` no hay problema. Para abrirla por https en la red del colegio:
@@ -154,6 +154,13 @@ uvicorn api:app --host 0.0.0.0 --port 8443 --ssl-keyfile certs/key.pem --ssl-cer
 cd frontend && npm run dev:https                  # en desarrollo; mismo certificado
 ```
 El certificado es propio: la primera vez, cada celular o PC muestra «conexión no privada» y hay que tocar «Avanzado → continuar». Si la app se abre con una dirección que no estaba al generarlo, hay que volver a correr el comando agregándola (`python -m scripts.generar_certificado 192.168.1.50`). Para generar el material hace falta tener **Ollama** corriendo con el modelo configurado (`ollama pull llama3.2:3b` es el que elige `ollama_model: auto` con GPU; `llama3.2:1b` sin GPU). Si la generación falla, la transcripción se conserva y el profesor puede pulsar «Reintentar» sin volver a grabar.
+
+### Seguridad del acceso
+
+- **Sesiones**: cada sesión (token de 12 h) se cierra sola al cambiar la contraseña o el PIN, resetearlos o desactivar la cuenta, así que una sesión robada deja de servir. Cada persona puede cerrar todas las suyas con `POST /auth/cerrar-sesiones`.
+- **Intentos fallidos**: cada cuenta se bloquea tras 5 fallos (1, 2, 4... hasta 60 min). Un RUT que no existe se bloquea exactamente igual, para que la respuesta no delate quién está registrado. Además, una misma dirección con más de 30 fallos en 10 minutos (contra cualquier cuenta o código de curso) queda fuera unos minutos (`INTENTOS_LOGIN_POR_IP`, `VENTANA_LOGIN_MINUTOS`). Los contadores viven en memoria: un reinicio los borra, pero el bloqueo de cada cuenta real queda en la base.
+- **Documentación de la API** (`/docs`, `/redoc`, `/openapi.json`): apagada por defecto. `API_DOCS=1` la enciende (`iniciar.sh`/`iniciar.bat` lo hacen en desarrollo).
+- **Detrás de un proxy**: el servidor ve la dirección del proxy, no la de quien pide, y la usa para el límite de intentos y para decidir qué es «la red del colegio» (la grabación de clases). Con `CABECERA_IP_CLIENTE=<cabecera>` se le dice en cuál cabecera el proxy escribe la dirección real. El nginx de Docker ya lo hace (`X-IP-Cliente`, siempre sobrescrita). **No lo configures si el servidor se puede alcanzar sin pasar por ese proxy**: cualquiera podría inventar la cabecera.
 
 ### Frontend (interfaz web)
 

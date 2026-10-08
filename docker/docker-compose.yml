@@ -32,6 +32,8 @@ services:
       - AUDIO_TEMP_DIR=/data/audio_temp
       - FOTOS_TEMP_DIR=/data/fotos_temp
       - OLLAMA_URL=http://ollama-lb:11434
+      # `app` solo es alcanzable a través de `web` (nginx), que escribe aquí la dirección real de quien pide.
+      - CABECERA_IP_CLIENTE=X-IP-Cliente
     volumes:
       # Base de datos, respaldos, audio temporal y modelos de Whisper. Crea la carpeta antes (`mkdir datos`) para que
       # no la cree Docker como root.

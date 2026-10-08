@@ -11,6 +11,7 @@ from infraestructura.seguridad import (
     verificar_secreto,
     verificar_secreto_falso,
 )
+from interfaz.api import limites
 from interfaz.api.dependencias_auth import emitir_token, usuario_actual
 from interfaz.api.esquemas import (
     LoginAlumnoIn,
@@ -30,12 +31,28 @@ def _tiene_rol(usuario: Usuario, *roles: RolNombre) -> bool:
     return bool({r.rol for r in usuario.roles} & set(roles))
 
 
+def _bloqueada(hasta):
+    return HTTPException(
+        status_code=429,
+        detail=f"Cuenta bloqueada temporalmente. Reintenta después de {hasta.isoformat()}.",
+    )
+
+
 def verificar_bloqueo(usuario: Usuario):
     if usuario.bloqueado_hasta and usuario.bloqueado_hasta > ahora_utc():
-        raise HTTPException(
-            status_code=429,
-            detail=f"Cuenta bloqueada temporalmente. Reintenta después de {usuario.bloqueado_hasta.isoformat()}.",
-        )
+        raise _bloqueada(usuario.bloqueado_hasta)
+
+
+def rechazar_sin_cuenta(rut: str, secreto: str, detalle: str, estado: int = 401):
+    """Respuesta para un RUT que no existe o que no sirve en esa pantalla. Se comporta igual que una cuenta real:
+    cuenta los intentos, se bloquea con el mismo 429 y gasta el mismo tiempo (si ya está bloqueada, ni verifica)."""
+    ahora = ahora_utc()
+    hasta = limites.sin_cuenta.bloqueado_hasta(rut, ahora)
+    if hasta:
+        raise _bloqueada(hasta)
+    verificar_secreto_falso(secreto)
+    limites.sin_cuenta.registrar(rut, ahora)
+    raise HTTPException(status_code=estado, detail=detalle)
 
 
 def registrar_resultado_intento(usuario: Usuario, exitoso: bool, db: Session):
@@ -52,6 +69,14 @@ def registrar_resultado_intento(usuario: Usuario, exitoso: bool, db: Session):
 @router.get("/me", response_model=UsuarioOut)
 def quien_soy(actual: Usuario = Depends(usuario_actual)):
     return actual
+
+
+@router.post("/cerrar-sesiones", status_code=204)
+def cerrar_sesiones(actual: Usuario = Depends(usuario_actual), db: Session = Depends(obtener_db)):
+    """Cierra todas las sesiones abiertas de esta cuenta (también esta): para quien perdió un equipo o sospecha que
+    le robaron la sesión."""
+    actual.version_sesion += 1
+    db.commit()
 
 
 @router.get("/estado")
@@ -85,8 +110,7 @@ def setup_inicial(datos: SetupIn, db: Session = Depends(obtener_db)):
 def login_staff(datos: LoginStaffIn, db: Session = Depends(obtener_db)):
     usuario = db.query(Usuario).filter_by(rut=datos.rut).first()
     if usuario is None or usuario.password_hash is None or not usuario.activo:
-        verificar_secreto_falso(datos.password)
-        raise HTTPException(status_code=401, detail="Credenciales inválidas")
+        rechazar_sin_cuenta(datos.rut, datos.password, "Credenciales inválidas")
 
     verificar_bloqueo(usuario)
 
@@ -103,8 +127,7 @@ def login_alumno(datos: LoginAlumnoIn, db: Session = Depends(obtener_db)):
     usuario = db.query(Usuario).filter_by(rut=datos.rut).first()
     # El PIN es solo de alumnos: una cuenta de personal no entra por acá aunque tuviera uno.
     if usuario is None or usuario.pin_hash is None or not _tiene_rol(usuario, RolNombre.ALUMNO):
-        verificar_secreto_falso(datos.pin)
-        raise HTTPException(status_code=401, detail="Credenciales inválidas")
+        rechazar_sin_cuenta(datos.rut, datos.pin, "Credenciales inválidas")
 
     verificar_bloqueo(usuario)
 
@@ -123,8 +146,7 @@ def restablecer_pin(datos: RestablecerPinIn, db: Session = Depends(obtener_db)):
     usuario = db.query(Usuario).filter_by(rut=datos.rut).first()
     # El código de un alumno es para su PIN; el del personal, para su contraseña (no se pueden cruzar).
     if usuario is None or usuario.codigo_reset_hash is None or not _tiene_rol(usuario, RolNombre.ALUMNO):
-        verificar_secreto_falso(datos.codigo)
-        raise HTTPException(status_code=401, detail="Código inválido o vencido")
+        rechazar_sin_cuenta(datos.rut, datos.codigo, "Código inválido o vencido")
 
     verificar_bloqueo(usuario)
 
@@ -137,6 +159,7 @@ def restablecer_pin(datos: RestablecerPinIn, db: Session = Depends(obtener_db)):
         raise HTTPException(status_code=422, detail="PIN demasiado fácil de adivinar (repetido o secuencia)")
 
     usuario.pin_hash = hashear_secreto(datos.pin)
+    usuario.version_sesion += 1
     usuario.codigo_reset_hash = None
     usuario.codigo_reset_vence = None
     registrar_resultado_intento(usuario, exitoso=True, db=db)
@@ -150,8 +173,7 @@ def restablecer_password(datos: RestablecerPasswordIn, db: Session = Depends(obt
     se restablece desde la consola del servidor: `python -m scripts.restablecer_utp <RUT>`."""
     usuario = db.query(Usuario).filter_by(rut=datos.rut).first()
     if usuario is None or usuario.codigo_reset_hash is None or not usuario.activo or not _tiene_rol(usuario, RolNombre.PROFESOR, RolNombre.UTP):
-        verificar_secreto_falso(datos.codigo)
-        raise HTTPException(status_code=401, detail="Código inválido o vencido")
+        rechazar_sin_cuenta(datos.rut, datos.codigo, "Código inválido o vencido")
 
     verificar_bloqueo(usuario)
 
@@ -160,6 +182,7 @@ def restablecer_password(datos: RestablecerPasswordIn, db: Session = Depends(obt
         raise HTTPException(status_code=401, detail="Código inválido o vencido")
 
     usuario.password_hash = hashear_secreto(datos.password)
+    usuario.version_sesion += 1
     usuario.codigo_reset_hash = None
     usuario.codigo_reset_vence = None
     registrar_resultado_intento(usuario, exitoso=True, db=db)

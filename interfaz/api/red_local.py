@@ -8,6 +8,8 @@ import ipaddress
 
 from fastapi import HTTPException, Request
 
+from interfaz.api.ip_cliente import cabecera_configurada, ip_del_cliente
+
 # Solo lo que de verdad es de la red del colegio o de este equipo. (No `ip.is_private`: incluye rangos de
 # documentación como 203.0.113.0/24, que no son una red local.)
 REDES_LOCALES = [
@@ -18,14 +20,12 @@ CABECERAS_DE_PROXY = ("x-forwarded-for", "forwarded", "x-real-ip", "cf-connectin
 
 
 def es_red_local(request: Request) -> bool:
-    if any(h in request.headers for h in CABECERAS_DE_PROXY):
+    propia = cabecera_configurada()  # la que escribe nuestro proxy con la dirección real: no cuenta como «pasó por un túnel»
+    if any(h in request.headers for h in CABECERAS_DE_PROXY if h != propia):
         return False
-    host = request.client.host if request.client else None
-    try:
-        ip = ipaddress.ip_address(host)
-    except ValueError:
+    ip = ip_del_cliente(request)
+    if ip is None:
         return False
-    ip = getattr(ip, "ipv4_mapped", None) or ip
     return any(ip in red for red in REDES_LOCALES if red.version == ip.version)
 
 

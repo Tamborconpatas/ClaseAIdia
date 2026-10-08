@@ -83,6 +83,8 @@ def main(argv: list[str]) -> int:
         return 2
     python = sys.executable
     env = {**os.environ}
+    if modo != "celular":  # para desarrollar y probar: la documentación de la API (/docs) a mano; el servidor del colegio no la publica
+        env.setdefault("API_DOCS", "1")
     if asegurar_env(RAIZ / ".env", RAIZ / ".env.example"):
         print("Se preparó el archivo .env con una clave de sesión nueva.")
     for puerto in (PUERTO_API, PUERTO_WEB):
