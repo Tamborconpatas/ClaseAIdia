@@ -6,10 +6,11 @@
 
 Prepara solo lo que falta: el archivo `.env` con su clave de sesión, la base de datos al día y las dependencias de la interfaz.
 Para detener todo, Ctrl+C o cerrar la ventana. Es para desarrollar y probar; el servidor 24/7 del colegio usa
-scripts\\windows\\instalar_servidor.bat.
+scripts\\windows\\instalar_servidor.bat. En Linux: ./iniciar.sh.
 """
 import os
 import secrets
+import signal
 import socket
 import subprocess
 import sys
@@ -24,6 +25,7 @@ salida_segura()
 RAIZ = Path(__file__).resolve().parent.parent
 PUERTO_API, PUERTO_WEB = 8000, 5173
 DEMO = "sqlite:///./escuela_demo.db"
+WINDOWS = sys.platform == "win32"
 
 
 def asegurar_env(env: Path, ejemplo: Path) -> bool:
@@ -60,8 +62,18 @@ def esperar_puerto(puerto: int, proceso: subprocess.Popen, segundos: float = 90)
 
 
 def detener(proceso: subprocess.Popen) -> None:
-    if proceso.poll() is None:  # `npm` deja procesos hijos: se cierra todo el árbol
+    if proceso.poll() is not None:
+        return
+    if WINDOWS:  # `npm` deja procesos hijos: se cierra todo el árbol
         subprocess.run(["taskkill", "/T", "/F", "/PID", str(proceso.pid)], capture_output=True)
+        return
+    try:  # cada proceso corre en su propio grupo (start_new_session): se cierra el grupo entero
+        os.killpg(proceso.pid, signal.SIGTERM)
+        proceso.wait(timeout=10)
+    except ProcessLookupError:
+        pass
+    except subprocess.TimeoutExpired:
+        os.killpg(proceso.pid, signal.SIGKILL)
 
 
 def main(argv: list[str]) -> int:
@@ -90,15 +102,15 @@ def main(argv: list[str]) -> int:
             return 1
     if not (RAIZ / "frontend" / "node_modules").exists():
         print("Instalando la interfaz (solo la primera vez)...")
-        if subprocess.run(["npm", "install"], cwd=RAIZ / "frontend", shell=True).returncode != 0:
+        if subprocess.run(["npm", "install"], cwd=RAIZ / "frontend", shell=WINDOWS).returncode != 0:
             return 1
     if modo == "celular" and not (RAIZ / "certs" / "cert.pem").exists():
         print("Creando el certificado https de la red del colegio...")
         subprocess.run([python, "-m", "scripts.generar_certificado"], cwd=RAIZ, check=True)
 
     esquema = "https" if modo == "celular" else "http"
-    api = subprocess.Popen([python, "-m", "uvicorn", "api:app", "--port", str(PUERTO_API)], cwd=RAIZ, env=env)
-    web = subprocess.Popen(["npm", "run", "dev:https" if modo == "celular" else "dev"], cwd=RAIZ / "frontend", env=env, shell=True)
+    api = subprocess.Popen([python, "-m", "uvicorn", "api:app", "--port", str(PUERTO_API)], cwd=RAIZ, env=env, start_new_session=not WINDOWS)
+    web = subprocess.Popen(["npm", "run", "dev:https" if modo == "celular" else "dev"], cwd=RAIZ / "frontend", env=env, shell=WINDOWS, start_new_session=not WINDOWS)
     try:
         if not (esperar_puerto(PUERTO_API, api) and esperar_puerto(PUERTO_WEB, web)):
             print("Algo no arrancó (mira los mensajes de arriba).")
