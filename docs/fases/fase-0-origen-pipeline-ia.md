@@ -1,5 +1,7 @@
 # Fase 0 — Origen: pipeline de IA (Completada)
 
+> **Nota (2026-10-07):** el prototipo Gradio que se menciona en este documento se retiró del repositorio (rama `quitar-prototipo-gradio`). El texto de abajo es el registro de cómo se trabajó en esa fase y se deja tal cual.
+
 A diferencia de las demás fases, esta no viene de un roadmap planificado de antemano — es el punto de partida real del proyecto: un proyecto personal preexistente que se adoptó y adaptó como base para la memoria de título.
 
 ## De dónde viene

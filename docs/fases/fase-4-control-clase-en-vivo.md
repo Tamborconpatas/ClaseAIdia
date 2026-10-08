@@ -1,5 +1,7 @@
 # Fase 4 — Control de clase en vivo
 
+> **Nota (2026-10-07):** el prototipo Gradio que se menciona en este documento se retiró del repositorio (rama `quitar-prototipo-gradio`). El texto de abajo es el registro de cómo se trabajó en esa fase y se deja tal cual.
+
 **Estado (2026-10-01): hecha y probada de punta a punta con voz real, en PC y en marco de teléfono, con el corte automático probado en vivo; falta probarla con un celular y un lavalier reales.** Detalle y mediciones en `QA.md` (secciones «Fase 4»).
 
 ## Cómo quedó (decisión del usuario: las dos formas de grabar son válidas)
