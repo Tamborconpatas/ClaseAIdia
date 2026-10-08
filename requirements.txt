@@ -11,7 +11,7 @@
 # Última verificación (2026-10-01): Python 3.12.10 y 3.14.7, con torch
 # 2.14.1+cu126 y GPU NVIDIA real (RTX 2050): `pytest` 154 pasan, transcripción
 # de voz en español con el motor del proyecto en GPU y en CPU, limpieza de
-# audio y la interfaz Gradio. Ver QA.md.
+# audio y el backend. Ver QA.md.
 #
 # Requiere Python 3.12 o superior (numpy 2.5, scipy 1.18 y librosa 1.0 ya no
 # soportan versiones anteriores). Probado en 3.12 y 3.14. Si el `python3` del
@@ -19,8 +19,10 @@
 # instalado aparte (ej. `python3.14 -m venv transcriptor-env`, o
 # `conda create -n transcriptor-env python=3.14`).
 
-# 1. Interfaz de Usuario y Utilería
-gradio==6.29.0
+# 1. Servidor web (la interfaz es el frontend de React, en frontend/)
+fastapi==0.142.4
+uvicorn==0.54.0
+httpx==0.28.1  # cliente de pruebas de FastAPI (TestClient)
 
 # 2. Core AI — instalar torch/torchaudio ANTES de este archivo con el
 # índice correcto según el hardware (ver README/Notas_de_Instalacion):
@@ -48,7 +50,6 @@ safetensors==0.8.0
 # 4. Audios y Preprocesamiento
 librosa==1.0.0
 soundfile==0.14.0
-yt-dlp==2026.8.19
 numpy==2.5.3
 Pillow==12.3.0  # fotos de la pizarra (reducir y reorientar antes de leerlas)
 requests==2.34.2
@@ -63,9 +64,7 @@ scipy==1.18.1        # Filtros digitales (highpass, lowpass)
 # de forma perezosa y cae a los demás modos si falta. Instalar aparte, solo si
 # se quiere ese modo: ver requirements-deepfilter.txt
 
-# 6. Backend real (FastAPI) — app aparte del prototipo Gradio. fastapi/uvicorn
-# ya los trae gradio como dependencia transitiva; se fijan igual acá porque
-# los usamos directamente. sqlalchemy/alembic son nuevos.
+# 6. Base de datos (ORM y migraciones)
 sqlalchemy==2.1.1
 alembic==1.20.0
 
