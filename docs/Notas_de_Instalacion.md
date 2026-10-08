@@ -2,7 +2,7 @@
 
 La aplicación "ClaseAIdia" transcribe audio localmente con `faster-whisper` (CTranslate2) y genera resumen y puntos clave con Ollama — 100% offline, pensada para correr en un PC sin GPU.
 
-Posee soporte de interfaces web creadas en **Gradio**.
+Es una aplicación web: un backend FastAPI (`api.py`) y una interfaz React (`frontend/`).
 
 ## Notas de Instalación y Entorno
 
@@ -85,25 +85,26 @@ pip install -r requirements-deepfilter.txt
 
 ### 5. Ejecutar la Aplicación.
 
-Teniendo esto listo, ejecuta la base:
+Teniendo esto listo, la forma más simple es el script de inicio, que prepara el `.env`, la base de datos y las dependencias de la interfaz, y abre el navegador en `http://localhost:5173`:
 
 ```bash
-python app.py
+./iniciar.sh          # Linux / macOS (en Windows: iniciar.bat)
+./iniciar.sh demo     # con datos de ejemplo
 ```
 
-La consola generará una URL local (normalmente estipulada a `http://127.0.0.1:7862/`). Accede desde tu explorador web de preferencia y disfruta la experiencia en privacidad.
+Para levantar el backend y la interfaz a mano, ver «Uso» en el `README.md`.
 
 ### 6. Alternativa: Despliegue con Docker
 
 Si prefieres no instalar Python/FFmpeg/dependencias a mano, `docker compose` levanta todo de una vez, incluyendo un cluster local de Ollama (varias instancias en la misma máquina) para acelerar la generación de material de estudio. **Requiere Docker instalado** — en Windows eso implica permisos de administrador y WSL2/Hyper-V habilitado, así que esta vía es para colegios con soporte técnico disponible, no para el objetivo original de instalación portátil sin admin (ese sigue siendo el ejecutable de PyInstaller, pendiente aparte).
 
 ```bash
-touch transcriptions_history.db transcriber_config.json
-mkdir -p outputs downloads
+cp .env.example .env    # y completar JWT_SECRET_KEY
+mkdir -p datos
 docker compose -f docker/docker-compose.yml up --build
 ```
 
-El contenedor `app` corre con tu mismo UID/GID de host (`docker/docker-compose.yml` ya lo fija a 1000:1000 por defecto) para que los archivos que genera en `outputs/`/`downloads/` sean tuyos, no de `root` — importante si alguna vez alternas entre correr esto con Docker y correrlo nativo (sin Docker) sobre la misma carpeta. Si tu usuario no es el 1000 (`id -u` para chequear), ajusta con `APP_UID=$(id -u) APP_GID=$(id -g) docker compose -f docker/docker-compose.yml up --build`.
+El contenedor `app` corre con tu mismo UID/GID de host (`docker/docker-compose.yml` ya lo fija a 1000:1000 por defecto) para que los archivos que genera en `datos/` (base de datos, respaldos, audio temporal) sean tuyos, no de `root` — importante si alguna vez alternas entre correr esto con Docker y correrlo nativo (sin Docker) sobre la misma carpeta. Si tu usuario no es el 1000 (`id -u` para chequear), ajusta con `APP_UID=$(id -u) APP_GID=$(id -g) docker compose -f docker/docker-compose.yml up --build`.
 
 Por defecto se levantan 2 instancias de Ollama (`ollama-1`, `ollama-2`) balanceadas por un contenedor nginx (`ollama-lb`) — ajusta la cantidad agregando o quitando bloques en `docker/docker-compose.yml` y `docker/nginx-ollama.conf` según la RAM disponible en el PC del colegio. Por defecto se descarga `llama3.2:1b` (liviano, pensado para CPU — la app lo elige solo cuando `ollama_model` está en `"auto"`; si hay GPU disponible usa `llama3.2:3b`). Para usar otro modelo hay que descargarlo Y configurarlo en la app:
 
@@ -113,11 +114,12 @@ OLLAMA_MODEL=qwen2.5:7b docker compose -f docker/docker-compose.yml up --build
 
 ```mermaid
 flowchart LR
-    U(["Navegador"]) -- "http://localhost:7862" --> APP["app<br/>(Gradio + faster-whisper)"]
+    U(["Navegador"]) -- "http://localhost:8080" --> WEB["web<br/>(nginx + React)"]
+    WEB -- "/api" --> APP["app<br/>(FastAPI + faster-whisper)"]
     APP -- "OLLAMA_URL=http://ollama-lb:11434" --> LB["ollama-lb<br/>(nginx, round-robin,<br/>timeout 600s)"]
     LB --> O1["ollama-1"]
     LB --> O2["ollama-2"]
-    APP -.->|"bind mount"| DATA[("outputs/ · downloads/<br/>transcriptions_history.db<br/>transcriber_config.json")]
+    APP -.->|"bind mount"| DATA[("datos/<br/>escuela.db · respaldos/<br/>audio_temp/ · modelos")]
     O1 -.->|"volumen"| V1[("ollama_data_1")]
     O2 -.->|"volumen"| V2[("ollama_data_2")]
 ```
