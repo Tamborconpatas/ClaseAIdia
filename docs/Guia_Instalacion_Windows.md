@@ -106,12 +106,8 @@ python -c "from infraestructura.hardware import detect_gpu_vendor; print('Hardwa
 ```
 - Debe imprimir `nvidia` si tienes tarjeta NVIDIA configurada con CUDA, o `none` si operará en CPU.
 
-### 6.3. Levantar la Aplicación (Gradio)
-Inicia la interfaz de usuario:
-```powershell
-python app.py
-```
-Abre tu navegador web en `http://127.0.0.1:7862`.
+### 6.3. Levantar la Aplicación
+Inicia el servidor y la interfaz juntos con un doble clic en `iniciar.bat` (o `iniciar.bat demo` para probar con datos de ejemplo). Se abre el navegador en `http://localhost:5173`; para detener todo, Ctrl+C o cierra la ventana.
 
 ---
 

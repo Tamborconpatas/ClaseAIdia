@@ -1,0 +1,10 @@
+# Se suma al compose base para abrir la interfaz por https (grabar con el celular):
+#   python -m scripts.generar_certificado
+#   docker compose -f docker/docker-compose.yml -f docker/docker-compose.https.yml up -d --build
+services:
+  web:
+    ports:
+      - "${PUERTO_HTTPS:-8443}:443"
+    volumes:
+      - ./nginx-web-https.conf:/etc/nginx/conf.d/default.conf:ro
+      - ../certs:/certs:ro

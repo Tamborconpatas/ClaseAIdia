@@ -1,5 +1,7 @@
 # Fase 1 — Backend FastAPI y modelo de datos (Completada)
 
+> **Nota (2026-10-07):** el prototipo Gradio que se menciona en este documento se retiró del repositorio (rama `quitar-prototipo-gradio`). El texto de abajo es el registro de cómo se trabajó en esa fase y se deja tal cual.
+
 Requisito previo: Fase 0 (pipeline de IA funcional, pero sin modelo de datos ni backend real).
 
 ## Qué debía tener

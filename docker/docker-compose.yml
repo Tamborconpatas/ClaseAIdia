@@ -4,26 +4,38 @@
 name: transcriptor
 
 services:
+  # Interfaz (React compilado) servida por nginx, que reenvía /api al backend. Es lo único que se publica.
+  web:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.web
+    ports:
+      - "${PUERTO_WEB:-8080}:80"
+    depends_on:
+      - app
+    restart: unless-stopped
+
+  # Backend: API FastAPI y trabajador de procesamiento (Whisper + Ollama). Lee el mismo .env que la instalación
+  # sin Docker (JWT_SECRET_KEY, MODELO_WHISPER, PROCESAMIENTOS_SIMULTANEOS...); lo de abajo ajusta rutas y red.
   app:
     build:
       context: ..
       dockerfile: docker/Dockerfile
-    # Sin esto el contenedor escribe outputs/downloads/db como root — y si
-    # después se corre la app nativa (sin Docker) como usuario normal, esos
-    # archivos quedan inaccesibles (Permission denied). Ajusta APP_UID/GID
-    # si tu usuario no es el 1000 por defecto (`id -u` / `id -g`).
+    # Para que los archivos de ../datos queden a nombre de tu usuario y no de root. Ajusta APP_UID/GID si tu
+    # usuario no es el 1000 por defecto (`id -u` / `id -g`).
     user: "${APP_UID:-1000}:${APP_GID:-1000}"
-    ports:
-      - "7862:7862"
+    env_file:
+      - ../.env
     environment:
-      - SERVER_NAME=0.0.0.0
-      - SERVER_PORT=7862
+      - DATABASE_URL=sqlite:////data/escuela.db
+      - CARPETA_RESPALDOS=/data/respaldos
+      - AUDIO_TEMP_DIR=/data/audio_temp
+      - FOTOS_TEMP_DIR=/data/fotos_temp
       - OLLAMA_URL=http://ollama-lb:11434
     volumes:
-      - ../outputs:/app/outputs
-      - ../downloads:/app/downloads
-      - ../transcriptions_history.db:/app/transcriptions_history.db
-      - ../transcriber_config.json:/app/transcriber_config.json
+      # Base de datos, respaldos, audio temporal y modelos de Whisper. Crea la carpeta antes (`mkdir datos`) para que
+      # no la cree Docker como root.
+      - ../datos:/data
     depends_on:
       - ollama-lb
     restart: unless-stopped
