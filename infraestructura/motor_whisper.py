@@ -82,6 +82,16 @@ def get_device():
     return "cuda" if hardware.detect_gpu_vendor() == "nvidia" else "cpu"
 
 
+def es_falla_de_cuda(error: Exception) -> bool:
+    """¿El error es que CUDA no se puede usar (falta una librería como libcublas o libcudnn, el driver no calza, no hay
+    dispositivo...)? Distinto de quedarse sin memoria, que tiene su propio reintento. Pasa, por ejemplo, con un PyTorch de
+    CUDA 13 en el equipo (el índice genérico de pip) y CTranslate2, que se compiló contra CUDA 12."""
+    texto = str(error).lower()
+    if "out of memory" in texto:
+        return False
+    return any(marca in texto for marca in ("libcublas", "libcudnn", "libcudart", "libnvrtc", "cuda", "cublas", "cudnn"))
+
+
 def get_vram_gb() -> float:
     """VRAM total de la GPU CUDA actual en GB, o 0 si no hay GPU."""
     if not torch.cuda.is_available():
@@ -153,6 +163,10 @@ class WhisperEngine:
                         self.current_model = WhisperModel(model_id_or_path, device="cuda", compute_type="int8")
                     except Exception as e2:
                         raise RuntimeError(f"GPU Insuficiente: Incluso con cuantización int8, el modelo no cabe en la VRAM. Error: {str(e2)}")
+                elif self.device == "cuda" and es_falla_de_cuda(e):
+                    print(f"⚠️ CUDA no se puede usar ({str(e)[:160]}). El modelo se carga en la CPU.")
+                    self.device = "cpu"
+                    self.current_model = WhisperModel(model_id_or_path, device="cpu", compute_type="int8", cpu_threads=hilos_de_procesamiento())
                 else:
                     raise e
 
@@ -163,6 +177,15 @@ class WhisperEngine:
             self.current_model = None
             self.current_backend = None
             return f"❌ Fallo al cargar el modelo:\n{str(e)}"
+
+    def _pasar_a_cpu(self, causa: Exception) -> None:
+        """CUDA no sirve en este equipo: se sigue con la CPU en vez de perder la clase."""
+        print(f"⚠️ CUDA no se puede usar ({str(causa)[:160]}). Se sigue con la CPU.")
+        self.device = "cpu"
+        if self._last_load_args:
+            self.load_model(*self._last_load_args)
+        if self.current_model is None:
+            raise RuntimeError(f"No se pudo usar la GPU ni cargar el modelo en la CPU: {str(causa)[:160]}")
 
     def ensure_model_loaded(self) -> bool:
         """Asegura que el modelo actual esté cargado. Si fue descargado (offload), lo recarga."""
@@ -224,6 +247,14 @@ class WhisperEngine:
                         full_text += seg.text + " "
                         segments_data.append({'start': seg.start + desplazamiento, 'end': seg.end + desplazamiento, 'text': seg.text})
                         yield {"status": "✍️ Transcribiendo (Modo Seguro)", "full_text": full_text.strip(), "segments": segments_data}
+                elif self.device == "cuda" and es_falla_de_cuda(e):
+                    self._pasar_a_cpu(e)
+                    kwargs["beam_size"] = 1  # en CPU se transcribe con beam 1 (ver arriba)
+                    segments, info = self.current_model.transcribe(**kwargs)
+                    for seg in segments:
+                        full_text += seg.text + " "
+                        segments_data.append({'start': seg.start + desplazamiento, 'end': seg.end + desplazamiento, 'text': seg.text})
+                        yield {"status": "✍️ Transcribiendo (en CPU: la GPU no está disponible)", "full_text": full_text.strip(), "segments": segments_data}
                 else:
                     raise
 

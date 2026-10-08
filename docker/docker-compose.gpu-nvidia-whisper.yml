@@ -1,6 +1,6 @@
-# GPU NVIDIA solo para Whisper (la transcripción, lo más lento de una clase); el resumen se genera en la CPU con Ollama
-# y el modelo liviano de 1B. Así una clase puede transcribirse en la GPU mientras otra genera su material en la CPU,
-# sin que los dos peleen por la memoria de video. Alternativa a docker-compose.gpu-nvidia.yml (que le da la GPU también a
+# GPU NVIDIA solo para Whisper (la transcripción); el resumen se genera en la CPU con Ollama y el modelo liviano de 1B (que
+# no genera el mapa conceptual). MEDIDO: es más lento que dejar a Ollama también en la GPU (QA.md, «Reparto entre CPU y GPU»);
+# úsalo solo si la memoria de video no alcanza para Whisper y Ollama a la vez. Alternativa a docker-compose.gpu-nvidia.yml (que le da la GPU también a
 # Ollama): se usa uno u otro, no los dos.
 #   docker compose -f docker/docker-compose.yml -f docker/docker-compose.gpu-nvidia-whisper.yml up --build
 services:
