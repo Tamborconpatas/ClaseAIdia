@@ -1,0 +1,138 @@
+# Contexto del proyecto — Transcriptor de clases
+
+Este archivo resume todas las decisiones de diseño y producto tomadas para este proyecto de título. Cualquier asistente de IA (o persona) que trabaje en este código debería leerlo antes de proponer cambios de arquitectura — la mayoría de las decisiones aquí ya fueron evaluadas contra alternativas y tienen una razón concreta detrás.
+
+## Qué es el proyecto
+
+Aplicación web que graba, transcribe y sintetiza clases usando IA ejecutada localmente, para ayudar a alumnos que se distraen o faltan a clases. Dirigida a colegios (7° básico a 4° medio) y, como extensión, a universidades. Prioridad de diseño: bajo costo, privacidad, instalación sin fricción.
+
+**Público objetivo:** 7° básico a 4° medio (justificado por el desarrollo de la corteza prefrontal durante la pubertad — atención sostenida en pleno desarrollo en ese rango de edad).
+
+## Restricciones del proyecto (no negociables al programar)
+
+- Duración: un semestre (agosto–diciembre 2026).
+- Equipo: 2 personas. El usuario es el programador principal; su compañero escribe la memoria de título; ambos colaboran en la app según disponibilidad.
+- Se usará asistencia de IA para programar.
+- Debe quedar como **prototipo funcional demostrable** para la defensa, no solo diseñado.
+- El piloto de validación es acotado: 1-2 cursos, no un colegio completo.
+- **El servidor es un equipo modesto del colegio y corre 24/7**, no un PC de desarrollo: se asume **solo CPU, 4 núcleos y 16 GB de RAM como máximo** (puede ser menos; con GPU, mejor, pero nunca se depende de ella). Todo se evalúa contra ese piso, no contra la máquina de quien programa: memoria (cargar un modelo a la vez y soltarlo; nada que crezca con las horas encendido), tiempo (una clase de 90 minutos no puede bloquear el servidor más de lo que dura la siguiente), disco (el audio temporal tiene tope y se borra siempre) y reinicios (un corte de luz a media clase no debe perder la clase). Una prueba que solo pasó en una máquina potente no cuenta como "probado".
+- **Todo debe funcionar sin que nadie atienda el computador**: un fallo se recupera solo (reintentos automáticos a los 5, 15 y 45 min; reanudar tras un reinicio) y deja el motivo visible al profesor; solo el último fallo exige una acción humana. El audio de una clase que falló se conserva únicamente mientras queden reintentos (y se borra en cuanto hay transcripción guardada), nunca más.
+
+## Alcance funcional
+
+### Núcleo indispensable (construir primero, sin excepción)
+- Captura de audio vía lavalier del profesor, desde el dispositivo disponible (PC de sala, notebook, o celular).
+- Control de clase desde el navegador: iniciar, pausar, silenciar. Corte automático de la grabación pasado un tiempo del término programado del bloque (por si el profesor olvida terminarla).
+- Transcripción local con `faster-whisper` (modelo liviano cuantizado, no "large" — el hardware objetivo es modesto, sin GPU).
+- Generación local con Ollama: resumen, puntos clave, hoja de repaso, tarjetas de estudio — incorporando recuperación activa, repetición espaciada, elaboración e interleaving en el diseño del prompt.
+- El profesor revisa el contenido generado y lo aprueba o lo retira. Si se olvida (pasa el plazo de revisión, 24 h por defecto, configurable con `HORAS_REVISION_PROFESOR`), el material se publica igual como **provisorio**: los alumnos lo ven con una advertencia de que no fue revisado, y el profesor puede aprobarlo (quita la advertencia) o retirarlo. Lo retirado nunca se publica solo. Así un olvido no deja a los alumnos sin material, y el contenido sin revisar nunca se presenta como si lo estuviera.
+- Modelo de datos Curso → Bloque (ver sección de datos).
+- Tres roles con permisos verificados **en el backend** (nunca solo ocultos en la interfaz): UTP/administrador, profesor, alumno.
+- UTP: grilla de horario editable (bloques de clase + bloques no lectivos: recreo, almuerzo).
+- UTP: panel «Estado» (solo lectura, se actualiza solo): qué se está procesando, qué falló, disco, respaldos, Ollama, memoria y avisos en palabras de persona. El servidor corre 24/7 sin que nadie lo mire; este panel es cómo el colegio se entera a tiempo de que algo anda mal.
+- Alumno: unirse a curso vía código/QR, ver horario personal automático, ver contenido de cada clase procesada.
+- Autenticación: alumno con RUT + PIN de 6 dígitos (elegido por el alumno en su primer ingreso, no asignado); profesor/UTP con RUT + contraseña.
+- Cola de procesamiento con prioridad *Earliest Deadline First*: ordena por la próxima ocurrencia del mismo (Curso, Bloque) según el horario, más un marcador manual de "clase prioritaria" que puede activar el profesor.
+- Solo se almacena texto (transcripción completa + contenido generado). El audio se descarta después de procesarse — nunca se guarda.
+- Instalación portable (Windows), sin instalador, sin permisos de administrador.
+
+### Extras (agregar solo si el núcleo va sólido y sobra tiempo)
+En este orden de prioridad si hay que elegir:
+1. Captura de foto de pizarra (botón en el control del profesor, asociada al timestamp/tema).
+2. Segmentación automática de temas (comparar horario planificado vs. desarrollo real).
+3. Detección de preguntas de alumnos (por parafraseo del profesor — **no** se agrega micrófono de sala adicional).
+4. Exportación del horario a Excel.
+
+### Explícitamente fuera de alcance (documentado como trabajo futuro, no construir)
+- Importación automática de horario desde Excel del colegio (usar en cambio la grilla editable del UTP).
+- Modo universidad con servidor centralizado multi-sala.
+- Banco de preguntas acumulativo por curso (FAQ del semestre).
+- Cola de procesamiento distribuida entre múltiples máquinas.
+- Registro de auditoría avanzado.
+- **Pizarra digital propia (Excalidraw incrustado)**, evaluada el 2026-10-02 y dejada para después: es factible y liviana para el servidor (corre en el navegador de quien dibuja; solo se guardaría un JSON pequeño), y lo que se escribe a máquina o en cuadros quedaría como datos exactos, sin pasar por el modelo de visión; una pizarra digital además no tiene alumnos en la imagen, así que se podría guardar y mostrar tal cual (eso cambia la regla «solo texto» y habría que decidirlo). Límites: no dibuja LaTeX, lo escrito a mano alzada sigue necesitando el modelo de visión, hay que configurarla sin CDN ni servicios externos, y exige que el profesor tenga pantalla o tableta y cambie de hábito. Versión mínima si se retoma: pantalla con Excalidraw y un botón «Agregar a la clase» que exporta la imagen y la manda por la subida de fotos que ya existe (medio día de trabajo).
+- Elementos de sitio web público que no aplican a una app privada con login: sitemap.xml, meta títulos/descripciones SEO, imagen Open Graph, banner de cookies (la sesión va por header, no cookies), página de "Gracias", Google Analytics, botones CTA. Página 404 personalizada: opcional, baja prioridad.
+
+## Arquitectura
+
+**Frontera de privacidad (principio central del proyecto):** la voz/audio nunca sale del colegio. Solo el texto ya generado por la IA puede salir. En consecuencia, la frontera de red es:
+- **Solo red local del colegio:** la pantalla de control de clase en vivo (porque controla un dispositivo grabando audio en tiempo real).
+- **Accesible desde cualquier lugar:** todo lo demás — vistas de alumno, UTP, y revisión de clases pasadas del profesor — porque solo involucra texto ya procesado.
+
+**Cómo se logra el acceso remoto:** el propio servidor del colegio se expone directo a internet mediante un túnel (tipo Cloudflare Tunnel), sin pasar por un servidor intermediario de terceros. El servidor del colegio debe permanecer encendido de forma permanente para que esto funcione (configurar el PC para que nunca entre en suspensión).
+
+**Procesamiento:** 100% local en el servidor del colegio (Whisper + Ollama), sin dependencia de servicios de IA en la nube ni costo recurrente por uso.
+
+## Stack técnico
+
+**Backend:** Python 3.12 o superior (probado en 3.12 y 3.14), FastAPI, Uvicorn, SQLAlchemy (ORM), Pydantic.
+**IA local:** `faster-whisper` (STT, modelo liviano/cuantizado) como motor por defecto (CPU y GPU NVIDIA); si se detecta GPU AMD (ROCm, solo Linux) se usa `transformers` + PyTorch como motor alternativo, porque CTranslate2 (el motor detrás de faster-whisper) no soporta ROCm. Ollama (LLM, modelo 7-9B cuantizado, ej. Qwen o Gemma según benchmark real) — en el despliegue con Docker puede correr como varias instancias locales (mismo PC) balanceadas con nginx para paralelizar la generación cuando hay varias clases en cola.
+**Base de datos:** SQLite local (servidor del colegio) sincronizado vía Turso/libSQL con réplica en la nube (capa de acceso remoto).
+**Frontend:** React + TypeScript + Vite, Tailwind CSS, shadcn/ui, lucide-react (íconos).
+**Empaquetado:** PyInstaller (ejecutable portable, sin instalador) como vía principal; Docker Compose como alternativa para colegios con soporte técnico (ver decisión más abajo).
+**Seguridad:** `argon2-cffi` directo (argon2id; hash de contraseñas/PIN; se dejó `passlib`, abandonado desde 2020), `PyJWT` (tokens de sesión, vía header `Authorization`, no cookies — reduce riesgo CSRF), límite de intentos con bloqueo temporal creciente (recomendado: 5 intentos) en login de alumno y de staff, CORS configurado explícitamente (nunca `*` en producción), validación de tipo/tamaño en subida de audio, secretos solo en variables de entorno (`.env` en `.gitignore` desde el primer commit), validación de dígito verificador de RUT en el backend, nunca SQL crudo con concatenación de strings (siempre vía ORM). Además: contraseñas de staff de 10 a 128 caracteres sin el RUT y PIN de alumno que no sea repetido ni secuencia (política validada en el backend); JWT siempre con expiración y clave de al menos 32 caracteres; nombre de archivo de audio subido generado por el servidor (nunca el que manda el cliente); `.env.example` sin valores reales junto al `.env`; ninguna clave/token/credencial escrita en el código; nunca PIN ni contraseñas en los logs; `pip-audit` y `npm audit` antes de la entrega final.
+
+**Privacidad en el frontend y la web:** sin Google Analytics ni trackers externos (si se miden cosas, analíticas propias guardadas en la base de datos); `robots.txt` con `Disallow: /` y `noindex` en las páginas de la app (es privada, no se indexa); sin `dangerouslySetInnerHTML` salvo justificado y sanitizado.
+
+**Repositorio:** sin datos reales de alumnos ni audios de prueba commiteados; el repo se mantiene privado mientras contenga cualquier dato del piloto.
+
+## Modelo de datos (resumen)
+
+```
+Colegio/Universidad
+ └─ Curso (ej. "8°A" en colegio; una asignatura-sección en universidad)
+     └─ Bloque (asignatura, profesor, sala, día, hora inicio/fin — o tipo "no lectivo": recreo/almuerzo)
+
+Usuario (RUT) → Rol (alumno / profesor / UTP) — un usuario puede tener más de un rol
+Alumno ↔ Curso (relación muchos a muchos, vía código/QR de invitación)
+Clase (instancia de un Bloque en una fecha) → Transcripción, Resumen, Puntos clave, Hoja de repaso, Tarjetas, Preguntas detectadas
+```
+
+En colegio, un Curso agrupa varios Bloques (toda la semana de un grupo fijo de alumnos). En universidad, casi siempre 1 Curso = 1 Bloque.
+
+## Decisiones ya evaluadas (no reabrir sin razón nueva)
+
+- **NoSQL fue descartado** — el modelo de datos es fuertemente relacional (Curso/Bloque/Usuario/Rol), SQL es la elección correcta.
+- **No se expone el motor de IA (Whisper/Ollama) directo a internet** — solo el resultado de texto ya generado.
+- **No se guarda audio, bajo ninguna circunstancia** — decisión de espacio (900MB/bloque x muchos bloques es inviable) y de privacidad.
+- **No se usa importación automática de Excel para el horario** — los formatos varían demasiado entre colegios; se prioriza la grilla editable por el UTP como fuente de verdad, con exportación a Excel disponible.
+- **La cola de procesamiento es de una sola máquina para el prototipo** — la versión multi-servidor coordinada por carpeta compartida queda documentada pero no se construye este semestre.
+- **El PIN del alumno lo elige el alumno**, no lo asigna el UTP (evita carga operativa de distribución segura de PINs). Si lo olvida, un profesor o UTP puede resetearlo: el reseteo entrega un código de un solo uso (vence en 15 min) que el staff le pasa en persona, y con ese código el alumno elige su PIN nuevo. Nunca "el siguiente login fija el PIN": dejaría que cualquiera con el RUT se quede con la cuenta.
+- **Recuperar la contraseña del personal** funciona igual (código de un solo uso, 15 min, entregado en persona): un UTP resetea la de un profesor u otro UTP, pero nunca la propia. El UTP es el rol más importante, así que además hay una salida de último recurso para quien administra el servidor: `python -m scripts.restablecer_utp <RUT>` (solo funciona sobre una cuenta UTP y valida la política de contraseñas). Las sesiones ya abiertas siguen válidas hasta 12 h: no hay revocación de tokens (Fase 6).
+- **Grabar una clase se puede hacer de dos formas, las dos válidas y con el mismo mecanismo**: un PC de la sala graba (el celular del profesor solo controla), o el propio celular graba y controla. Cada clase tiene una *sesión de grabación* cuyo estado guarda el servidor (esperando, grabando, pausada, terminando, procesando, terminada, error); quien controla manda comandos y el *equipo grabador* (cualquier navegador que se registre) los obedece por su latido y sube el audio en trozos de 10 s. Se puede cambiar de equipo a mitad de clase, y un equipo que se corta y vuelve no pierde la clase (el servidor une los flujos). Reglas: solo desde la red local (lo decide el servidor, y una conexión que pasó por un túnel/proxy cuenta como internet), solo el profesor de ese bloque, solo un bloque de hoy hasta 15 min después de su término (corte automático), y el audio se borra siempre al terminar de procesarse, incluso si falla. Si falla solo la generación, la transcripción se conserva y se regenera sin volver a grabar. **Grabar con el celular exige https** (o `localhost`): por `http://` en la red local el navegador no da el micrófono. Para eso hay un certificado propio (`python -m scripts.generar_certificado`, `certs/` fuera de git; el equipo acepta una advertencia la primera vez); para el despliegue sin advertencias, un dominio propio con certificado válido (Fase 6). El túnel de Cloudflare **no** sirve para esto: el audio saldría del colegio.
+- **Vercel u otro hosting de terceros para el frontend no aplica** — rompería la decisión de que el propio servidor del colegio sirva todo sin intermediarios.
+- **Selección de motor de transcripción automática por hardware, nunca manual** — CPU o GPU NVIDIA usan `faster-whisper`; GPU AMD (ROCm, solo Linux) usa `transformers` + PyTorch porque CTranslate2 no soporta ROCm. Sin toggle en la UI: la app detecta y elige sola.
+- **Docker Compose se agrega como opción de despliegue adicional** (app + cluster local de Ollama en la misma máquina, balanceado con nginx) para colegios con soporte técnico — excepción consciente a la restricción de "instalación portátil sin admin", que sigue siendo el objetivo principal vía PyInstaller para el resto de los casos. El "cluster" de Ollama son varias instancias en un solo PC, no un despliegue distribuido entre servidores (eso sigue fuera de alcance, ver más abajo).
+- **La GPU no se pasa a los contenedores por defecto** — Docker aísla la GPU del host salvo que se pida explícitamente. Por eso hay archivos de override separados (`docker-compose.gpu-nvidia.yml`, `docker-compose.gpu-amd.yml`) en vez de intentar detectarla sola: para NVIDIA requiere además instalar el NVIDIA Container Toolkit en el host (paso manual con `sudo`, no automatizable desde la app). Sin el override, `app` y Ollama corren en CPU dentro de Docker aunque el PC tenga GPU — coherente con que el hardware objetivo del proyecto no la necesita, pero hay que acordarse de habilitarlo a propósito en un despliegue con GPU real.
+- **El prototipo Gradio original se retiró** (2026-10-07, rama `quitar-prototipo-gradio`): ya no existen `app.py`, `interfaz/app_gradio.py`, el historial SQLite (`transcriptions_history.db`) ni la descarga desde YouTube. La aplicación es el backend FastAPI (`api.py`, `interfaz/api/`, base `escuela.db` vía SQLAlchemy+Alembic) más el frontend React (`frontend/`). El pipeline de transcripción y material de estudio (`servicios/servicio_transcripcion.py`, `servicios/servicio_material_estudio.py`) lo dispara el backend al terminar cada grabación.
+
+- **El frontend vive en `frontend/`** (React + Vite) y llama a `/api/...`: en desarrollo Vite lo reenvía al backend (sin CORS, y sirve para probar desde un teléfono en la red); en producción lo servirá el propio servidor del colegio (Fase 6). Detalle y estado en `docs/fases/fase-3-frontend.md`.
+- **PC o teléfono se decide por ancho y alto, no solo por ancho** (variantes `desk:` y `short:`, nunca `md:`): un teléfono en horizontal mide ~800 px de ancho pero <430 de alto, y con el diseño de PC quedaba apretado.
+- **El horario no restringe horas** (hay colegios de 8:30 a 18:15, o más): ni el backend ni la pantalla fijan una hora mínima o máxima, y la grilla se densifica cuando hay muchas filas en vez de alargarse.
+- **Reglas del horario** (las aplica el backend al crear y editar bloques): un bloque no puede cruzarse con otro del mismo curso, un profesor no puede estar en dos cursos a la vez, y un bloque con clases registradas no se puede borrar (el borrado en cascada se llevaría el material de estudio).
+- **Datos de prueba**: `python -m scripts.sembrar_demo` crea `escuela_demo.db` (con jornadas corta y larga y clases en todos los estados); nunca se siembra sobre `escuela.db`.
+
+- **Los términos de privacidad y uso los acepta el colegio al instalar la aplicación**: están en el "Aviso para el colegio" del `README.md` (esa es la versión que vale). Las páginas `#/privacidad` y `#/terminos` del frontend son solo su respaldo para alumnos y apoderados; si cambia una, cambia la otra.
+
+- **Fotos de la pizarra (extra n.º 1, construido el 2026-10-02)**: el profesor las saca desde el celular durante la clase (botón en «Grabar»); un modelo de visión local (`qwen2.5vl:3b`, `MODELO_VISION`) las lee **después** de la clase, en el mismo proceso aparte y con la memoria cuidada, y el texto se suma al material como apoyo. **Es opcional: el UTP la activa en «Ajustes» dentro de la app (por defecto está apagada: sin botón y el servidor rechaza las fotos)**, porque pide un modelo aparte y mucha memoria; la transcripción y el resumen funcionan sin ella. Ahí mismo ve si alcanza la memoria y si Ollama responde, y baja el modelo (3,2 GB) con un botón. **La imagen se borra apenas se lee (también si falla): solo se guarda el texto**, igual que el audio (puede salir un alumno). Una foto que no se puede leer nunca frena la clase. Lo medido: el texto y las listas salen bien; la matemática manuscrita conserva la estructura pero **cambia cifras**, y un diagrama en Mermaid con este modelo no es confiable (ver `QA.md`); por eso el texto leído siempre se presenta como lectura automática sujeta a revisión del profesor.
+
+- **Lector con fórmulas, mapa conceptual y descargas (2026-10-02)**: el texto leído de la pizarra se muestra con LaTeX dibujado (KaTeX, trozo aparte que solo se baja si hay una fórmula; sin `dangerouslySetInnerHTML`). El mapa conceptual se guarda como **datos** (relaciones `{de, relacion, a}`), nunca como código Mermaid escrito por un modelo (medido: sale mal); el diagrama lo arma el código, se dibuja con Mermaid en modo `strict` más DOMPurify, y solo se genera automático con un modelo de 3B o más (con el de 1B lo arma el profesor). El alumno descarga la clase en **PDF (impresión del navegador) o Word (ecuaciones nativas)**, y lo arma su propio navegador: el servidor no carga con eso.
+
+- **Los profesores no conocen LaTeX ni Mermaid, y no se espera que los aprendan (2026-10-02)**: todo lo que se corrige se edita **sin ver esos lenguajes**. En «De la pizarra» el texto se edita por partes: texto normal, cada fórmula en un campo de matemática visual (MathLive, con teclado en pantalla en el teléfono; se guarda LaTeX, pero el profesor no lo ve) y cada diagrama como una tabla de flechas; el mapa conceptual también es esa tabla. Lo que no se puede mostrar como tabla se conserva y solo se puede quitar.
+- **Accesibilidad (2026-10-02)**: es un requisito, con WCAG 2.1 AA como meta. Lo nuevo se revisa con axe (en el navegador y con tests automáticos que corren en `vitest`: `accesibilidad.test.tsx`). Reglas que ya se aplican: todo control tiene nombre; los cambios que solo se ven (quitar o mover una parte, descargar) se anuncian en una región `aria-live`; el foco acompaña a quien edita (abrir, agregar, mover, quitar, cerrar); un diagrama de flechas siempre tiene su lista de texto; hay un «Saltar al contenido»; con «reducir movimiento» no hay giros ni transiciones; las fórmulas se dibujan con KaTeX (MathML para lectores de pantalla); el Word lleva el idioma, títulos de verdad y texto alternativo en cada imagen. **Sin probar con lectores de pantalla reales** (NVDA, VoiceOver, TalkBack): pendiente para el piloto.
+
+- **Tema claro u oscuro, opcional (2026-10-02)**: por defecto sigue al sistema; cada persona puede fijar «Claro» u «Oscuro» con un selector (en la barra lateral del PC, y al pie de cada pantalla en el teléfono y en la entrada). Se recuerda en ese navegador (`localStorage`), nunca en el servidor. Todo color nuevo necesita su variante `dark:` (los pares fondo/texto de estados y asignaturas ya la tienen); el PDF y el Word salen **siempre claros**, aunque se esté en modo oscuro.
+
+- **La aplicación se reparte portable (PyInstaller, sin instalador ni administrador) y el colegio no edita archivos ni escribe comandos (2026-10-02)**: todo lo que el colegio decide o instala se hace **desde la aplicación**, por el UTP: activar una función, descargar un modelo de IA, etc. Un `.env` o un comando no son una opción para eso (solo para quien desarrolla o administra el servidor, y para secretos que la instalación genera). Hoy esto ya vale para las fotos de la pizarra (pantalla «Ajustes» y `/ajustes`). **Aún pendientes de pasar a esa pantalla** (hoy se cambian con variables de entorno): la carpeta de respaldos (conviene otro disco), los días de respaldo, el minuto de corte automático de la grabación, el plazo de revisión del profesor y el modelo de resumen; y descargar desde la app el modelo de texto (`llama3.2`), que hoy pide `ollama pull`.
+
+- **Panel de estado del UTP (2026-10-02)**: `GET /estado` (solo UTP, filtrado por su colegio; `servicios/servicio_estado.py`, pantalla `views/Estado.tsx`). **Solo lee, nunca cambia nada**. Los avisos los redacta el servidor (`construir_alertas`, urgente primero, cada uno con su `tema` para marcar la fila de la pantalla; la pantalla no repite los umbrales). **No importa PyTorch ni los modelos de IA en el servidor web**: el modelo de resúmenes en modo `auto` se acepta si está instalado `llama3.2:1b` o `:3b`. «Procesándose ahora» frente a «en espera» se distingue por si existe el `trabajador.pid` de esa sesión. El latido de la vigilancia (`servicio_grabacion.ultima_vigilancia`) solo se exige cuando la vigilancia está encendida (`app.state.vigilando`; en las pruebas no lo está). Un colegio con un solo disco verá siempre el aviso «los respaldos están en el mismo disco que la base» hasta que la carpeta de respaldos se pueda cambiar desde «Ajustes» (pendiente, ver arriba).
+
+- **Cola de procesamiento EDF (Fase 5, 2026-10-03)**: lo que termina de grabarse entra a una cola que vive en la base (`Grabacion` en `procesando` sin `iniciada_en` = esperando; con ella = un trabajador la tomó). El despachador (`servicio_grabacion.despachar`) toma la primera cuando hay un lugar libre y se llama al entrar una clase, al terminar un trabajo y en cada pasada de la vigilancia. Orden (`clave_de_cola`): **prioritaria primero; luego el plazo más cercano, que es la próxima vez que se dicta ese bloque (fecha de la clase + 7 días, a la hora de inicio); a igual plazo, la que se grabó antes**. Se recalcula en cada despacho, así que marcar la casilla mientras espera sirve, y lo en marcha nunca se interrumpe. Los lugares son `PROCESAMIENTOS_SIMULTANEOS` (1 por defecto; más solo con el cluster de Ollama, y es ajuste de quien administra, no de la app). Reemplaza al `Lock` con un hilo por clase, cuyo orden era el que tocara. Una clase «tomada» sin hilo ni trabajador vivo por 30 s se da por perdida y se reintenta (`_recoger_perdidos`); tras un reinicio, lo que estaba en marcha vuelve a la cola si no queda trabajador vivo. El profesor ve su lugar en «Grabar» (`posicion_en_cola`) y el UTP la cola completa, en orden, en «Estado».
+
+- **La salida de texto nunca debe tumbar el servidor ni el trabajador (2026-10-03)**: el supervisor de Windows redirige la salida a `logs\`, y con la salida redirigida Python usa cp1252: un `print` con ✓ o emoji lanzaba `UnicodeEncodeError` y **toda clase fallaba** (lo encontró el e2e de la Fase 5; ya se había visto en `QA.md` y quedó «sin corregir»). `nucleo/consola.py::salida_segura()` pasa la salida a UTF-8 con `errors="replace"` y se llama al arrancar `api.py` y `servicios/trabajador.py`; `servidor.ps1` fija además `PYTHONUTF8=1`. Cualquier punto de entrada nuevo (otro proceso, otro script que corra sin consola) debe llamarla primero.
+
+- **Tres resguardos del servidor 24/7 (2026-10-03)**: (1) **disco**: con menos de 2 GB libres no se empieza a grabar, con menos de 0,3 GB no se acepta más audio (el equipo grabador lo conserva y reintenta; 507) y con menos de 1 GB no se lanza el procesamiento (reintento a los 5, 15 y 45 min); el panel avisa con el mismo número que bloquea (`DISCO_MINIMO_PARA_GRABAR_GB`). (2) **prueba de humo** (`scripts/prueba_de_humo.py`, `scripts\windows\probar_instalacion.bat`): levanta el servidor real con la salida a un archivo y sin UTF-8 forzado y procesa una clase de verdad; las pruebas unitarias no la reemplazan (todas pasaban con la salida redirigida rota). Hay que correrla tras instalar o actualizar. (3) **restaurar un respaldo**, probado de verdad (ver arriba).
+
+## Pendiente por resolver antes del piloto (no técnico, pero bloqueante)
+
+- Consentimiento informado de apoderados para el colegio piloto (dato personal de menores, aunque sea descartado tras procesarse).
+- ~~Respaldo simple y periódico de la base de datos~~ **Hecho (2026-10-02)**: copia diaria automática a `CARPETA_RESPALDOS` (últimos `DIAS_DE_RESPALDO` días, copia en caliente de SQLite). Queda por resolver, en el despliegue, apuntarla a **otro disco o unidad externa** (en el mismo disco no protege de una falla del disco) ; **la restauración ya está probada de verdad (2026-10-03)**: `python -m scripts.restaurar_respaldo` (o `scripts\windows\restaurar_respaldo.bat`) verifica la copia, conserva la base anterior al lado y aplica las migraciones.

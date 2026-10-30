@@ -1,0 +1,13 @@
+# Dependencia OPCIONAL — solo para el modo de limpieza de audio 'deepfilter'
+# (máxima calidad) en infraestructura/mejorador_audio.py. Los demás modos
+# ('dsp', 'heavy_dsp', 'mmse', etc.) no la necesitan y son el default.
+#
+# deepfilterlib (dependencia de deepfilternet) compila una extensión nativa
+# en Rust — no trae wheel prebuilt para todas las plataformas/versiones de
+# Python. Requiere tener Rust + Cargo instalados antes de este pip install
+# (https://rustup.rs/, no necesita sudo). Si falla, la app sigue funcionando
+# igual: cae a los demás modos de limpieza de audio.
+#
+# Instalar DESPUÉS de requirements.txt, en el mismo entorno virtual:
+#   pip install -r requirements-deepfilter.txt
+deepfilternet==0.5.6

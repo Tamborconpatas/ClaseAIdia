@@ -1,0 +1,41 @@
+services:
+  app:
+    build:
+      args:
+        TORCH_INDEX: https://download.pytorch.org/whl/cu126
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  # OLLAMA_MODEL se sube a la variante GPU aquí: la app (arriba) también
+  # cambia sola a "llama3.2:3b" cuando detecta GPU, así que Ollama necesita
+  # tenerlo descargado — si no coinciden, la generación falla con
+  # "model 'llama3.2:3b' not found" aunque la GPU esté andando bien.
+  ollama-1:
+    environment:
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-llama3.2:3b}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  # En una GPU chica (ej. 4GB) considera comentar este bloque y usar solo
+  # ollama-1: dos réplicas de LLM + faster-whisper compitiendo por la misma
+  # VRAM reducida puede ser peor que tenerlas separadas por CPU/GPU.
+  ollama-2:
+    environment:
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-llama3.2:3b}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]

@@ -1,0 +1,79 @@
+# ==========================================
+# REQUIREMENTS PARA UNIVERSAL LOCAL TRANSCRIBER
+# ==========================================
+#
+# Versiones fijadas a propósito (==, no >=): un `torch` "más nuevo" cambió
+# de CUDA 12 a CUDA 13 y rompió faster-whisper/CTranslate2 en GPU
+# (libcublas.so.12 not found) sin que cambiara nuestro código — exactamente
+# el tipo de problema que se busca evitar. Si se sube alguna versión, probar
+# transcripción real en GPU antes de dar por bueno el cambio.
+#
+# Última verificación (2026-10-01): Python 3.12.10 y 3.14.7, con torch
+# 2.14.1+cu126 y GPU NVIDIA real (RTX 2050): `pytest` 154 pasan, transcripción
+# de voz en español con el motor del proyecto en GPU y en CPU, limpieza de
+# audio y el backend. Ver QA.md.
+#
+# Requiere Python 3.12 o superior (numpy 2.5, scipy 1.18 y librosa 1.0 ya no
+# soportan versiones anteriores). Probado en 3.12 y 3.14. Si el `python3` del
+# sistema es anterior a 3.12, crear el entorno con un intérprete más nuevo
+# instalado aparte (ej. `python3.14 -m venv transcriptor-env`, o
+# `conda create -n transcriptor-env python=3.14`).
+
+# 1. Servidor web (la interfaz es el frontend de React, en frontend/)
+fastapi==0.142.4
+uvicorn==0.54.0
+httpx==0.28.1  # cliente de pruebas de FastAPI (TestClient)
+
+# 2. Core AI — instalar torch/torchaudio ANTES de este archivo con el
+# índice correcto según el hardware (ver README/Notas_de_Instalacion):
+# CPU: pip install torch==2.14.1 torchaudio==2.11.0
+# GPU NVIDIA: pip install torch==2.14.1 torchaudio==2.11.0 --index-url https://download.pytorch.org/whl/cu126
+# GPU AMD: pip install torch==2.6.0 torchaudio==2.6.0 --index-url https://download.pytorch.org/whl/rocm6.1
+torch==2.14.1
+torchaudio==2.11.0
+
+# 3. Backend: Faster-Whisper (motor por defecto — CPU y GPU NVIDIA)
+faster-whisper==1.2.1
+# av 19 quitó un parámetro que faster-whisper 1.2.1 todavía usa: con av 19
+# la transcripción falla (TypeError: open() got an unexpected keyword argument
+# 'metadata_errors'). Se fija la última versión que funciona.
+av==18.1.0
+ctranslate2==4.8.2
+
+# 3b. Backend alternativo: Transformers (SOLO se usa si se detecta una GPU
+# AMD/ROCm — CTranslate2 no soporta ROCm, así que ahí se usa PyTorch en su
+# lugar). Opcional: si no está instalado, una GPU AMD simplemente cae a
+# faster-whisper en CPU en vez de acelerar por GPU.
+transformers==5.18.0
+safetensors==0.8.0
+
+# 4. Audios y Preprocesamiento
+librosa==1.0.0
+soundfile==0.14.0
+numpy==2.5.3
+Pillow==12.3.0  # fotos de la pizarra (reducir y reorientar antes de leerlas)
+requests==2.34.2
+
+# 5. Limpieza de Audio (Pipeline de Pre-procesamiento)
+noisereduce==3.0.3   # Reducción de ruido DSP (Wiener filter), modo rápido
+scipy==1.18.1        # Filtros digitales (highpass, lowpass)
+# deepfilternet (modo 'deepfilter', máxima calidad) NO está acá a propósito:
+# su dependencia deepfilterlib compila una extensión nativa en Rust y no trae
+# wheel prebuilt para todas las plataformas — instalarla rompe TODO este archivo
+# si Cargo no está presente. infraestructura/mejorador_audio.py ya la importa
+# de forma perezosa y cae a los demás modos si falta. Instalar aparte, solo si
+# se quiere ese modo: ver requirements-deepfilter.txt
+
+# 6. Base de datos (ORM y migraciones)
+sqlalchemy==2.1.1
+alembic==1.20.0
+
+# 7. Pruebas (QA) — ver QA.md para el registro de qué se prueba en cada fase.
+pytest==9.1.1
+
+# 8. Autenticación (Fase 2) — hash de contraseña/PIN (argon2-cffi directo, sin passlib: abandonado desde 2020) y sesión (JWT).
+pyjwt==2.15.1
+argon2-cffi==25.1.0
+
+# 9. Certificado https propio para la red del colegio (scripts/generar_certificado.py).
+cryptography==50.0.2
