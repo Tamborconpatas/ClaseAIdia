@@ -60,13 +60,11 @@ def _fabrica(db: Session) -> sessionmaker:
 def bloques_de_hoy(db: Session = Depends(obtener_db), profesor: Usuario = Depends(profesor_actual)):
     """Los bloques de clase de hoy del profesor, con su sesión de grabación si ya existe."""
     ahora = sg.ahora_local()
-    bloques = (
-        db.query(Bloque)
-        .options(selectinload(Bloque.curso), selectinload(Bloque.clases).selectinload(Clase.grabacion))
-        .filter(Bloque.profesor_id == profesor.id, Bloque.tipo == TipoBloque.CLASE, Bloque.dia_semana == ahora.weekday())
-        .order_by(Bloque.hora_inicio)
-        .all()
-    )
+    consulta = db.query(Bloque).options(selectinload(Bloque.curso), selectinload(Bloque.clases).selectinload(Clase.grabacion))
+    consulta = consulta.filter(Bloque.profesor_id == profesor.id, Bloque.tipo == TipoBloque.CLASE)
+    bloques = consulta.filter(Bloque.dia_semana == ahora.weekday()).order_by(Bloque.hora_inicio).all()
+    if not bloques and sg.grabacion_libre():  # demostración en fin de semana: se muestran los bloques del lunes
+        bloques = consulta.filter(Bloque.dia_semana == 0).order_by(Bloque.hora_inicio).all()
     salida = []
     for b in bloques:
         clase = next((c for c in b.clases if c.fecha == ahora.date()), None)

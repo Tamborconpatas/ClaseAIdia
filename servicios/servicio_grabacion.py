@@ -118,7 +118,15 @@ def espacio_libre_gb() -> float:
     return espacio_en_disco(CARPETA_AUDIO)[0]
 
 
+def grabacion_libre() -> bool:
+    """Solo para la demostración (`iniciar demo` define DEMO_GRABACION_LIBRE): se puede grabar cualquier bloque de clase a
+    cualquier hora, para mostrar la pantalla «Grabar» aunque hoy no haya clase. El servidor del colegio no la define."""
+    return os.environ.get("DEMO_GRABACION_LIBRE") == "1"
+
+
 def _corte_de(bloque: Bloque, hoy: datetime.date) -> datetime.datetime:
+    if grabacion_libre():
+        return ahora_local() + datetime.timedelta(hours=3)
     return datetime.datetime.combine(hoy, bloque.hora_fin) + datetime.timedelta(minutes=GRACIA_CORTE_MIN)
 
 
@@ -127,10 +135,11 @@ def estado_de_hoy(bloque: Bloque, ahora: datetime.datetime) -> tuple[bool, str |
     y que no haya pasado el corte."""
     if bloque.tipo != TipoBloque.CLASE:
         return False, "Solo se graba un bloque de clase"
-    if bloque.dia_semana != ahora.weekday():
-        return False, "Este bloque no es de hoy"
-    if ahora > _corte_de(bloque, ahora.date()):
-        return False, f"El bloque terminó hace más de {GRACIA_CORTE_MIN} minutos"
+    if not grabacion_libre():
+        if bloque.dia_semana != ahora.weekday():
+            return False, "Este bloque no es de hoy"
+        if ahora > _corte_de(bloque, ahora.date()):
+            return False, f"El bloque terminó hace más de {GRACIA_CORTE_MIN} minutos"
     libre = espacio_libre_gb()
     if libre < DISCO_MINIMO_PARA_GRABAR_GB:
         return False, f"El disco del servidor casi no tiene espacio libre ({libre:.1f} GB): no se puede empezar a grabar. Avisa al UTP para que libere espacio."
