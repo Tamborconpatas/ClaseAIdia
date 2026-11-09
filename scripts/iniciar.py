@@ -14,6 +14,7 @@ Prepara solo lo que falta: el archivo `.env` con su clave de sesión, la base de
 Para detener todo, Ctrl+C o cerrar la ventana. Es para desarrollar y probar; el servidor 24/7 del colegio usa
 scripts\\windows\\instalar_servidor.bat. En Linux: ./iniciar.sh.
 """
+import json
 import os
 import secrets
 import signal
@@ -32,6 +33,18 @@ RAIZ = Path(__file__).resolve().parent.parent
 PUERTO_API, PUERTO_WEB = 8000, 5173
 DEMO = "sqlite:///./escuela_demo.db"
 WINDOWS = sys.platform == "win32"
+ROLES_DEMO = ("utp", "profesor", "alumno")
+
+
+def cuentas_demo() -> dict[str, dict[str, str]]:
+    """Las cuentas de ejemplo que crea `sembrar_demo` (UTP, primer profesor y primera alumna de 8.°A), para entrar con `?demo=<rol>`."""
+    from scripts.sembrar_demo import PASSWORD_STAFF, PIN_ALUMNO, rut  # se importa aquí: al cargarlo define DATABASE_URL por defecto
+
+    return {
+        "utp": {"rut": rut(11111111), "secreto": PASSWORD_STAFF},
+        "profesor": {"rut": rut(12345678), "secreto": PASSWORD_STAFF},
+        "alumno": {"rut": rut(21000001), "secreto": PIN_ALUMNO},
+    }
 
 
 def asegurar_env(env: Path, ejemplo: Path) -> bool:
@@ -100,9 +113,12 @@ def main(argv: list[str]) -> int:
 
     if modo == "demo":
         env["DATABASE_URL"] = DEMO
+        env["DEMO_GRABACION_LIBRE"] = "1"  # el profesor puede grabar a cualquier hora, para mostrar la pantalla «Grabar»
+        env["VITE_SESION_POR_PESTANA"] = "1"  # UTP, profesor y alumno a la vez, uno por pestaña
         print("Creando la base de demostración (se rehace en cada arranque: una antigua puede ser de un modelo anterior)...")
         (RAIZ / "escuela_demo.db").unlink(missing_ok=True)
         subprocess.run([python, "-m", "scripts.sembrar_demo"], cwd=RAIZ, env=env, check=True)
+        env["VITE_DEMO_CUENTAS"] = json.dumps(cuentas_demo())  # para entrar solo con ?demo=<rol>
     else:
         print("Poniendo la base de datos al día...")
         if subprocess.run([python, "-m", "alembic", "upgrade", "head"], cwd=RAIZ, env=env).returncode != 0:
@@ -128,7 +144,13 @@ def main(argv: list[str]) -> int:
             print(f"Desde el celular: {esquema}://{socket.gethostbyname(socket.gethostname())}:{PUERTO_WEB}  (la primera vez: «Avanzado → continuar»)")
         if modo == "demo":
             print("Datos de ejemplo: UTP 11111111-1 / demo-clave-2026 (las demás cuentas las mostró el comando de siembra).")
-        webbrowser.open(f"{esquema}://localhost:{PUERTO_WEB}")
+            print("Se abren 3 ventanas, una por rol (UTP, profesor, alumno), cada una con su propia sesión.")
+        if modo == "demo":
+            for rol in ROLES_DEMO:  # una ventana por rol, cada una ya con su sesión
+                webbrowser.open(f"{esquema}://localhost:{PUERTO_WEB}/?demo={rol}", new=1)
+                time.sleep(0.7)
+        else:
+            webbrowser.open(f"{esquema}://localhost:{PUERTO_WEB}")
         while api.poll() is None and web.poll() is None:
             time.sleep(1)
         print("Uno de los dos procesos se cerró; se detiene todo.")

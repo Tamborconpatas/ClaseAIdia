@@ -195,9 +195,12 @@ export class ApiError extends Error {
 
 // La sesión se guarda en localStorage (el token vence solo, a las 12 h). Es razonable mientras la app
 // no use dangerouslySetInnerHTML: un token en localStorage solo se roba con XSS.
+// En la demostración (`iniciar demo`) se guarda por pestaña (sessionStorage): así UTP, profesor y alumno
+// pueden estar abiertos a la vez en el mismo navegador, cada uno en su pestaña. Fuera de la demo no cambia nada.
+const almacen = (): Storage => (import.meta.env.VITE_SESION_POR_PESTANA ? sessionStorage : localStorage)
 export function leerSesion(): Sesion | null {
   try {
-    const crudo = localStorage.getItem(CLAVE)
+    const crudo = almacen().getItem(CLAVE)
     return crudo ? (JSON.parse(crudo) as Sesion) : null
   } catch {
     return null
@@ -205,8 +208,8 @@ export function leerSesion(): Sesion | null {
 }
 export function guardarSesion(s: Sesion | null) {
   try {
-    if (s) localStorage.setItem(CLAVE, JSON.stringify(s))
-    else localStorage.removeItem(CLAVE)
+    if (s) almacen().setItem(CLAVE, JSON.stringify(s))
+    else almacen().removeItem(CLAVE)
   } catch {
     /* modo privado / almacenamiento bloqueado: la sesión dura lo que dure la pestaña */
   }
