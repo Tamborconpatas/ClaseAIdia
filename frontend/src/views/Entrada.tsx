@@ -3,12 +3,12 @@
  * Este archivo forma parte del proyecto "Transcriptor de clases (ClaseAIdia)".
  * Licencia Apache v2.0 + Commons Clause v1.0. Uso comercial restringido para terceros.
  */
-import { useState, type FormEvent, type ReactNode } from 'react'
-import { ArrowLeft, BookOpenCheck, Loader2, ShieldCheck, Sparkles } from 'lucide-react'
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { ArrowLeft, BookOpenCheck, Loader2, ShieldCheck, Sparkles, TriangleAlert } from 'lucide-react'
 import { Campo, Cargando, ErrorForm, Logo } from '@/components/comunes'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
-import { api, type Sesion } from '@/lib/api'
+import { api, ApiError, type Sesion } from '@/lib/api'
 import { formatearRut, rutParaApi } from '@/lib/rut'
 import { useSesion } from '@/lib/sesion'
 import { useCarga } from '@/lib/usar'
@@ -156,8 +156,8 @@ function Acceso() {
 function useEnvio(accion: () => Promise<unknown>) {
   const [enviando, setEnviando] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const enviar = async (e: FormEvent) => {
-    e.preventDefault()
+  const enviar = async (e?: FormEvent) => {
+    e?.preventDefault()
     setError(null)
     setEnviando(true)
     try {
@@ -167,7 +167,7 @@ function useEnvio(accion: () => Promise<unknown>) {
       setEnviando(false)
     }
   }
-  return { enviando, error, setError, enviar }
+  return { enviando, setEnviando, error, setError, enviar }
 }
 
 function Enviar({ enviando, children }: { enviando: boolean; children: ReactNode }) {
@@ -251,14 +251,33 @@ function FormUnirse({ codigoInicial }: { codigoInicial: string }) {
   const [pin, setPin] = useState('')
   const [pin2, setPin2] = useState('')
   const [errores, setErrores] = useState<Record<string, string | null>>({})
+  // El servidor responde 428 cuando el nombre suena a broma: se pide confirmarlo antes de crear la cuenta.
+  const [preguntando, setPreguntando] = useState(false)
+  const confirmado = useRef(false)
+  const avisoNombre = useRef<HTMLDivElement>(null)
+  // En un teléfono el cuadro nace bajo el formulario, fuera de la pantalla: se lleva a la vista (sin animación, por quien reduce el movimiento).
+  useEffect(() => {
+    if (preguntando) avisoNombre.current?.scrollIntoView?.({ block: 'center', behavior: 'auto' })
+  }, [preguntando])
   const envio = useEnvio(async () => {
-    entrar(
-      await api<Sesion>('/cursos/unirse', {
-        metodo: 'POST',
-        cuerpo: { codigo_invitacion: codigo.trim(), nombre: nombre.trim(), rut: rutParaApi(rut), pin },
-      }),
-    )
+    try {
+      entrar(
+        await api<Sesion>('/cursos/unirse', {
+          metodo: 'POST',
+          cuerpo: { codigo_invitacion: codigo.trim(), nombre: nombre.trim(), rut: rutParaApi(rut), pin, confirmar_nombre: confirmado.current },
+        }),
+      )
+    } catch (err) {
+      if (!(err instanceof ApiError && err.status === 428)) throw err
+      setPreguntando(true)
+      envio.setEnviando(false)
+    }
   })
+  const confirmarNombre = () => {
+    confirmado.current = true
+    setPreguntando(false)
+    return envio.enviar()
+  }
 
   const validarYEnviar = (e: FormEvent) => {
     const er = {
@@ -283,7 +302,7 @@ function FormUnirse({ codigoInicial }: { codigoInicial: string }) {
       </div>
       <Campo etiqueta="Código del curso" value={codigo} error={errores.codigo} placeholder="ABC123" autoCapitalize="characters"
         onChange={(e) => setCodigo(e.target.value.toUpperCase())} />
-      <Campo etiqueta="Tu nombre" value={nombre} error={errores.nombre} autoComplete="name" onChange={(e) => setNombre(e.target.value)} />
+      <Campo etiqueta="Tu nombre" value={nombre} error={errores.nombre} autoComplete="name" onChange={(e) => { setNombre(e.target.value); confirmado.current = false; setPreguntando(false) }} />
       <Campo etiqueta="RUT" value={rut} error={errores.rut} placeholder="12.345.678-5" autoComplete="username"
         onChange={(e) => setRut(formatearRut(e.target.value))} />
       <Campo etiqueta="Elige un PIN" type="password" inputMode="numeric" maxLength={6} value={pin} error={errores.pin}
@@ -292,6 +311,25 @@ function FormUnirse({ codigoInicial }: { codigoInicial: string }) {
       <Campo etiqueta="Repite el PIN" type="password" inputMode="numeric" maxLength={6} value={pin2} error={errores.pin2}
         autoComplete="new-password" onChange={(e) => setPin2(soloDigitos(e.target.value))} />
       <ErrorForm mensaje={envio.error} />
+      {preguntando && (
+        <div ref={avisoNombre} role="alert" className="space-y-3 rounded-xl bg-amber-50 dark:bg-amber-950/40 p-4 text-sm text-amber-950 dark:text-amber-100 ring-1 ring-amber-200 dark:ring-amber-800">
+          <p className="flex items-start gap-2">
+            <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
+            <span>
+              El nombre ingresado («{nombre.trim()}») quedará asociado permanentemente a tu RUT {formatearRut(rut)} y será visible para tus profesores.
+              Si ingresas datos falsos, no podrás cambiarlos por tu cuenta. ¿Confirmas que es tu nombre legal?
+            </span>
+          </p>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Button type="button" className="h-11 sm:flex-1 desk:h-9" onClick={confirmarNombre}>
+              Sí, es mi nombre real
+            </Button>
+            <Button type="button" variant="outline" className="h-11 sm:flex-1 desk:h-9" onClick={() => setPreguntando(false)}>
+              Corregir mi nombre
+            </Button>
+          </div>
+        </div>
+      )}
       <Enviar enviando={envio.enviando}>Unirme y entrar</Enviar>
     </form>
   )

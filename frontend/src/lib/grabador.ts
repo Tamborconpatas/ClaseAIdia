@@ -319,6 +319,8 @@ export class Grabador {
     const nombre = (e as { name?: string })?.name
     if (nombre === 'NotAllowedError') return 'No diste permiso para usar el micrófono. Actívalo en el navegador y vuelve a intentarlo.'
     if (nombre === 'NotFoundError') return 'No se encontró ningún micrófono en este equipo.'
+    if (nombre === 'NotReadableError')
+      return 'No se pudo abrir el micrófono: otra aplicación lo está usando o el navegador no tiene permiso en el teléfono. En Android: Ajustes › Aplicaciones › tu navegador › Permisos › Micrófono › Permitir.'
     return 'No se pudo usar el micrófono de este equipo.'
   }
 }

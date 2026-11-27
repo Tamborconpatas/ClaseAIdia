@@ -565,3 +565,173 @@ Cuatro pendientes de la Fase 6. Pruebas en `tests/test_sesiones_y_limites.py` (3
 - **Limitaciones**: una corrida de cada escenario salvo los dos principales; una sola GPU y un solo equipo; audio de lectura de artículos, no de una sala con ruido; clases de 8 minutos, no de 90. Con una GPU de 8 GB o más y una CPU lenta el resultado podría invertirse.
 
 **Hallazgo (corregido): una GPU NVIDIA sin las librerías CUDA 12 hacía fallar toda clase.** CTranslate2, el motor de faster-whisper, se compila contra CUDA 12; con el PyTorch del índice genérico de pip (CUDA 13) falta `libcublas.so.12` y la transcripción terminaba con `ErrorProceso: Library libcublas.so.12 is not found or cannot be loaded`: en un servidor con GPU mal instalada **ninguna clase se procesaba**. Ahora `WhisperEngine` detecta ese error (también `libcudnn`, driver incompatible o ausencia de dispositivo, no la falta de memoria, que sigue con su reintento) y sigue con la CPU, tanto al cargar el modelo como al transcribir; el aviso queda en el registro. Comprobado con el caso real (60 s de la clase A): antes fallaba, ahora transcribe en la CPU (22 s con la carga del modelo); con el entorno bien instalado (`pip install torch==2.14.1 torchaudio==2.11.0 --index-url https://download.pytorch.org/whl/cu126`, como dice el README) lo hace en la GPU (12,5 s). 11 pruebas nuevas en `tests/test_motor_whisper_cuda.py`.
+
+## Mediciones de tiempo en CPU con una clase real de 62 minutos (2026-11-26)
+
+**Objetivo**: saber cuánto tarda en un equipo modesto (solo CPU, 4 núcleos) lo que la aplicación hace al terminar una clase, y qué modelo de texto conviene, con una clase de verdad y no con audio de prueba. Script repetible: `python -m scripts.medir_cpu` (Whisper por tramos y modelos de texto por bloque); la comparación de modelos sobre la clase completa, `python -m scripts.comparar_modelos`; la clase se procesa con `python -m scripts.procesar_clase_real`. Los resultados quedan en `demo_*.json`, fuera de git, porque traen texto de una clase real.
+
+**Equipo y audio**: Intel Core i5-13420H (12 hilos), 15 GB de RAM, RTX 2050 de 4 GB, Linux, Python 3.14. El audio es una clase universitaria grabada (de tecnología): 62,6 min, `webm`/Opus, 48 kHz estéreo, 48 MB. No se copia ni se guarda: los tramos de prueba se extraen a una carpeta temporal que se borra al terminar.
+
+**Criterios: son los de la aplicación, y se usan siempre los mismos.** Las mediciones pasan por las mismas funciones que procesan una clase de verdad (`servicio_grabacion.transcribir`, `generar_material`, `generar_mapa`), nunca por una llamada directa a Whisper o a Ollama:
+- *Audio, antes de Whisper* (la limpieza ya se estudió en «Limpieza de audio disponible…», 2026-10-02: cuesta 36–43 s en una clase de 92 min y ayuda con ruido parejo, medido con ruido artificial; lo que faltaba era audio real de sala, ver más abajo): FFmpeg lo baja a 16 kHz mono; limpieza `LIMPIEZA_AUDIO=light_dsp` (el valor por defecto): filtro pasa-altos de 80 Hz, normalización de entrada, resta espectral suave de ruido (`noisereduce`, `prop_decrease=0,3`, ruido estacionario, perfil de los primeros 0,5 s) y normalización de pico de salida a 0,95. Se limpia por tramos de 300 s con 2 s de traslape.
+- *Whisper*: modelo `small`, español, `int8`, VAD (filtro de silencios) activo. En CPU la decodificación es voraz (`beam_size=1`); con GPU de menos de 5 GB de VRAM también. Con `beam_size=5` el propio código mide 2,5–3,5 veces el tiempo real en vez de 6–7.
+- *Hilos*: 3 para representar un equipo de 4 núcleos con uno libre (la aplicación deja siempre uno libre); en este equipo el valor por defecto sería 8.
+- *Texto hacia el modelo*: `limpiar_transcripcion` quita frases alucinadas, palabras repetidas en bucle (4 o más seguidas), espacios y puntuación huérfana. Solo alimenta al modelo: el SRT y la transcripción cruda quedan intactos.
+- *Modelo de texto*: bloques de 6.000 caracteres (9 para esta clase), cada uno condensado con tope de 512 tokens, después una pasada final de hasta 2.048 tokens; temperatura 0,3; las mismas indicaciones de la aplicación (el texto viene de un reconocimiento de voz que se equivoca; ignorar saludos y charla ajena a la materia). En CPU: `OLLAMA_DISPOSITIVO=cpu` (0 capas en GPU).
+- *Lo que no es comparable*: una llamada directa a `faster-whisper` sin limpieza, con VAD apagado y `beam_size=5` dio 64 s para 5 minutos, contra 44 s del pipeline real. Ese 64 s se descartó.
+
+**Whisper `small` (pipeline real, con la limpieza)**
+
+| Caso | Tiempo | Factor | Para 62,6 min / 90 min |
+|---|---|---|---|
+| Tramo de 5 min (minuto 20), CPU, 3 hilos | 44 s, 774 palabras | 0,15 s por s de audio | ~9 min / ~13 min (extrapolado) |
+| Clase completa (62,6 min), CPU, 8 hilos | 11,9 min, 9.056 palabras | 0,19 | medido, pero corrió a la vez que otras pruebas: es una cota alta |
+
+La extrapolación coincide con lo que el código ya documenta (~15 min para 90 min a 4 hilos).
+
+**Revisión de la transcripción**: cubre toda la clase (843 segmentos, ninguna pausa sin texto de más de 5 s, 135–157 palabras por minuto de forma pareja), sin bucles de alucinación. Las repeticiones de cifras son reales: el profesor las repite. Lo que falla es la jerga, el inglés y los nombres propios: términos técnicos en inglés escritos como suenan, nombres de empresas o productos mal oídos, expresiones coloquiales y siglas. El modelo de texto corrigió algunos con el contexto y dejó pasar otros. No se calculó una tasa de error: no hay transcripción de referencia.
+
+**Material de la clase completa, una versión por modelo** (generación con Ollama; en el demo cada una es una clase aparte):
+
+| Modelo | Tiempo | Tarjetas | Mapa | Palabras del material que sí se dijeron en clase |
+|---|---|---|---|---|
+| Llama 3.2 1B | 101 s | 17 | ninguno (la aplicación lo descarta) | 62 % |
+| Llama 3.2 3B | 233 s | 9 | 14 relaciones | 73 % |
+| Qwen2.5-VL 3B (solo texto) | 629 s | 6 | 6 relaciones | 64 % |
+
+El 1B inventa definiciones y deja frases sin sentido; el 3B es fiel y compacto pero omite casi toda la segunda mitad; Qwen cubre más pero mezcla cosas que no se dijeron (una equivalencia numérica equivocada y una autoría inventada). Qwen3 4B no devolvió ninguna relación válida. «Fundamentación» es una medida gruesa (fracción de palabras de 5 o más letras del material que aparecen en la clase): no reemplaza leerlo.
+
+**Hallazgo de entorno, no del código**: el entorno de este equipo trae PyTorch `2.14.1+cpu`, así que `detect_gpu_vendor()` responde «none». Resultado: Whisper corre en CPU (no en la GPU, como se creyó al principio) y `ollama_model=auto` elige el de 1B, aunque Ollama sí usa la GPU cuando se le pide un modelo explícito. Es lo documentado: para usar la GPU hay que instalar `torch … +cu126` (README), y si faltan las librerías CUDA 12 el motor cae a la CPU solo (ver «Python 3.14 y GPU»). Con este entorno, `faster-whisper` directo en la GPU falla con `libcublas.so.12 not found`.
+
+**Modelos de texto en solo CPU (3 hilos), un bloque de ~1.000 palabras de la clase** (`python -m scripts.medir_cpu llm …`; «x9» = condensar los 9 bloques de esta clase, sin contar la pasada final; el mapa se arma aparte con un resumen fijo igual para todos):
+
+| Modelo | Bloque | x9 | Fidelidad* | Mapa (relaciones · tiempo) |
+|---|---|---|---|---|
+| **Gemma 4 E2B** (con `think: false`) | **32 s** | **5 min** | 0,60 | 14 · 33 s |
+| Gemma 3 1B | 38 s | 6 min | 0,44 | 6 · 40 s |
+| Qwen3 1.7B (con `think: false`) | 58 s | 9 min | 0,48 | 14 · 82 s |
+| Llama 3.2 1B | 62 s | 9 min | 0,34 | 4 · 91 s (la app lo descarta) |
+| Llama 3.2 3B | 81 s | 12 min | **0,65** | 12 · 140 s |
+| Qwen3.5 2B (con `think: false`) | 88 s | 13 min | 0,25 | 11 · 81 s |
+| Granite 4 micro (3B) | 93 s | 14 min | 0,51 | 13 · 135 s |
+| Phi-4-mini 3.8B | 99 s | 15 min | 0,35 | 13 · 128 s |
+| Gemma 3 4B | 130 s | 20 min | 0,35 | 14 · 102 s |
+| Qwen3.5 4B (con `think: false`) | 150 s | 23 min | 0,37 | 14 · 136 s |
+
+\*Fracción de las palabras de 5 o más letras del texto generado que aparecen en el bloque: una medida gruesa que no reemplaza leerlo. Lo leído, contra el texto del bloque: Llama 3B mantiene las cifras que sí se dijeron, pero afirma que uno de los tres temas centrales «no se menciona en este bloque» cuando el bloque lo nombra una vez; Qwen3 1.7B lo recoge bien; Qwen3.5 2B cambia una sigla (que sí aparece en otra parte de la clase, así que en el material completo no cuenta como invento) y devuelve el texto con títulos y negritas de Markdown; Gemma 3 4B inventa el significado de una sigla; Phi-4-mini agrega una lista de áreas que no se nombró; Granite solo reconoce dos de los tres temas. **Gemma 4 E2B** (leído entero) es el más rápido de los diez y el segundo más fiel: nombra los tres temas, mantiene las cifras, atribuye bien las herramientas mencionadas, no inventa siglas y corrige un error de la transcripción con el contexto. **Memoria: la cifra de `ollama ps` (1,1 GB) engaña**; el proceso real ocupa 4,64 GB (ver «Comprobaciones de Gemma 4 E2B»). Qwen3.5 4B es el más lento, escribe con títulos y negritas de Markdown y traduce mal un término técnico. Qwen3 1.7B da un resumen limpio, comparable al de Llama 3B por menos tiempo. Los demás no se leyeron. Los últimos tres modelos de la lista original corrieron a la vez que las transcripciones en GPU: sus tiempos son una cota alta.
+
+#### Clase completa en solo CPU, todo lo que genera la app (2026-11-27)
+
+`python -m scripts.comparar_modelos --cpu <modelos>`: la clase de 62,6 min entera (9 bloques, resumen, puntos clave, hoja de repaso, tarjetas y mapa conceptual), 3 hilos, sin GPU, `think: false`. Los textos completos están en `~/respaldo_comparaciones_IA/` (fuera del proyecto: traen texto de una clase real).
+
+| Modelo | Material completo | Mapa (app) | Resultado leído |
+|---|---|---|---|
+| **Gemma 4 E2B** | **9,3 min** | 14 rel. | Cubre las herramientas y arquitecturas mencionadas y su mapa encadena bien. **Se equivoca en lo central**: en una corrida pone como tercer tema uno que es un ejemplo de uso, y una tarjeta copia un error de la transcripción. |
+| Qwen3 1.7B | 12 min | 9 rel. | Resumen corto (357 palabras), omite varias herramientas mencionadas; mapa más pobre. |
+| Gemma 4 E4B | 19 min | 14 rel. | El más completo en lo técnico (incluye limitaciones de una arquitectura que los otros omiten) y reconoce que el tercer tema está «menos detallado». **Una tarjeta es inventada** (un patrón de diseño que la clase no menciona; 1 de 12). Pesa 6,6 GB en disco. |
+| Llama 3.2 3B | 24 min | 14 rel. | Es el único que nombra los tres temas correctos, pero afirma una equivalencia numérica equivocada y su mapa tiene relaciones sin sentido (une dos conceptos que no se relacionan); omite varias herramientas y ejemplos de la segunda mitad. |
+| Bonsai 2 4B | 34 min | 14 rel. | Resumen corto (391 palabras); lento para lo que entrega. |
+| Ministral 3 3B | 43 min | 14 rel. | El más lento y el menos fundamentado (0,41). |
+| LFM3 1.7B | falló a los 3 min | — | «Respuesta vacía del LLM» incluso con `think: false`; no se investigó más. |
+
+Por escala (90 min de clase = 1,44 veces estas cifras, en este equipo): Gemma 4 E2B ~13 min, E4B ~27 min, Llama 3B ~35 min. En un equipo escolar 2 a 4 veces más lento serían 27–53, 55–110 y 70–140 min: **solo E2B cabe antes de la clase siguiente con holgura**.
+
+#### Comprobaciones de Gemma 4 E2B antes de adoptarlo (2026-11-27)
+
+Se repitió la clase completa en CPU dos veces más (mismas condiciones) y se midió el proceso real de Ollama (`llama-server`, RSS, un solo modelo cargado a la vez, tras generar con el cliente de la app).
+
+- **Tiempo estable**: 555, 508 y 513 s (9 min).
+- **El error en el esquema general no es constante**: en 1 de 3 corridas toma un ejemplo de uso como uno de los tres temas centrales; en las otras dos nombra el tema correcto (una aclara que «no se profundiza»).
+- **Inventa una tarjeta siempre**: una pregunta sobre un patrón de diseño de software salió en las **tres** corridas, y la clase nunca lo menciona (usa la palabra «patrones» en otro sentido). Gemma 4 E4B hizo lo mismo. No aparece en Llama 3B ni en Qwen3 1.7B. Es un sesgo del modelo, no mala suerte; por eso el material debe seguir pasando por el profesor.
+- **Memoria real: 4,64 GB** (Gemma 4 E2B), 6,62 GB (E4B), 2,47 GB (Llama 3B), 1,83 GB (Qwen3 1.7B). El «1,1 GB» que muestra `ollama ps` no sirve: el archivo de Gemma trae un proyector de imagen y audio de 1 GB que en texto no se usa, pero igual el proceso ocupa el doble que Llama 3B. En un servidor de 16 GB cabe (Whisper se carga aparte); con varios trabajos simultáneos (`PROCESAMIENTOS_SIMULTANEOS` > 1) cada instancia suma ~4,6 GB. *Ojo*: una primera medición mía tomó el proceso de otro modelo aún cargado y daba 4,68 GB a Llama 3B; es un error de la medición, corregido.
+- **Licencia**: Apache 2.0 (la que Ollama distribuye con el modelo, leída del registro de Ollama; no se revisó si Google agrega una política de uso aparte).
+
+**Decisión (2026-11-27)**: `ollama_model: auto` usa `gemma4:e2b` en CPU (antes `llama3.2:1b`); `llama3.2:3b` sigue en GPU y `llama3.2:1b` queda solo como mínimo si no hay memoria libre (sin mapa conceptual).
+
+**Lectura**: ninguno es confiable sin la revisión del profesor (cada uno cometió al menos un error de contenido). Gemma 4 E2B es el único que combina tiempo viable en CPU con buena cobertura, pero se equivoca a veces justo en el esquema general (los temas centrales); Gemma 4 E4B es mejor en contenido y se pasa de tiempo en un equipo modesto. Límites: una sola clase, una sola pasada por modelo (no se midió la variación entre corridas), «mapa con conceptos dichos en clase» y fundamentación son medidas gruesas, y la memoria real se midió solo para cuatro modelos.
+
+**Defecto del cliente de Ollama, corregido**: los modelos «con pensamiento» (Qwen3, Qwen3.5, Gemma 4) devolvían la respuesta **vacía**: gastaban todo el tope de tokens pensando (en inglés) y el texto final no llegaba. Comprobado con una llamada directa: con el pensamiento activado, 120 tokens y respuesta vacía; con `think: false`, 17 tokens y la frase correcta; los modelos sin pensamiento (Llama, Gemma 3, Phi, Granite, Qwen2.5-VL) aceptan el parámetro. `cliente_ollama.generate` ahora lo manda siempre (`tests/test_ollama_dispositivo.py`). Esos cuatro modelos se repitieron con el cambio y sus filas de la tabla son las nuevas (en la primera corrida habían devuelto la respuesta vacía).
+
+**Limitaciones**: una sola corrida por caso; una sola clase y un solo hablante; la CPU de 13.ª generación es bastante más rápida por núcleo que el computador viejo de un colegio, así que estas cifras son un piso (el equipo real podría tardar entre 2 y 4 veces más); la comparación de calidad es una lectura mía contra el texto de la clase, sin evaluadores.
+
+
+## Whisper en la GPU: `small`, `large-v3-turbo` y `large-v3` con la clase real (2026-11-26)
+
+**Cómo se habilitó la GPU en este equipo**: el entorno del proyecto trae PyTorch `+cpu`, así que la aplicación no detecta la RTX 2050 (ver arriba). Para probar sin tocar ese entorno se instalaron las librerías de CUDA 12 que CTranslate2 necesita (`nvidia-cublas-cu12` y `nvidia-cudnn-cu12`, 2,1 GB) en una carpeta aparte, `~/.cache/claseaidia-cuda12-libs`, y se corrió con `LD_LIBRARY_PATH` apuntando a ella. Los modelos se bajaron con `faster_whisper.utils.download_model`. `distil-large-v3` se descartó: solo sirve para inglés.
+
+**Criterios** (los de la aplicación en GPUs de menos de 5 GB): el mismo audio para todos (convertido a 16 kHz mono y limpiado con `light_dsp`, por las mismas funciones del pipeline, 40 s), español, `int8`, filtro de silencios con 500 ms, sin arrastrar contexto, `beam 1` (salvo la corrida indicada), clase completa de 62,6 min.
+
+| Modelo | Tiempo | Veces tiempo real | VRAM | Palabras | Confianza media* |
+|---|---|---|---|---|---|
+| `small` (la de hoy) | 128 s | 29 | 446 MB | 9.013 | −0,309 |
+| `large-v3-turbo` | 142 s | 26 | 1.066 MB | 8.972 | −0,188 |
+| `large-v3-turbo`, audio sin limpiar | 142 s | 26 | 1.066 MB | 8.982 | −0,192 |
+| `large-v3-turbo`, `beam 5` | 177 s | 21 | 1.066 MB | 8.991 | −0,174 |
+| `large-v3` | 373 s | 10 | 1.898 MB | 8.970 | −0,173 |
+
+\*Promedio del `avg_logprob` de los segmentos: más cerca de 0, menos duda. Es una señal del propio modelo, no una medida de error.
+
+**Resultados**: el turbo cuesta casi lo mismo que `small` en esta GPU (gran parte del tiempo es de CPU: el filtro de silencios y las características de audio) y duda bastante menos. Con la CPU de este equipo, `small` en GPU es unas 5 veces más rápido que en CPU (128 s contra ~12 min). Los términos que la `small` original escribía mal quedan bien con el turbo y con `large-v3`: «inteligencia encarnada» (antes «entre comidas»), «OpenAI» (antes «OpenEye»), «Gringolandia», «muchachos», «anomalías sutiles». `large-v3` y el turbo con `beam 5` quedan casi iguales en confianza; el turbo es 2,6 veces más rápido y usa la mitad de la memoria. Parecido de palabras entre versiones: turbo contra turbo sin limpiar 96,3 %; turbo `beam 1` contra `beam 5` 96,7 %; turbo contra `large-v3` 95,6 %; `small` contra turbo 88,7 %. Los textos completos y las diferencias, con su minuto, están en `demo_transcripciones_whisper.md` (fuera de git).
+
+**Limitaciones**: no hay transcripción humana de referencia, así que las diferencias se leen, no se miden contra la verdad; una sola clase y un solo hablante; una corrida por caso. **`large-v3-turbo` en CPU** (lo que le importa al servidor del colegio; `python -m scripts.medir_cpu whisper`, tramo de 5 minutos, 3 hilos, GPU oculta, por el pipeline real con la limpieza `light_dsp`): **78 s** (780 palabras, 0,26 s por segundo de audio) contra los **44 s** de `small` (774 palabras, 0,15): el turbo cuesta 1,8 veces más. Extrapolado: unos **16 min** para una clase de 62,6 min y unos **23 min** para una de 90 (`small`: 9 y 13 min). Con un equipo escolar que tarde entre 2 y 4 veces más que este, el turbo llegaría a 46–92 min para 90 min de clase, solo en la transcripción, y podría no alcanzar a terminar antes de la siguiente clase; con `small`, 26–52 min. La calidad del turbo se midió solo en GPU (misma decodificación e `int8`), no en CPU. En la GPU de 4 GB de este equipo `large-v3` cabe (1,9 GB), pero no hay margen para dejar un modelo de Ollama cargado a la vez.
+
+**Qué se concluye**: con GPU, el turbo es una mejora clara y barata. Sin GPU, que es el piso del proyecto, cuesta casi el doble de tiempo y la ganancia de calidad no está medida en CPU; conviene dejar `small` por defecto y el turbo como opción para quien tenga GPU o un equipo más rápido (`MODELO_WHISPER=large-v3-turbo`), previa instalación de PyTorch `+cu126` (README) para que la aplicación detecte la GPU.
+
+## Limpieza de audio sobre una grabación real de sala (2026-11-26)
+
+Lo que le faltaba al estudio del 2026-10-02 (ruido artificial sobre una clase ya limpia). Tramo de 5 minutos de la misma clase (`python -m scripts.medir_limpieza`), Whisper `small`, CPU, 3 hilos, por el pipeline real. **El audio es limpio**: piso de ruido −69,9 dBFS contra voz −24,6 dBFS, 45,3 dB de diferencia (más de ~35 dB se considera limpio). Tiempo: sin limpiar 41 s, `light_dsp` 46 s (+13 %; la limpieza sola, medida antes, tarda 36–43 s en una clase de 92 min), `dsp` 38 s. Cambio de palabras respecto de no limpiar (sin contar mayúsculas, tildes ni puntuación): `light_dsp` 95,6 % igual (32 de 766 palabras cambian), `dsp` 94,7 % (28 cambian). Entre los cambios de `dsp` hay errores claros («tiempo atrás y» → «turno para que», «dos veces» → «los besos», «pifias» → «pizcas»); en los de `light_dsp` no se puede decir cuáles son aciertos.
+
+**Conclusión**: en una grabación limpia la limpieza no muestra ningún beneficio y cambia entre un 4 y un 5 % de las palabras, sin forma de saber si para mejor. Coincide con lo que dicen dos estudios recientes (diciembre de 2025 y marzo de 2026: limpiar el ruido antes de Whisper suele empeorar la transcripción, y Whisper es de los más sensibles; ninguno probó denoisers ligeros ni midió CPU). Se mantiene `light_dsp` por defecto porque el estudio anterior mostró +13 puntos con ruido parejo y casi no toca el audio limpio, pero **falta evidencia en una grabación realmente ruidosa**. No se probaron denoisers neuronales ligeros (GTCRN, RNNoise): se descartó el experimento por lo que dice la literatura.
+
+## Modelo de visión de la pizarra: `qwen2.5vl:3b` contra `gemma4:e2b` (2026-11-27)
+
+`python -m scripts.comparar_vision CARPETA` lee las mismas fotos con el mismo código que la app (foto normalizada igual, `_PROMPT`, ventana de 4.096, temperatura 0,1, tope de 700 tokens, `limpiar_repeticiones`), solo CPU y 3 hilos. Las lecturas se guardan fuera del proyecto (`~/respaldo_comparaciones_IA/vision*`): las fotos de clase tienen personas. Muestra: **13 fotos**, 11 de clases reales (pizarra a mano en inglés, diapositivas en español fotografiadas en ángulo, tablas) y 2 de pizarras con matemática (una legible, una casi ilegible). Una sola pasada por modelo.
+
+| | Qwen2.5-VL 3B | Gemma 4 E2B |
+|---|---|---|
+| Tiempo por foto (mediana) | 52 s | **14 s** |
+| 11 fotos | 10,6 min | **2,8 min** |
+| Pico de memoria de Ollama | 4,70 GB | 5,26 GB |
+| Errores / bucles | 0 | 0 |
+
+- **Texto claro (diapositivas, tablas, pizarra legible): empatan.** Gemma lee además el texto de la interfaz que aparece en la foto, y completa lo que Qwen deja fuera (en la foto 1 leyó el recuadro de palabras «across away into off out up» y los seis enunciados; Qwen los omitió y **inventó** una lista «a) some … z) anywhere» repetida). Qwen escribe mejor «just as + adj» que Gemma («just adj + as»).
+- **Matemática a mano: ninguno es confiable, y fallan distinto.** Fórmulas de la foto legible: Qwen acertó la integral gaussiana y la serie de Fourier, pero perdió el denominador 2a de la fórmula cuadrática y cambió una variable (x̄ por ȳ); Gemma acertó la integral, **inventó** términos en la serie de Fourier (`cos(nx) + b_n sin(nx)`), omitió entera la fórmula cuadrática y también cambió una variable. En la matemática borrosa del fondo de una diapositiva ambos inventaron cifras («P(a|b) = Q2 = 1/2», «P(a10) = 8/1»). Esto ya estaba documentado para Qwen; Gemma no mejora.
+- **Foto casi ilegible**: ninguno avisa que no se entiende; los dos escriben «ecuaciones» de aspecto prolijo sin sentido (Qwen 211 palabras, Gemma 39). El «no inventes» del pedido no alcanza.
+- **Formato de las fórmulas**: Gemma escribe `$…$` y Qwen `\[…\]`; el lector de la app (`frontend/src/lib/formulas.ts`) entiende ambos.
+- **Memoria**: en las dos, el pico sube foto a foto (3,75 → 4,70 GB en Qwen; 4,80 → 5,26 GB en Gemma) mientras el modelo sigue cargado; la guarda actual de la app (4,5 GB libres) se quedaría corta con Gemma (haría falta ~6 GB).
+
+### Segunda tanda: 3 pizarras más (matemática en pantalla, código, contabilidad)
+
+Se sumaron una resolución a mano en pantalla (función a trozos), una pizarra con esquemas y código de R, y una de **contabilidad con ~25 cifras**, donde la aritmética de la propia pizarra permite saber la verdad (los totales cuadran: 1.400.000 + 750.000 = 2.150.000; ventas 19.668.240 − costo 9.975.631 = utilidad bruta 9.692.609; etc.). Tiempo por foto: Qwen ~65 s, Gemma ~19 s.
+
+| | Qwen2.5-VL 3B | Gemma 4 E2B |
+|---|---|---|
+| Contabilidad: cifras leídas bien | 12 de 14 | 8 de 12 |
+| Contabilidad: qué dejó sin leer | el bloque central entero (costo unitario y estado variable) | el bloque izquierdo entero y parte del estado variable |
+| Cifras cambiadas | `750.000 → 350.000` y `19.668.240 → 18.668.240` | `9.975.631 → 9.935.631`, `9.692.609 → 9.732.609`, `2.150.000 → 1.500.120`, `5.050.000 → 50.000` |
+| Matemática en pantalla | conserva la función a trozos y casi todas las ecuaciones; cambió el dominio del primer caso y `3/-2 → 3/-7` | pierde la función a trozos (`f(x) = ax² + b`), pone `3/2` sin el signo e **inventa** «un diagrama: una parábola con vértice en (−2, 2)» que no existe |
+| Pizarra de R | repite el bloque de estructuras dos veces y escribe `matriz(...)` en vez de `matrix(filas, columnas)` | **inventa** dos matrices numéricas que no están y cambia `matrix(filas, columnas)` por `matrix(array, dimensiones)` |
+
+- La lectura de Gemma en la contabilidad es internamente consistente pero falsa: con sus cifras, 19.668.240 − 9.935.631 = 9.732.609 «cuadra» y, sin embargo, su utilidad operacional ya no sale (da 6.732.369 y él escribe 6.042.489). **Una verificación aritmética automática detectaría estas lecturas con cifras cambiadas** (idea, no construida).
+- Una de mis propias lecturas fue errónea: leí las ventas como 18.668.240 y la aritmética mostró que son 19.668.240; es un recordatorio de que las cifras de una foto no se aceptan sin revisión, ni de una persona ni de un modelo.
+
+### Conclusión de la comparación de visión
+
+Gemma 4 E2B es 3,5 veces más rápido y empata en texto impreso, pero **con letra a mano y cifras es menos fiel que Qwen2.5-VL 3B**: cambia más cifras e inventa contenido que no está (matrices, un diagrama). El pedido «si hay un diagrama, agrega una línea» empuja a Gemma a inventar uno. **Se mantiene `qwen2.5vl:3b` como modelo de visión** (y la guarda de 4,5 GB). La idea de unificar en un solo modelo queda descartada por ahora: el ahorro (3,2 GB de disco, una recarga) no compensa leer peor lo que el profesor escribe. Ningún modelo es confiable en matemática ni cifras a mano; por eso el texto leído sigue presentándose como lectura automática sujeta a revisión del profesor. Límites: 16 fotos, una pasada por modelo, una sola persona escribió casi todo.
+
+## Memoria de todo el proyecto (2026-11-27)
+
+`scripts/prueba_de_humo.py` con 5 minutos de voz real recomprimida como la sube el navegador (Opus en WebM; un trozo de WAV sin comprimir de 9,6 MB pasa el límite de 8 MB y el servidor responde 413, como corresponde), solo CPU (`CUDA_VISIBLE_DEVICES=-1`, `OLLAMA_DISPOSITIVO=cpu`), modelo `auto` = `gemma4:e2b`, y un muestreador que suma el RSS de cada proceso cada segundo. La clase se transcribió, se generó el material y no quedó audio (243 s).
+
+| Proceso | Pico | Cuándo |
+|---|---|---|
+| Trabajador (Whisper `small`) | 1,77 GB → queda en **0,91 GB** | transcribiendo; después de transcribir no se libera del todo |
+| Modelo de Ollama (`gemma4:e2b`) | 4,74 GB | escribiendo el resumen |
+| Servidor web | 0,16 GB | siempre |
+| Servicio de Ollama | 0,05 GB | siempre |
+| **Total simultáneo** | **1,84 GB transcribiendo; 5,80 GB escribiendo el resumen** | |
+
+- Con la ventana de contexto máxima de la app (16.384 tokens, pasada final de una clase larga) Gemma llega a 4,85 GB, y Llama 3B a 3,77 GB (tardó 433 s con ese texto contra 76 s de Gemma). Total con clase larga ≈ 6,0 GB.
+- Las fotos de la pizarra (Qwen2.5-VL) llegaron a 4,70 GB en 11 fotos seguidas (3,75 GB a la primera): con el trabajador y el servidor, ≈ 5,8 GB. No se suman al resumen: son etapas distintas.
+- **El supuesto «un modelo a la vez y se suelta» del README no se cumple del todo**: el proceso del trabajador conserva ~0,9 GB mientras Ollama carga el modelo de texto.
+- **No medido**: Windows (se estima 3–4 GB en reposo; de ahí el mínimo de 12 GB), el túnel de acceso remoto, un navegador en el mismo PC, dos clases simultáneas, y una clase de 90 minutos completa con el muestreador (solo se midieron partes: 5 min de voz y la ventana máxima por separado). El modelo liviano (`llama3.2:1b`) suma ~2,7 GB por cálculo (0,9 + 1,6 + 0,2), no medido en conjunto.

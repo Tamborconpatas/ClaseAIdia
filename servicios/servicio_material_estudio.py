@@ -14,11 +14,12 @@ from nucleo.memoria import memoria_libre_gb
 from infraestructura import cliente_ollama as ollama_client
 from infraestructura import hardware
 
-# Modelos livianos de la familia llama3.2 — mucho más chicos que llama3 (8B),
-# que en CPU se demora tanto generando que puede superar el timeout del
-# cliente. Se eligen automáticamente cuando "ollama_model" está en "auto".
-_OLLAMA_MODEL_CPU = "llama3.2:1b"
+# Modelos que elige la aplicación cuando "ollama_model" está en "auto". Medido en QA.md («Clase completa en solo CPU»):
+# en CPU, Gemma 4 E2B hace una clase de 62 min en ~9 min (Llama 3B, 24) y ~4,6 GB de memoria; en GPU se queda Llama 3B.
+# El mínimo (Llama 1B, ~2 GB) solo entra cuando no hay memoria libre para los otros; con él no se genera el mapa conceptual.
+_OLLAMA_MODEL_CPU = "gemma4:e2b"
 _OLLAMA_MODEL_GPU = "llama3.2:3b"
+_OLLAMA_MODEL_MINIMO = "llama3.2:1b"
 
 
 def _resolve_ollama_model(configured: str) -> str:
@@ -30,9 +31,9 @@ def _resolve_ollama_model(configured: str) -> str:
     return _OLLAMA_MODEL_GPU if hardware.detect_gpu_vendor() != "none" else _OLLAMA_MODEL_CPU
 
 
-# Memoria que usa Ollama con cada modelo (medido en CPU, con la ventana de contexto grande de una clase larga):
-# el de 1B llega a ~1,6 GB y el de 3B a ~4,8 GB. Un modelo que no se conoce se supone grande.
-_MEMORIA_DEL_MODELO_GB = {_OLLAMA_MODEL_CPU: 2.0, _OLLAMA_MODEL_GPU: 5.0}
+# Memoria que usa Ollama con cada modelo (medida con `llama-server`, no con `ollama ps`, que subestima): el de 1B llega a ~1,6 GB,
+# el de 3B a ~4,8 GB con la ventana de contexto grande de una clase larga, y Gemma 4 E2B a 4,6 GB. Un modelo desconocido se supone grande.
+_MEMORIA_DEL_MODELO_GB = {_OLLAMA_MODEL_MINIMO: 2.0, _OLLAMA_MODEL_GPU: 5.0, _OLLAMA_MODEL_CPU: 5.0}
 _MEMORIA_DE_UN_MODELO_DESCONOCIDO_GB = 6.0
 
 
@@ -41,9 +42,9 @@ def _modelo_que_cabe(modelo: str, es_auto: bool) -> str:
     eligió la aplicación (`auto`) y no cabe, se usa el liviano; si lo eligió la persona se respeta."""
     libre = memoria_libre_gb()
     necesita = _MEMORIA_DEL_MODELO_GB.get(modelo, _MEMORIA_DE_UN_MODELO_DESCONOCIDO_GB)
-    if es_auto and libre is not None and libre < necesita and modelo != _OLLAMA_MODEL_CPU:
-        print(f"[study_material] AVISO: {modelo} necesita ~{necesita:.0f} GB y hay {libre:.1f} GB libres: se usa {_OLLAMA_MODEL_CPU}.")
-        return _OLLAMA_MODEL_CPU
+    if es_auto and libre is not None and libre < necesita and modelo != _OLLAMA_MODEL_MINIMO:
+        print(f"[study_material] AVISO: {modelo} necesita ~{necesita:.0f} GB y hay {libre:.1f} GB libres: se usa {_OLLAMA_MODEL_MINIMO}.")
+        return _OLLAMA_MODEL_MINIMO
     return modelo
 
 # Regex tolerante en vez de string exacto: modelos locales pequeños no
@@ -402,7 +403,7 @@ def generar_mapa_conceptual(resumen: str, puntos_clave: str, asignatura: str | N
     Devuelve [] si el modelo es muy pequeño, si falla o si no salen relaciones suficientes: el mapa es un extra."""
     configurado = app_config.get_param("ollama_model")
     modelo = _modelo_que_cabe(_resolve_ollama_model(configurado), es_auto=configurado == "auto")
-    if modelo == _OLLAMA_MODEL_CPU:
+    if modelo == _OLLAMA_MODEL_MINIMO:
         return []
     texto = f"{resumen or ''}\n\n{puntos_clave or ''}".strip()[:6000]
     if not texto:

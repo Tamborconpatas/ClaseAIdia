@@ -112,8 +112,8 @@ def test_ollama_apagado_no_se_confunde_con_modelo_faltante():
 
 def test_modelo_de_texto_en_auto_acepta_el_1b_o_el_3b_y_uno_configurado_solo_ese(monkeypatch):
     monkeypatch.setattr(se.app_config, "get_param", lambda k: "auto")
-    monkeypatch.setattr(sm, "modelos_instalados", lambda url: {"llama3.2:1b"})
-    assert se._ollama() == {"responde": True, "modelo_texto": "llama3.2:1b o llama3.2:3b", "modelo_texto_instalado": True}
+    monkeypatch.setattr(sm, "modelos_instalados", lambda url: {"gemma4:e2b"})
+    assert se._ollama() == {"responde": True, "modelo_texto": "gemma4:e2b o llama3.2:3b", "modelo_texto_instalado": True}
     monkeypatch.setattr(se.app_config, "get_param", lambda k: "qwen3:8b")
     d = se._ollama()
     assert d["modelo_texto"] == "qwen3:8b" and d["modelo_texto_instalado"] is False  # el 1b instalado no cuenta
@@ -174,7 +174,7 @@ def test_un_servidor_sano_y_ocioso_se_ve_asi(cliente, esc, equipo):
     d = ver(cliente, esc["utp"]).json()
     assert d["alertas"] == []
     assert d["procesamiento"] == {"en_vivo": [], "procesando": [], "con_reintento": [], "con_error": [], "terminadas_24h": 0}
-    assert d["ollama"] == {"responde": True, "modelo_texto": "llama3.2:1b o llama3.2:3b", "modelo_texto_instalado": True}
+    assert d["ollama"] == {"responde": True, "modelo_texto": "gemma4:e2b o llama3.2:3b", "modelo_texto_instalado": True}
     assert d["memoria"] == {"total_gb": 15.6, "libre_gb": 9.3}
     assert d["vigilancia"]["activa"] is None  # el servidor de pruebas no enciende la vigilancia
     assert d["generado_en"].endswith(("Z", "+00:00"))

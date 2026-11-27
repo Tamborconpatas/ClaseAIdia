@@ -14,7 +14,7 @@ from infraestructura.basedatos import obtener_db
 from infraestructura.modelos_orm import AlumnoCurso, Bloque, RolNombre, Usuario, UsuarioRol
 from infraestructura.seguridad import VIGENCIA_CODIGO_RESET_MINUTOS, ahora_utc, hashear_secreto
 from interfaz.api.dependencias_auth import requiere_rol, rol_principal, usuario_actual
-from interfaz.api.esquemas import ResetPinOut, UsuarioCrear, UsuarioOut
+from interfaz.api.esquemas import ResetPinOut, UsuarioCrear, UsuarioOut, UsuarioRenombrar
 from nucleo.codigos import generar_codigo_invitacion
 
 router = APIRouter(prefix="/usuarios", tags=["usuarios"])
@@ -60,6 +60,69 @@ def obtener_usuario(usuario_id: int, db: Session = Depends(obtener_db), actual: 
     if not visible:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
     return usuario
+
+
+def _alumno_que_puede_ver(db: Session, staff: Usuario, usuario_id: int) -> Usuario:
+    """Alumno del colegio del staff; un profesor, solo de los cursos donde dicta (el UTP, de cualquiera). 404 si no."""
+    usuario = db.get(Usuario, usuario_id)
+    if usuario is None or usuario.colegio_id != staff.colegio_id or RolNombre.ALUMNO not in {r.rol for r in usuario.roles}:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    if rol_principal(staff) == RolNombre.PROFESOR:
+        dicta_ahi = (
+            db.query(AlumnoCurso.id)
+            .join(Bloque, Bloque.curso_id == AlumnoCurso.curso_id)
+            .filter(AlumnoCurso.usuario_id == usuario.id, Bloque.profesor_id == staff.id)
+            .first()
+        )
+        if dicta_ahi is None:
+            raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    return usuario
+
+
+@router.put("/{usuario_id}", response_model=UsuarioOut)
+def renombrar_usuario(
+    usuario_id: int,
+    datos: UsuarioRenombrar,
+    db: Session = Depends(obtener_db),
+    staff: Usuario = Depends(requiere_rol(RolNombre.PROFESOR, RolNombre.UTP)),
+):
+    """Corrige el nombre de un alumno (el profesor, de sus cursos; el UTP, de cualquiera). Un alumno no puede
+    cambiar el suyo. Quien corrige lo da por revisado."""
+    usuario = _alumno_que_puede_ver(db, staff, usuario_id)
+    usuario.nombre = datos.nombre
+    usuario.revisar_nombre = False
+    usuario.registro_dispositivo_id = None  # ya revisado: no hace falta seguir sabiendo desde dónde se creó
+    db.commit()
+    db.refresh(usuario)
+    return usuario
+
+
+@router.post("/{usuario_id}/nombre-revisado", response_model=UsuarioOut)
+def nombre_revisado(
+    usuario_id: int, db: Session = Depends(obtener_db), staff: Usuario = Depends(requiere_rol(RolNombre.PROFESOR, RolNombre.UTP))
+):
+    """El profesor revisó la marca «Revisar nombre» y el nombre está bien."""
+    usuario = _alumno_que_puede_ver(db, staff, usuario_id)
+    usuario.revisar_nombre = False
+    usuario.registro_dispositivo_id = None  # ya revisado: no hace falta seguir sabiendo desde dónde se creó
+    db.commit()
+    db.refresh(usuario)
+    return usuario
+
+
+@router.delete("/{usuario_id}", status_code=204)
+def eliminar_alumno(
+    usuario_id: int, db: Session = Depends(obtener_db), utp: Usuario = Depends(requiere_rol(RolNombre.UTP))
+):
+    """Borra la cuenta de un alumno (y su inscripción). Solo alumnos: al personal se le desactiva, porque
+    su nombre queda en horarios y clases. El material de las clases es del curso, no del alumno."""
+    usuario = db.get(Usuario, usuario_id)
+    if usuario is None or usuario.colegio_id != utp.colegio_id:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    if {r.rol for r in usuario.roles} != {RolNombre.ALUMNO}:
+        raise HTTPException(status_code=409, detail="Solo se puede eliminar a un alumno; al personal se le desactiva")
+    db.delete(usuario)
+    db.commit()
 
 
 def _personal_del_colegio(db: Session, utp: Usuario, usuario_id: int) -> Usuario:

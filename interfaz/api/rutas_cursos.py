@@ -4,7 +4,7 @@
 # Uso comercial restringido para terceros por la Commons Clause v1.0; el titular conserva todos sus derechos.
 # Términos completos en el archivo LICENSE de la raíz.
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
@@ -14,11 +14,13 @@ from infraestructura.modelos_orm import AlumnoCurso, Bloque, Curso, RolNombre, U
 from infraestructura.seguridad import hashear_secreto, verificar_secreto
 from interfaz.api.dependencias_auth import emitir_token, requiere_rol, rol_principal, usuario_actual
 from interfaz.api.esquemas import (
+    AlumnoMoverIn,
     BloqueCrear,
     BloqueOut,
     AlumnoOut,
     CodigoCursoOut,
     CursoConCodigoOut,
+    CursoCupoIn,
     CursoCrear,
     CursoOut,
     CursoRenombrar,
@@ -29,6 +31,8 @@ from interfaz.api.esquemas import (
 from interfaz.api.rutas_auth import registrar_resultado_intento, verificar_bloqueo
 from interfaz.api.rutas_bloques import verificar_bloque
 from nucleo.codigos import generar_codigo_invitacion
+from nucleo.nombres import suena_a_broma
+from servicios import servicio_conexiones
 
 router = APIRouter(prefix="/cursos", tags=["cursos"])
 
@@ -92,7 +96,7 @@ def listar_cursos(db: Session = Depends(obtener_db), actual: Usuario = Depends(u
 
 
 @router.post("/unirse", response_model=TokenOut)
-def unirse_curso(datos: UnirseCursoIn, db: Session = Depends(obtener_db)):
+def unirse_curso(datos: UnirseCursoIn, request: Request, db: Session = Depends(obtener_db)):
     curso = db.query(Curso).filter_by(codigo_invitacion=datos.codigo_invitacion).first()
     if curso is None:
         raise HTTPException(status_code=404, detail="Código de invitación inválido")
@@ -101,12 +105,20 @@ def unirse_curso(datos: UnirseCursoIn, db: Session = Depends(obtener_db)):
     if usuario is None:
         if pin_es_facil(datos.pin):
             raise HTTPException(status_code=422, detail="PIN demasiado fácil de adivinar (repetido o secuencia)")
+        broma = suena_a_broma(datos.nombre)
+        if broma and not datos.confirmar_nombre:
+            # No se bloquea (alguien puede llamarse así de verdad): se pide confirmar y, si confirma, el profesor lo ve marcado.
+            raise HTTPException(status_code=428, detail="El nombre necesita confirmación")
         usuario = Usuario(
             rut=datos.rut,
             nombre=datos.nombre,
             colegio_id=curso.colegio_id,
             pin_hash=hashear_secreto(datos.pin),
+            revisar_nombre=broma,
         )
+        if broma:  # solo si el nombre quedó para revisar: desde qué equipo se creó la cuenta (se borra al revisarlo)
+            equipo = servicio_conexiones.dispositivo_de(db, curso.colegio_id, request)
+            usuario.registro_dispositivo_id = equipo.id if equipo else None
         usuario.roles = [UsuarioRol(rol=RolNombre.ALUMNO)]
         db.add(usuario)
         db.flush()
@@ -129,10 +141,13 @@ def unirse_curso(datos: UnirseCursoIn, db: Session = Depends(obtener_db)):
             raise HTTPException(status_code=401, detail="PIN incorrecto para este RUT")
         registrar_resultado_intento(usuario, exitoso=True, db=db)
 
+    _exigir_sin_otro_curso(db, usuario.id, curso.id)
     ya_inscrito = db.query(AlumnoCurso).filter_by(usuario_id=usuario.id, curso_id=curso.id).first()
     if ya_inscrito is None:
+        _exigir_cupo(db, curso)
         db.add(AlumnoCurso(usuario_id=usuario.id, curso_id=curso.id))
 
+    usuario.version_sesion += 1  # una sola sesión por alumno: la del equipo anterior se cierra
     db.commit()
     db.refresh(usuario)
     return emitir_token(usuario)
@@ -152,6 +167,24 @@ def renombrar_curso(
 ):
     curso = _curso_visible_o_404(curso_id, utp, db)
     curso.nombre = datos.nombre
+    db.commit()
+    db.refresh(curso)
+    return curso
+
+
+@router.put("/{curso_id}/cupo", response_model=CursoOut)
+def fijar_cupo(
+    curso_id: int,
+    datos: CursoCupoIn,
+    db: Session = Depends(obtener_db),
+    utp: Usuario = Depends(requiere_rol(RolNombre.UTP)),
+):
+    """El UTP fija cuántos alumnos admite el curso. No puede quedar bajo los que ya tiene: primero se mueven."""
+    curso = _curso_visible_o_404(curso_id, utp, db)
+    inscritos = db.query(AlumnoCurso.id).filter_by(curso_id=curso.id).count()
+    if datos.cupo < inscritos:
+        raise HTTPException(status_code=409, detail=f"El curso ya tiene {inscritos} alumnos: mueve o saca a algunos antes de bajar el máximo")
+    curso.cupo = datos.cupo
     db.commit()
     db.refresh(curso)
     return curso
@@ -186,6 +219,54 @@ def alumnos_del_curso(
         .order_by(Usuario.nombre)
         .all()
     )
+
+
+def _exigir_sin_otro_curso(db: Session, usuario_id: int, curso_id: int) -> None:
+    """Un RUT está en un solo curso: para cambiarlo de sección el UTP lo mueve."""
+    otro = db.query(Curso.nombre).join(AlumnoCurso).filter(AlumnoCurso.usuario_id == usuario_id, Curso.id != curso_id).first()
+    if otro is not None:
+        raise HTTPException(status_code=409, detail=f"Este RUT ya está en el curso {otro[0]}: pídele al UTP que lo mueva")
+
+
+def _exigir_cupo(db: Session, curso: Curso) -> None:
+    if db.query(AlumnoCurso.id).filter_by(curso_id=curso.id).count() >= curso.cupo:
+        raise HTTPException(status_code=409, detail=f"El curso {curso.nombre} está lleno ({curso.cupo} alumnos): avisa a tu UTP")
+
+
+def _alumno_inscrito_o_404(curso: Curso, usuario_id: int, db: Session) -> AlumnoCurso:
+    inscripcion = db.query(AlumnoCurso).filter_by(curso_id=curso.id, usuario_id=usuario_id).first()
+    if inscripcion is None:
+        raise HTTPException(status_code=404, detail="Ese alumno no está en este curso")
+    return inscripcion
+
+
+@router.delete("/{curso_id}/alumnos/{usuario_id}", status_code=204)
+def quitar_alumno(
+    curso_id: int, usuario_id: int, db: Session = Depends(obtener_db), utp: Usuario = Depends(requiere_rol(RolNombre.UTP))
+):
+    """Lo saca del curso (su cuenta se conserva); deja de ver sus clases."""
+    curso = _curso_visible_o_404(curso_id, utp, db)
+    db.delete(_alumno_inscrito_o_404(curso, usuario_id, db))
+    db.commit()
+
+
+@router.post("/{curso_id}/alumnos/{usuario_id}/mover", status_code=204)
+def mover_alumno(
+    curso_id: int,
+    usuario_id: int,
+    datos: AlumnoMoverIn,
+    db: Session = Depends(obtener_db),
+    utp: Usuario = Depends(requiere_rol(RolNombre.UTP)),
+):
+    """Pasa al alumno a otro curso (p. ej. cambio de sección) en un solo paso."""
+    origen = _curso_visible_o_404(curso_id, utp, db)
+    destino = _curso_visible_o_404(datos.curso_destino_id, utp, db)
+    inscripcion = _alumno_inscrito_o_404(origen, usuario_id, db)
+    if destino.id == origen.id:
+        raise HTTPException(status_code=409, detail="El curso de destino es el mismo")
+    _exigir_cupo(db, destino)
+    inscripcion.curso_id = destino.id
+    db.commit()
 
 
 @router.get("/{curso_id}/codigo", response_model=CodigoCursoOut)

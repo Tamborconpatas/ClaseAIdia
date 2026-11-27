@@ -60,9 +60,15 @@ def test_con_gpu_el_modelo_auto_es_el_de_3b_salvo_que_ollama_sea_solo_cpu(monkey
     monkeypatch.delenv("OLLAMA_DISPOSITIVO", raising=False)
     assert m._resolve_ollama_model("auto") == "llama3.2:3b"
     monkeypatch.setenv("OLLAMA_DISPOSITIVO", "cpu")
-    assert m._resolve_ollama_model("auto") == "llama3.2:1b"
+    assert m._resolve_ollama_model("auto") == "gemma4:e2b"
 
 
 def test_un_modelo_elegido_a_mano_se_respeta_aunque_sea_solo_cpu(monkeypatch):
     monkeypatch.setenv("OLLAMA_DISPOSITIVO", "cpu")
     assert m._resolve_ollama_model("qwen2.5:7b") == "qwen2.5:7b"
+
+
+def test_se_le_pide_a_ollama_que_no_piense(envios):
+    """Sin esto, un modelo con pensamiento (Qwen3, Gemma 4) gasta todos los tokens pensando y la respuesta llega vacía."""
+    co.generate("hola", "qwen3:1.7b", 100)
+    assert envios[0]["think"] is False

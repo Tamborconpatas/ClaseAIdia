@@ -22,7 +22,7 @@ from nucleo import configuracion as app_config
 from nucleo.disco import ancestro_existente, espacio_en_disco
 from nucleo.memoria import memoria_libre_gb, memoria_total_gb
 from servicios import servicio_grabacion as sg
-from servicios import servicio_modelos, servicio_pizarra, servicio_respaldo
+from servicios import servicio_conexiones, servicio_modelos, servicio_pizarra, servicio_respaldo
 
 DISCO_AVISO_GB = 5.0
 DISCO_CRITICO_GB = sg.DISCO_MINIMO_PARA_GRABAR_GB  # con menos no se puede empezar a grabar: el aviso y el bloqueo hablan del mismo número
@@ -30,7 +30,7 @@ MEMORIA_AVISO_GB = 1.5
 RESPALDO_ATRASADO_DIAS = 2
 AUDIO_SOBRANTE_MB = 1500
 SIN_PULSO_S = 60  # la vigilancia pasa cada 10 s (más lo que tarde el respaldo del día)
-MODELOS_AUTO = ("llama3.2:1b", "llama3.2:3b")  # los que elige la app con `ollama_model: auto` (sin importar PyTorch en el servidor)
+MODELOS_AUTO = ("gemma4:e2b", "llama3.2:3b")  # los que elige la app con `ollama_model: auto` (sin importar PyTorch en el servidor)
 
 
 def _mb(ruta: Path) -> float:
@@ -171,6 +171,7 @@ def estado_del_servidor(db: Session, colegio_id: int, vigilando: bool = True) ->
             "ultima_pasada": ultimo.replace(tzinfo=datetime.timezone.utc) if ultimo else None,
             "activa": (ahora - (ultimo or sg.ARRANQUE)).total_seconds() < SIN_PULSO_S if vigilando else None,
         },
+        "conexiones": servicio_conexiones.conexiones(db, colegio_id),
     }
     e["alertas"] = construir_alertas(e)
     return e

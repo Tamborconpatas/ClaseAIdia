@@ -79,11 +79,18 @@ const PRIVACIDAD = (
         <li>El PIN de los alumnos y la contraseña del personal se guardan <strong>cifrados de forma irreversible</strong>: nadie, ni el equipo, puede leerlos.</li>
         <li>Por cada clase procesada: la <strong>transcripción en texto</strong> y el material de estudio generado a partir de ella.</li>
         <li>El horario del curso y las clases realizadas.</li>
+        <li>
+          De cada equipo desde el que se usa la aplicación (computador, teléfono o tablet): un resumen como «Teléfono · Android · Chrome», un
+          código aleatorio que el propio navegador se pone y la hora de la última conexión. Sirve para ver quién está conectado y para saber desde
+          qué equipo se creó una cuenta con un nombre indebido. Se borra a los 30 días sin uso, y el origen de una cuenta se olvida en cuanto el
+          profesor revisa su nombre.
+        </li>
       </ul>
     </Seccion>
     <Seccion titulo="Qué NO se guarda">
       <ul>
         <li><strong>El audio nunca se guarda.</strong> Se usa para generar el texto y se borra apenas termina de procesarse.</li>
+        <li>No se guarda la dirección IP, el número de teléfono, la ubicación ni identificadores del aparato.</li>
         <li>No hay cookies de seguimiento, publicidad ni analíticas de terceros. La sesión usa un código temporal guardado en el navegador, que vence solo.</li>
       </ul>
     </Seccion>
@@ -91,7 +98,7 @@ const PRIVACIDAD = (
       <ul>
         <li>Un <strong>alumno</strong> ve el horario y el material de las clases de su propio curso, una vez que su profesor lo revisó. Si el profesor no alcanza a revisarlo, se muestra igualmente con una advertencia de que no fue revisado.</li>
         <li>Un <strong>profesor</strong> ve las clases que dicta, puede corregir el material y decidir si se publica o se retira.</li>
-        <li>El <strong>UTP</strong> administra cursos, horarios y personal, y puede ver las clases del colegio.</li>
+        <li>El <strong>UTP</strong> administra cursos, horarios y personal, puede ver las clases del colegio y quién está conectado y desde qué tipo de equipo.</li>
         <li>Las personas de un colegio no ven los datos de otro.</li>
       </ul>
     </Seccion>

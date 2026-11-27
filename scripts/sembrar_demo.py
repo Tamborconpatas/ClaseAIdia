@@ -14,7 +14,9 @@ Usa su propia base: no toca escuela.db. Para que la API la use:
     DATABASE_URL=sqlite:///./escuela_demo.db uvicorn api:app --port 8000
 """
 import datetime
+import json
 import os
+from pathlib import Path
 
 os.environ.setdefault("DATABASE_URL", "sqlite:///./escuela_demo.db")
 
@@ -193,6 +195,57 @@ def fecha_pasada(dia_semana: int, semanas_atras: int) -> datetime.date:
     return d - datetime.timedelta(weeks=semanas_atras)
 
 
+CLASE_REAL = Path(__file__).resolve().parent.parent / "demo_clase_real.json"  # la crea scripts/procesar_clase_real.py
+COMPARACION = Path(__file__).resolve().parent.parent / "demo_comparacion_modelos.json"  # la crea scripts/comparar_modelos.py
+NOMBRES_MODELO = {"llama3.2:1b": "Llama 3.2 1B", "llama3.2:3b": "Llama 3.2 3B", "qwen2.5vl:3b": "Qwen2.5-VL 3B (solo texto)"}
+
+
+def agregar_clase_real(db, colegio, staff, alumno_rut: int) -> str | None:
+    """Si existe el resultado de procesar una clase de verdad, lo suma al demo como un curso aparte (modo universidad:
+    1 curso = 1 bloque), con docente y alumno ficticios. No toca nada de lo demás. Si además existe la comparación de
+    modelos, cada modelo queda como una CLASE APARTE (mismo audio, mismo texto, su propio material) para compararlos en
+    la aplicación. Devuelve el código del curso."""
+    if not CLASE_REAL.is_file():
+        return None
+    real = json.loads(CLASE_REAL.read_text(encoding="utf-8"))
+    variantes = []  # (modelo, material, segundos)
+    if COMPARACION.is_file():
+        for modelo, r in json.loads(COMPARACION.read_text(encoding="utf-8")).items():
+            if r.get("resumen"):
+                relaciones = (r.get("mapa_app") or {}).get("relaciones") or None  # el de 1B no da mapa: la app lo descarta
+                variantes.append((NOMBRES_MODELO.get(modelo, modelo), {**{k: r[k] for k in ("resumen", "puntos_clave", "hoja_repaso", "tarjetas")}, "mapa_conceptual": relaciones}, r.get("material_s")))
+    if not variantes:
+        variantes.append((real.get("modelo_texto", "IA"), {k: real[k] for k in ("resumen", "puntos_clave", "hoja_repaso", "tarjetas")} | {"mapa_conceptual": real.get("mapa_conceptual")}, real.get("tiempos", {}).get("material_s")))
+    docente = staff(19012345, "Docente de IA (demo)", RolNombre.PROFESOR)
+    alumno = Usuario(rut=rut(alumno_rut), nombre="Joaquín Pérez (demo)", colegio_id=colegio.id, pin_hash=hashear_secreto(PIN_ALUMNO))
+    alumno.roles = [UsuarioRol(rol=RolNombre.ALUMNO)]
+    curso = Curso(nombre="IA Aplicada (clase real)", colegio_id=colegio.id, codigo_invitacion="DEMOIA")
+    db.add_all([alumno, curso])
+    db.flush()
+    db.add(AlumnoCurso(usuario_id=alumno.id, curso_id=curso.id))
+    fecha = datetime.date(2026, 10, 15)  # la fecha de la grabación (un jueves)
+    ahora = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+    for i, (modelo, material, segundos) in enumerate(variantes):
+        inicio = datetime.datetime(2000, 1, 1, 19, 0) + datetime.timedelta(minutes=90 * i)
+        bloque = Bloque(
+            curso_id=curso.id, tipo=TipoBloque.CLASE, asignatura=f"{modelo} · {real.get('asignatura') or 'Clase real'}",  # el modelo primero: la lista corta el título
+            profesor_id=docente.id, sala=f"{segundos:.0f} s de generación" if segundos else "Aula virtual", dia_semana=fecha.weekday(),
+            hora_inicio=inicio.time(), hora_fin=(inicio + datetime.timedelta(minutes=90)).time(),
+        )
+        db.add(bloque)
+        db.flush()
+        clase = Clase(bloque_id=bloque.id, fecha=fecha)
+        clase.contenido = ContenidoClase(
+            transcripcion_texto=real["transcripcion_texto"], transcripcion_srt=real.get("transcripcion_srt"), **material,
+            aprobado=False, generado_en=ahora - datetime.timedelta(hours=30),  # provisorio: hecho por IA, sin revisar
+        )
+        db.add(clase)
+    print(f"  Clase REAL ({real.get('duracion_s', 0) / 60:.0f} min, procesada en este equipo) en {len(variantes)} versiones, una por modelo: "
+          f"{', '.join(v[0] for v in variantes)}")
+    print(f"    alumno {alumno.rut}   PIN {PIN_ALUMNO}   código DEMOIA   |   docente {rut(19012345)}   contraseña {PASSWORD_STAFF}")
+    return "DEMOIA"
+
+
 def main() -> None:
     Base.metadata.drop_all(engine)  # la demo se regenera limpia cada vez
     Base.metadata.create_all(engine)
@@ -289,6 +342,7 @@ def main() -> None:
                     generado_en=ahora - datetime.timedelta(hours=HORAS_GENERADO.get(estado, 24 * 7)),
                 )
             db.add(clase)
+        agregar_clase_real(db, colegio, staff, 21000005)
         db.commit()
 
         print(f"Base de demostración: {engine.url}")

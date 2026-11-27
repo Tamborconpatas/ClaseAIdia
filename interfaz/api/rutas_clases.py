@@ -106,7 +106,7 @@ def _resumen(c: Clase) -> dict:
         "asignatura": b.asignatura,
         "sala": b.sala,
         "hora_inicio": b.hora_inicio,
-        "hora_fin": b.hora_fin,
+        "hora_fin": b.hora_fin_de_cadena,
         "profesor_id": b.profesor_id,
         "estado": estado,
         # Cuándo se publicará como provisorio si el profesor no la revisa (solo mientras espera revisión).
