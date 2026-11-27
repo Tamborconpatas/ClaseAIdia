@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from infraestructura import basedatos
 from infraestructura.modelos_orm import Bloque, Clase, Curso, EstadoGrabacion as E, Grabacion
-from nucleo import configuracion as app_config
+from nucleo import configuracion as app_config, modelos_ia
 from nucleo.disco import ancestro_existente, espacio_en_disco
 from nucleo.memoria import memoria_libre_gb, memoria_total_gb
 from servicios import servicio_grabacion as sg
@@ -30,7 +30,7 @@ MEMORIA_AVISO_GB = 1.5
 RESPALDO_ATRASADO_DIAS = 2
 AUDIO_SOBRANTE_MB = 1500
 SIN_PULSO_S = 60  # la vigilancia pasa cada 10 s (más lo que tarde el respaldo del día)
-MODELOS_AUTO = ("gemma4:e2b", "llama3.2:3b")  # los que elige la app con `ollama_model: auto` (sin importar PyTorch en el servidor)
+MODELOS_AUTO = (modelos_ia.MODELO_CPU, modelos_ia.MODELO_GPU)  # los que elige la app con `ollama_model: auto` (sin importar PyTorch en el servidor)
 
 
 def _mb(ruta: Path) -> float:
@@ -137,7 +137,7 @@ def construir_alertas(e: dict) -> list[dict]:
     if not o["responde"]:
         alerta("ollama", "aviso", "El programa de IA (Ollama) no responde: las clases no se pueden resumir por ahora (quedan con error y se reintentan solas cuando vuelva).")
     elif not o["modelo_texto_instalado"]:
-        alerta("ollama", "critico", f"Falta el modelo que escribe los resúmenes ({o['modelo_texto']}): sin él ninguna clase se puede resumir.")
+        alerta("ollama", "critico", f"Falta el modelo que escribe los resúmenes ({o['modelo_texto']}): sin él ninguna clase se puede resumir. Se descarga desde «Ajustes».")
     if r["cantidad"] == 0:
         alerta("respaldos", "aviso", "Todavía no hay ningún respaldo de la base de datos. Se hace uno al día; si lo ves después de un día de uso, algo falla.")
     elif r["hace_dias"] is not None and r["hace_dias"] > RESPALDO_ATRASADO_DIAS:

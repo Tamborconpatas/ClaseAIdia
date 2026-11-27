@@ -9,7 +9,7 @@ import os
 import re
 
 from nucleo import configuracion as app_config
-from nucleo import limpieza_texto
+from nucleo import limpieza_texto, modelos_ia
 from nucleo.memoria import memoria_libre_gb
 from infraestructura import cliente_ollama as ollama_client
 from infraestructura import hardware
@@ -17,9 +17,9 @@ from infraestructura import hardware
 # Modelos que elige la aplicación cuando "ollama_model" está en "auto". Medido en QA.md («Clase completa en solo CPU»):
 # en CPU, Gemma 4 E2B hace una clase de 62 min en ~9 min (Llama 3B, 24) y ~4,6 GB de memoria; en GPU se queda Llama 3B.
 # El mínimo (Llama 1B, ~2 GB) solo entra cuando no hay memoria libre para los otros; con él no se genera el mapa conceptual.
-_OLLAMA_MODEL_CPU = "gemma4:e2b"
-_OLLAMA_MODEL_GPU = "llama3.2:3b"
-_OLLAMA_MODEL_MINIMO = "llama3.2:1b"
+_OLLAMA_MODEL_CPU = modelos_ia.MODELO_CPU
+_OLLAMA_MODEL_GPU = modelos_ia.MODELO_GPU
+_OLLAMA_MODEL_MINIMO = modelos_ia.MODELO_MINIMO
 
 
 def _resolve_ollama_model(configured: str) -> str:

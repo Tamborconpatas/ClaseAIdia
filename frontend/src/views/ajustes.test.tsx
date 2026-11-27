@@ -8,7 +8,7 @@ import axe from 'axe-core'
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { AjusteFotos } from '@/lib/api'
+import type { AjusteFotos, AjusteModeloTexto } from '@/lib/api'
 
 vi.mock('@/lib/api', async (original) => ({ ...(await original<typeof import('@/lib/api')>()), api: vi.fn() }))
 
@@ -20,13 +20,21 @@ import { Ajustes } from '@/views/Ajustes'
 const base: AjusteFotos = {
   activada: false, modelo: 'qwen2.5vl:3b', ollama_responde: true, modelo_instalado: false, memoria_total_gb: 15.6, memoria_recomendada_gb: 16, descarga: null,
 }
+// El modelo de resúmenes empieza instalado: así las pruebas de las fotos no ven barras ni botones de la otra sección.
+const baseTexto: AjusteModeloTexto = { modelo: 'gemma4:e2b', ollama_responde: true, modelo_instalado: true, memoria_total_gb: 15.6, memoria_minima_gb: 12, tamano_gb: 4.6, descarga: null }
 let estado: AjusteFotos
+let texto: AjusteModeloTexto
 let raices: Root[] = []
 const llamadas = () => (api as unknown as ReturnType<typeof vi.fn>).mock.calls.map((c) => `${c[1]?.metodo ?? 'GET'} ${c[0]}`)
 
 beforeEach(() => {
   estado = { ...base }
-  ;(api as unknown as ReturnType<typeof vi.fn>).mockReset().mockImplementation(async (_ruta: string, opciones?: { metodo?: string; cuerpo?: { activada?: boolean } }) => {
+  texto = { ...baseTexto }
+  ;(api as unknown as ReturnType<typeof vi.fn>).mockReset().mockImplementation(async (ruta: string, opciones?: { metodo?: string; cuerpo?: { activada?: boolean } }) => {
+    if (ruta.startsWith('/ajustes/modelo-texto')) {
+      if (opciones?.metodo === 'POST') texto = { ...texto, descarga: { estado: 'descargando', porcentaje: 0, mensaje: 'Preparando la descarga…' } }
+      return texto
+    }
     if (opciones?.metodo === 'PUT') estado = { ...estado, activada: opciones.cuerpo!.activada! }
     if (opciones?.metodo === 'POST') estado = { ...estado, descarga: { estado: 'descargando', porcentaje: 0, mensaje: 'Preparando la descarga…' } }
     return estado
@@ -92,12 +100,12 @@ describe('Ajustes del colegio (el UTP decide en la aplicación, sin archivos ni 
     mock.mockImplementation((ruta: string, opciones?: { metodo?: string }) =>
       opciones?.metodo === 'POST' ? new Promise((r) => (terminar = () => r(estado))) : anterior(ruta, opciones),
     )
-    await act(async () => boton(c, 'Descargar el modelo')!.click())
+    await act(async () => boton(c, 'Descargar el modelo de imágenes')!.click())
     const barra = c.querySelector('[role=progressbar]')
     expect(barra).not.toBeNull() // el servidor todavía no contestó
     expect(barra!.getAttribute('aria-valuenow')).toBe('0')
     expect(c.textContent).toContain('Preparando la descarga… 0 %')
-    expect(boton(c, 'Descargar el modelo')).toBeUndefined()
+    expect(boton(c, 'Descargar el modelo de imágenes')).toBeUndefined()
     await act(async () => terminar())
     expect(await violaciones(c)).toEqual([])
   })
@@ -114,12 +122,12 @@ describe('Ajustes del colegio (el UTP decide en la aplicación, sin archivos ni 
       }
       return despuesDelPost ? new Promise(() => {}) : anterior(ruta, opciones) // la consulta que sigue todavía no contesta
     })
-    await act(async () => boton(c, 'Descargar el modelo')!.click())
+    await act(async () => boton(c, 'Descargar el modelo de imágenes')!.click())
     await act(async () => {
       await new Promise((r) => setTimeout(r, 30))
     })
     expect(c.querySelector('[role=progressbar]')?.getAttribute('aria-valuenow')).toBe('3') // salió de la respuesta del POST
-    expect(boton(c, 'Descargar el modelo')).toBeUndefined()
+    expect(boton(c, 'Descargar el modelo de imágenes')).toBeUndefined()
   })
 
   it('el mismo interruptor las apaga si estaban activadas', async () => {
@@ -143,7 +151,7 @@ describe('Ajustes del colegio (el UTP decide en la aplicación, sin archivos ni 
     expect(c.textContent).toContain('Es poca: lo normal es que las fotos se salten solas')
     expect(c.textContent).toContain('Se recomiendan 16 GB')
     expect(c.textContent).toContain('No responde por ahora. Al descargar el modelo la aplicación intenta abrirlo')
-    expect(boton(c, 'Descargar el modelo')!.disabled).toBe(false)
+    expect(boton(c, 'Descargar el modelo de imágenes')!.disabled).toBe(false)
   })
 
   it('si no se puede medir la memoria no inventa un número', async () => {
@@ -154,7 +162,7 @@ describe('Ajustes del colegio (el UTP decide en la aplicación, sin archivos ni 
 
   it('descargar el modelo desde la app: botón, barra de avance con su valor y aviso', async () => {
     const c = await montar()
-    await act(async () => boton(c, 'Descargar el modelo')!.click())
+    await act(async () => boton(c, 'Descargar el modelo de imágenes')!.click())
     await act(async () => {
       await new Promise((r) => setTimeout(r, 30))
     })
@@ -167,7 +175,7 @@ describe('Ajustes del colegio (el UTP decide en la aplicación, sin archivos ni 
     expect(barra.getAttribute('aria-valuenow')).toBe('42')
     expect(barra.getAttribute('aria-label')).toBe('Descarga del modelo')
     expect(c.textContent).toContain('Descargando… 42 %')
-    expect(boton(c, 'Descargar el modelo')).toBeUndefined() // mientras baja no se puede pedir otra vez
+    expect(boton(c, 'Descargar el modelo de imágenes')).toBeUndefined() // mientras baja no se puede pedir otra vez
     expect(await violaciones(c)).toEqual([])
   }, 10_000)
 
@@ -191,5 +199,61 @@ describe('Ajustes del colegio (el UTP decide en la aplicación, sin archivos ni 
     ;(api as unknown as ReturnType<typeof vi.fn>).mockReset().mockRejectedValue(new Error('sin red'))
     const c = await montar()
     expect(c.querySelector('[role=alert]')?.textContent).toContain('No se pudo conectar con el servidor')
+  })
+  describe('modelo que escribe los resúmenes (necesario: se baja desde la app, no con una consola)', () => {
+    it('si falta, el UTP ve cuánto pesa y lo baja con un botón; la barra aparece de inmediato', async () => {
+      texto = { ...baseTexto, modelo_instalado: false }
+      const c = await montar()
+      expect(c.textContent).toContain('Modelo que escribe los resúmenes')
+      expect(c.textContent).toContain('(gemma4:e2b)')
+      expect(c.textContent).toContain('Falta descargarlo (4,6 GB). Hace falta internet, y solo una vez.')
+      expect(c.textContent).toContain('Este equipo tiene 15,6 GB de memoria: alcanza.')
+      expect(c.textContent).not.toMatch(/\.env|ollama pull|consola/i)
+      expect(await violaciones(c)).toEqual([])
+      await act(async () => boton(c, 'Descargar el modelo de resúmenes')!.click())
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 30))
+      })
+      expect(llamadas()).toContain('POST /ajustes/modelo-texto/descargar')
+      expect(llamadas()).not.toContain('POST /ajustes/fotos-pizarra/modelo') // no se confunde con el de las fotos
+      expect(c.querySelector('[role=progressbar]')).not.toBeNull()
+      expect(boton(c, 'Descargar el modelo de resúmenes')).toBeUndefined() // mientras baja no se puede pedir otra vez
+      expect(await violaciones(c)).toEqual([])
+    })
+
+    it('instalado, solo lo dice; y de un modelo que fijó quien administra el servidor no inventa un tamaño', async () => {
+      const c = await montar()
+      expect(c.textContent).toContain('Instalado.')
+      expect(boton(c, 'resúmenes')).toBeUndefined()
+      for (const r of raices.splice(0)) act(() => r.unmount())
+      document.body.innerHTML = ''
+      texto = { ...baseTexto, modelo: 'qwen2.5:7b', modelo_instalado: false, tamano_gb: null }
+      const c2 = await montar()
+      expect(c2.textContent).toContain('Falta descargarlo. Hace falta internet')
+    })
+
+    it('con poca memoria avisa que se usará un modelo más liviano, sin trabar la descarga', async () => {
+      texto = { ...baseTexto, modelo_instalado: false, memoria_total_gb: 7.8 }
+      const c = await montar()
+      expect(c.textContent).toContain('Es poca: si el modelo no cabe, la aplicación usa uno más liviano')
+      expect(c.textContent).toContain('Se recomiendan 12 GB')
+      expect(boton(c, 'Descargar el modelo de resúmenes')!.disabled).toBe(false)
+      expect(await violaciones(c)).toEqual([])
+    })
+
+    it('si el servidor rechaza el pedido lo dice en la pantalla', async () => {
+      texto = { ...baseTexto, modelo_instalado: false }
+      const mock = api as unknown as ReturnType<typeof vi.fn>
+      const anterior = mock.getMockImplementation() as (...a: unknown[]) => unknown
+      mock.mockImplementation((ruta: string, opciones?: { metodo?: string }) =>
+        ruta === '/ajustes/modelo-texto/descargar' ? Promise.reject(new Error('Ya se está descargando')) : anterior(ruta, opciones),
+      )
+      const c = await montar()
+      await act(async () => boton(c, 'Descargar el modelo de resúmenes')!.click())
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 30))
+      })
+      expect(c.querySelector('[role=alert]')?.textContent).toContain('Ya se está descargando')
+    })
   })
 })

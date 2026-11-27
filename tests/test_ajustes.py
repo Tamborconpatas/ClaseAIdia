@@ -4,9 +4,15 @@
 # Uso comercial restringido para terceros por la Commons Clause v1.0; el titular conserva todos sus derechos.
 # Términos completos en el archivo LICENSE de la raíz.
 
-"""Ajustes del colegio que decide el UTP desde la aplicación (no un archivo de configuración): las fotos de la pizarra."""
+"""Ajustes del colegio que decide el UTP desde la aplicación (no un archivo de configuración): las fotos de la pizarra y el modelo
+que escribe los resúmenes."""
+import subprocess
+import sys
+from pathlib import Path
+
 import pytest
 
+from nucleo import modelos_ia
 from servicios import servicio_modelos as sm
 from servicios import servicio_pizarra as sp
 from test_clases import esc  # noqa: F401
@@ -109,3 +115,58 @@ def test_pedir_la_descarga_le_pregunta_una_sola_vez_a_ollama(cliente, esc, monke
     monkeypatch.setattr(sm, "instalado", lambda modelo, url: preguntas.append(1) or False)
     assert cliente.post("/ajustes/fotos-pizarra/modelo", headers=esc["utp"]).status_code == 200
     assert preguntas == [1]
+
+
+# --- El modelo que escribe los resúmenes: se baja desde la aplicación, sin consola ---
+
+TEXTO, BAJAR_TEXTO = "/ajustes/modelo-texto", "/ajustes/modelo-texto/descargar"
+
+
+def test_el_utp_ve_el_modelo_que_escribe_los_resumenes_y_lo_que_hace_falta(cliente, esc):
+    d = cliente.get(TEXTO, headers=esc["utp"]).json()
+    assert d["modelo"] == modelos_ia.MODELO_CPU
+    assert d["ollama_responde"] is True and d["modelo_instalado"] is False
+    assert d["memoria_total_gb"] == 15.6 and d["memoria_minima_gb"] == modelos_ia.MEMORIA_MINIMA_GB
+    assert d["descarga"] is None and d["tamano_gb"] == 4.6
+
+
+def test_si_quien_administra_el_servidor_fijo_un_modelo_se_ofrece_ese(cliente, esc, monkeypatch):
+    monkeypatch.setattr("interfaz.api.rutas_ajustes.app_config.get_param", lambda k: "qwen2.5:7b")
+    d = cliente.get(TEXTO, headers=esc["utp"]).json()
+    assert d["modelo"] == "qwen2.5:7b" and d["tamano_gb"] is None  # de otro modelo no se sabe cuánto pesa
+
+
+def test_el_utp_baja_el_modelo_de_resumenes_y_mientras_se_baja_no_se_pide_dos_veces(cliente, esc, ollama):
+    r = cliente.post(BAJAR_TEXTO, headers=esc["utp"])
+    assert r.status_code == 200 and r.json()["descarga"]["estado"] == "descargando"
+    assert [m for m, _ in ollama["pedidos"]] == [modelos_ia.MODELO_CPU]
+    assert cliente.post(BAJAR_TEXTO, headers=esc["utp"]).status_code == 409  # ya se está descargando
+    assert cliente.get(TEXTO, headers=esc["utp"]).json()["descarga"]["estado"] == "descargando"
+
+
+def test_si_el_modelo_ya_esta_instalado_no_se_vuelve_a_bajar(cliente, esc, ollama):
+    ollama["instalado"] = True
+    assert cliente.get(TEXTO, headers=esc["utp"]).json()["modelo_instalado"] is True
+    assert cliente.post(BAJAR_TEXTO, headers=esc["utp"]).status_code == 409
+    assert ollama["pedidos"] == []
+
+
+def test_con_ollama_cerrado_igual_se_puede_pedir_porque_la_app_lo_abre_sola(cliente, esc, ollama):
+    ollama["responde"] = False
+    assert cliente.get(TEXTO, headers=esc["utp"]).json()["ollama_responde"] is False
+    assert cliente.post(BAJAR_TEXTO, headers=esc["utp"]).status_code == 200
+
+
+def test_solo_el_utp_ve_y_baja_el_modelo_de_resumenes(cliente, esc, ollama):
+    assert cliente.get(TEXTO).status_code == 401 and cliente.post(BAJAR_TEXTO).status_code == 401
+    for quien in ("ana", "alumno"):
+        assert cliente.get(TEXTO, headers=esc[quien]).status_code == 403
+        assert cliente.post(BAJAR_TEXTO, headers=esc[quien]).status_code == 403
+    assert ollama["pedidos"] == []
+
+
+def test_el_servidor_web_no_carga_pytorch_para_ofrecer_la_descarga():
+    """`infraestructura.hardware` importa torch: si las rutas de ajustes lo arrastraran, el servidor web cargaría cientos de MB de más."""
+    codigo = "import sys, interfaz.api.rutas_ajustes, servicios.servicio_estado; assert 'torch' not in sys.modules, 'se cargó torch'"
+    r = subprocess.run([sys.executable, "-c", codigo], cwd=Path(__file__).resolve().parent.parent, capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr[-400:]

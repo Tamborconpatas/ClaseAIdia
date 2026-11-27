@@ -154,6 +154,16 @@ export interface AjusteFotos {
   memoria_recomendada_gb: number
   descarga: DescargaModelo | null
 }
+/** El modelo que escribe los resúmenes: sin él ninguna clase se resume. El UTP lo deja listo sin una consola. */
+export interface AjusteModeloTexto {
+  modelo: string
+  ollama_responde: boolean
+  modelo_instalado: boolean
+  memoria_total_gb: number | null
+  memoria_minima_gb: number
+  tamano_gb: number | null
+  descarga: DescargaModelo | null
+}
 /** Panel de estado del servidor (solo el UTP). Las alertas ya vienen redactadas por el servidor. */
 interface ClaseEnEstado {
   clase_id: number

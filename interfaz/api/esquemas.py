@@ -540,6 +540,18 @@ class AjusteFotosOut(BaseModel):
     descarga: DescargaOut | None = None
 
 
+class AjusteModeloTextoOut(BaseModel):
+    """El modelo que escribe los resúmenes: sin él ninguna clase se resume. El UTP lo deja listo desde la aplicación, sin una consola."""
+
+    modelo: str
+    ollama_responde: bool
+    modelo_instalado: bool
+    memoria_total_gb: float | None
+    memoria_minima_gb: float
+    tamano_gb: float | None = None
+    descarga: DescargaOut | None = None
+
+
 # --- Estado del servidor (panel del UTP) ---------------------------------------------------------
 
 

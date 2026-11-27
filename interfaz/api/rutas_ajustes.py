@@ -11,7 +11,8 @@ from sqlalchemy.orm import Session
 from infraestructura.basedatos import obtener_db
 from infraestructura.modelos_orm import Colegio, RolNombre, Usuario
 from interfaz.api.dependencias_auth import requiere_rol
-from interfaz.api.esquemas import AjusteFotosEditar, AjusteFotosOut
+from interfaz.api.esquemas import AjusteFotosEditar, AjusteFotosOut, AjusteModeloTextoOut
+from nucleo import configuracion as app_config, modelos_ia
 from nucleo.memoria import memoria_total_gb
 from servicios import servicio_modelos, servicio_pizarra
 
@@ -60,3 +61,32 @@ def descargar_modelo(db: Session = Depends(obtener_db), utp: Usuario = Depends(u
     esta = servicio_modelos.instalado(modelo, url)  # una sola pregunta a Ollama por pedido
     servicio_modelos.iniciar_descarga(modelo, url, ya_esta=bool(esta))
     return _estado_fotos(db, utp, esta=bool(esta) if esta is not None else None)
+
+
+def _estado_texto(modelo: str, esta: bool | None) -> dict:
+    """`esta`: lo que dijo Ollama (True/False; None si no responde)."""
+    total = memoria_total_gb()
+    return {
+        "modelo": modelo,
+        "ollama_responde": esta is not None,
+        "modelo_instalado": bool(esta),
+        "memoria_total_gb": round(total, 1) if total else None,
+        "memoria_minima_gb": modelos_ia.MEMORIA_MINIMA_GB,
+        "tamano_gb": modelos_ia.TAMANO_GB.get(modelo),
+        "descarga": servicio_modelos.estado_de_descarga(modelo),
+    }
+
+
+@router.get("/modelo-texto", response_model=AjusteModeloTextoOut)
+def ver_modelo_texto(_: Usuario = Depends(utp_actual)):
+    url, modelo = servicio_pizarra.url_ollama(), modelos_ia.modelo_a_instalar(app_config.get_param("ollama_model"))
+    return _estado_texto(modelo, servicio_modelos.instalado(modelo, url))
+
+
+@router.post("/modelo-texto/descargar", response_model=AjusteModeloTextoOut)
+def descargar_modelo_texto(_: Usuario = Depends(utp_actual)):
+    """Baja el modelo que escribe los resúmenes (necesita internet una vez). Se consulta el avance con el GET."""
+    url, modelo = servicio_pizarra.url_ollama(), modelos_ia.modelo_a_instalar(app_config.get_param("ollama_model"))
+    esta = servicio_modelos.instalado(modelo, url)  # una sola pregunta a Ollama por pedido
+    servicio_modelos.iniciar_descarga(modelo, url, ya_esta=bool(esta))
+    return _estado_texto(modelo, bool(esta) if esta is not None else None)

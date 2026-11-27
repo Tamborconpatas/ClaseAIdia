@@ -7,7 +7,7 @@ import { useState } from 'react'
 import { Download, Info } from 'lucide-react'
 import { Cargando, ErrorForm, Requisito } from '@/components/comunes'
 import { Button } from '@/components/ui/button'
-import { api, type AjusteFotos } from '@/lib/api'
+import { api, type AjusteFotos, type AjusteModeloTexto, type DescargaModelo } from '@/lib/api'
 import { CREDITO } from '@/lib/autoria'
 import { useSondeo } from '@/lib/usar'
 import { cn } from '@/lib/utils'
@@ -17,9 +17,20 @@ const MEMORIA_MINIMA_GB = 12
 
 /**
  * Ajustes del colegio. El UTP decide aquí lo que en otras aplicaciones se tocaría en un archivo de configuración: la app se
- * reparte portable y nadie edita archivos ni escribe comandos. Hoy: las fotos de la pizarra, que son opcionales.
+ * reparte portable y nadie edita archivos ni escribe comandos. Hoy: el modelo que escribe los resúmenes (necesario) y las fotos
+ * de la pizarra (opcionales).
  */
 export function Ajustes() {
+  return (
+    <div className="mx-auto max-w-2xl space-y-4">
+      <ModeloDeResumenes />
+      <FotosDePizarra />
+      <p className="text-center text-xs text-muted-foreground">{CREDITO}</p>
+    </div>
+  )
+}
+
+function FotosDePizarra() {
   const ajuste = useSondeo(() => api<AjusteFotos>('/ajustes/fotos-pizarra'), 3000, [])
   const [trabajando, setTrabajando] = useState<'cambiar' | 'descargar' | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -40,11 +51,10 @@ export function Ajustes() {
 
   if (!d) return ajuste.sinConexion ? <ErrorForm mensaje="No se pudo conectar con el servidor." /> : <Cargando />
 
-  const descargando = d.descarga?.estado === 'descargando'
   const memoriaAlcanza = d.memoria_total_gb === null ? null : d.memoria_total_gb >= MEMORIA_MINIMA_GB
 
   return (
-    <div className="mx-auto max-w-2xl space-y-4">
+    <>
       <section aria-labelledby="titulo-fotos" className="space-y-4 rounded-2xl border bg-card p-4 desk:p-5">
         <div>
           <h2 id="titulo-fotos" className="text-lg font-semibold">
@@ -93,32 +103,16 @@ export function Ajustes() {
               {d.ollama_responde ? 'Está funcionando en este equipo.' : 'No responde por ahora. Al descargar el modelo la aplicación intenta abrirlo; si no está instalado en este equipo, instálalo desde ollama.com.'}
             </Requisito>
 
-            <Requisito ok={d.modelo_instalado} titulo="Modelo de lectura de imágenes">
-              {d.modelo_instalado ? (
-                'Instalado.'
-              ) : (
-                <>
-                  Falta descargarlo (3,2 GB). Hace falta internet, y solo una vez.
-                  {/* Al pulsar, la barra aparece ya (no hay que esperar la respuesta del servidor). */}
-                  {trabajando === 'descargar' && <Avance porcentaje={0} mensaje="Preparando la descarga…" />}
-                  {trabajando !== 'descargar' && descargando && d.descarga && <Avance porcentaje={d.descarga.porcentaje} mensaje={d.descarga.mensaje} />}
-                  {d.descarga?.estado === 'error' && <ErrorForm mensaje={d.descarga.mensaje} />}
-                  {!descargando && trabajando !== 'descargar' && (
-                    <div className="mt-2">
-                      <Button
-                        variant="outline"
-                        className="h-11 desk:h-9"
-                        disabled={trabajando !== null} // con Ollama cerrado también se puede pedir: la aplicación intenta abrirlo ella misma
-                        onClick={() => void ejecutar('descargar', () => api<AjusteFotos>('/ajustes/fotos-pizarra/modelo', { metodo: 'POST' }))}
-                      >
-                        <Download />
-                        {d.descarga?.estado === 'error' ? 'Reintentar la descarga' : 'Descargar el modelo'}
-                      </Button>
-                    </div>
-                  )}
-                </>
-              )}
-            </Requisito>
+            <RequisitoModelo
+              titulo="Modelo de lectura de imágenes"
+              etiqueta="Descargar el modelo de imágenes"
+              instalado={d.modelo_instalado}
+              tamanoGb={3.2}
+              descarga={d.descarga}
+              trabajando={trabajando === 'descargar'}
+              ocupado={trabajando !== null} // con Ollama cerrado también se puede pedir: la aplicación intenta abrirlo ella misma
+              onDescargar={() => void ejecutar('descargar', () => api<AjusteFotos>('/ajustes/fotos-pizarra/modelo', { metodo: 'POST' }))}
+            />
           </ul>
         </div>
 
@@ -129,8 +123,104 @@ export function Ajustes() {
         </p>
         <ErrorForm mensaje={error} />
       </section>
-      <p className="text-center text-xs text-muted-foreground">{CREDITO}</p>
-    </div>
+    </>
+  )
+}
+
+/** El modelo que escribe los resúmenes. Sin él ninguna clase se puede resumir: por eso se baja desde aquí y no con una consola. */
+function ModeloDeResumenes() {
+  const ajuste = useSondeo(() => api<AjusteModeloTexto>('/ajustes/modelo-texto'), 3000, [])
+  const [trabajando, setTrabajando] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const d = ajuste.datos
+
+  const descargar = async () => {
+    setError(null)
+    setTrabajando(true)
+    try {
+      ajuste.fijar(await api<AjusteModeloTexto>('/ajustes/modelo-texto/descargar', { metodo: 'POST' })) // se ve ya, sin esperar la siguiente consulta
+      ajuste.actualizar()
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setTrabajando(false)
+    }
+  }
+
+  if (!d) return ajuste.sinConexion ? <ErrorForm mensaje="No se pudo conectar con el servidor." /> : <Cargando />
+
+  const alcanza = d.memoria_total_gb === null ? null : d.memoria_total_gb >= d.memoria_minima_gb
+  return (
+    <section aria-labelledby="titulo-resumenes" className="space-y-4 rounded-2xl border bg-card p-4 desk:p-5">
+      <div>
+        <h2 id="titulo-resumenes" className="text-lg font-semibold">
+          Modelo que escribe los resúmenes <span className="text-sm font-normal text-muted-foreground">(necesario)</span>
+        </h2>
+        <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+          La IA que resume las clases corre en este equipo y necesita su modelo ({d.modelo}). Se descarga una sola vez; sin él ninguna clase se puede resumir.
+        </p>
+      </div>
+      <ul className="space-y-3">
+        <Requisito ok={alcanza} titulo="Memoria del equipo">
+          {d.memoria_total_gb === null
+            ? `No se pudo medir la memoria de este equipo. Se recomiendan al menos ${d.memoria_minima_gb} GB.`
+            : alcanza
+              ? `Este equipo tiene ${d.memoria_total_gb.toLocaleString('es-CL')} GB de memoria: alcanza.`
+              : `Este equipo tiene ${d.memoria_total_gb.toLocaleString('es-CL')} GB de memoria. Es poca: si el modelo no cabe, la aplicación usa uno más liviano (resúmenes más simples y sin mapa conceptual). Se recomiendan ${d.memoria_minima_gb} GB.`}
+        </Requisito>
+        <Requisito ok={d.ollama_responde} titulo="Programa de IA (Ollama)">
+          {d.ollama_responde ? 'Está funcionando en este equipo.' : 'No responde por ahora. Al descargar el modelo la aplicación intenta abrirlo; si no está instalado en este equipo, instálalo desde ollama.com.'}
+        </Requisito>
+        <RequisitoModelo
+          titulo="Modelo de resúmenes"
+          etiqueta="Descargar el modelo de resúmenes"
+          instalado={d.modelo_instalado}
+          tamanoGb={d.tamano_gb}
+          descarga={d.descarga}
+          trabajando={trabajando}
+          ocupado={trabajando}
+          onDescargar={() => void descargar()}
+        />
+      </ul>
+      <ErrorForm mensaje={error} />
+    </section>
+  )
+}
+
+/** La fila «modelo» de una lista de requisitos: instalado, o el botón para bajarlo con su barra de avance. */
+function RequisitoModelo({ titulo, etiqueta, instalado, tamanoGb, descarga, trabajando, ocupado, onDescargar }: {
+  titulo: string
+  etiqueta: string
+  instalado: boolean
+  tamanoGb: number | null
+  descarga: DescargaModelo | null
+  trabajando: boolean
+  ocupado: boolean
+  onDescargar: () => void
+}) {
+  const descargando = descarga?.estado === 'descargando'
+  return (
+    <Requisito ok={instalado} titulo={titulo}>
+      {instalado ? (
+        'Instalado.'
+      ) : (
+        <>
+          Falta descargarlo{tamanoGb ? ` (${tamanoGb.toLocaleString('es-CL')} GB)` : ''}. Hace falta internet, y solo una vez.
+          {/* Al pulsar, la barra aparece ya (no hay que esperar la respuesta del servidor). */}
+          {trabajando && <Avance porcentaje={0} mensaje="Preparando la descarga…" />}
+          {!trabajando && descargando && descarga && <Avance porcentaje={descarga.porcentaje} mensaje={descarga.mensaje} />}
+          {descarga?.estado === 'error' && <ErrorForm mensaje={descarga.mensaje} />}
+          {!descargando && !trabajando && (
+            <div className="mt-2">
+              <Button variant="outline" className="h-11 desk:h-9" disabled={ocupado} onClick={onDescargar}>
+                <Download />
+                {descarga?.estado === 'error' ? 'Reintentar la descarga' : etiqueta}
+              </Button>
+            </div>
+          )}
+        </>
+      )}
+    </Requisito>
   )
 }
 
