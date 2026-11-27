@@ -718,3 +718,20 @@ Se sumaron una resolución a mano en pantalla (función a trozos), una pizarra c
 ### Conclusión de la comparación de visión
 
 Gemma 4 E2B es 3,5 veces más rápido y empata en texto impreso, pero **con letra a mano y cifras es menos fiel que Qwen2.5-VL 3B**: cambia más cifras e inventa contenido que no está (matrices, un diagrama). El pedido «si hay un diagrama, agrega una línea» empuja a Gemma a inventar uno. **Se mantiene `qwen2.5vl:3b` como modelo de visión** (y la guarda de 4,5 GB). La idea de unificar en un solo modelo queda descartada por ahora: el ahorro (3,2 GB de disco, una recarga) no compensa leer peor lo que el profesor escribe. Ningún modelo es confiable en matemática ni cifras a mano; por eso el texto leído sigue presentándose como lectura automática sujeta a revisión del profesor. Límites: 16 fotos, una pasada por modelo, una sola persona escribió casi todo.
+
+## Memoria de todo el proyecto (2026-11-27)
+
+`scripts/prueba_de_humo.py` con 5 minutos de voz real recomprimida como la sube el navegador (Opus en WebM; un trozo de WAV sin comprimir de 9,6 MB pasa el límite de 8 MB y el servidor responde 413, como corresponde), solo CPU (`CUDA_VISIBLE_DEVICES=-1`, `OLLAMA_DISPOSITIVO=cpu`), modelo `auto` = `gemma4:e2b`, y un muestreador que suma el RSS de cada proceso cada segundo. La clase se transcribió, se generó el material y no quedó audio (243 s).
+
+| Proceso | Pico | Cuándo |
+|---|---|---|
+| Trabajador (Whisper `small`) | 1,77 GB → queda en **0,91 GB** | transcribiendo; después de transcribir no se libera del todo |
+| Modelo de Ollama (`gemma4:e2b`) | 4,74 GB | escribiendo el resumen |
+| Servidor web | 0,16 GB | siempre |
+| Servicio de Ollama | 0,05 GB | siempre |
+| **Total simultáneo** | **1,84 GB transcribiendo; 5,80 GB escribiendo el resumen** | |
+
+- Con la ventana de contexto máxima de la app (16.384 tokens, pasada final de una clase larga) Gemma llega a 4,85 GB, y Llama 3B a 3,77 GB (tardó 433 s con ese texto contra 76 s de Gemma). Total con clase larga ≈ 6,0 GB.
+- Las fotos de la pizarra (Qwen2.5-VL) llegaron a 4,70 GB en 11 fotos seguidas (3,75 GB a la primera): con el trabajador y el servidor, ≈ 5,8 GB. No se suman al resumen: son etapas distintas.
+- **El supuesto «un modelo a la vez y se suelta» del README no se cumple del todo**: el proceso del trabajador conserva ~0,9 GB mientras Ollama carga el modelo de texto.
+- **No medido**: Windows (se estima 3–4 GB en reposo; de ahí el mínimo de 12 GB), el túnel de acceso remoto, un navegador en el mismo PC, dos clases simultáneas, y una clase de 90 minutos completa con el muestreador (solo se midieron partes: 5 min de voz y la ventana máxima por separado). El modelo liviano (`llama3.2:1b`) suma ~2,7 GB por cálculo (0,9 + 1,6 + 0,2), no medido en conjunto.

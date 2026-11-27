@@ -97,6 +97,21 @@ Lo que sigue se midió con la clase real de 92 minutos (12.500 palabras) y 6 fot
 
 *Advertencia sobre estos números*: se midieron en un procesador Intel Core i5-13420H (de 13.ª generación, rápido). Un PC escolar típico, más antiguo, puede tardar **el doble**. Dos corridas del mismo perfil de 4 núcleos dieron 13,2 y 16,9 minutos de transcripción: cuenten con una variación de un cuarto.
 
+### Requisitos mínimos del servidor
+
+Medidos con el servidor y el trabajador reales procesando voz de una clase (`scripts/prueba_de_humo.py`), sin GPU y con el modelo por defecto (`gemma4:e2b`), en Linux. Detalle en `QA.md` («Memoria de todo el proyecto»).
+
+| | Mínimo | Recomendado |
+|---|---|---|
+| **Memoria (RAM)** | **12 GB** (8 GB solo con el modelo liviano: resúmenes más simples, sin mapa conceptual y sin fotos de la pizarra) | **16 GB** (si el mismo PC graba, abre el navegador o procesa clases seguidas) |
+| **Procesador** | 4 núcleos, sin GPU | 4 núcleos o más; una GPU NVIDIA ayuda, nunca se exige |
+| **Disco libre** | ~10 GB para los modelos (Gemma 4,6 GB + el liviano 1,3 GB + el de la pizarra 3,2 GB, si se activa) más el audio temporal | un disco aparte para los respaldos |
+| **Equipo encendido** | permanente (24/7) | con la suspensión desactivada |
+
+Lo que usa la propia aplicación: **5,8 GB como máximo** al escribir el resumen (modelo 4,7 GB + trabajador 0,9 GB + servidor 0,2 GB), y **1,8 GB** mientras transcribe; con una clase larga el modelo llega a 4,85 GB (≈ 6 GB en total). Todo lo demás es del sistema operativo: en Windows se estima en 3–4 GB en reposo (**no se midió**), de ahí los 12 GB. La app mide la memoria libre antes de cada paso: si no hay ~5 GB para el modelo por defecto, baja sola al liviano, y si no hay para la pizarra, salta las fotos y procesa la clase igual.
+
+**No incluido en esas cifras**: el túnel de acceso remoto, un navegador abierto en el mismo PC y procesar dos clases a la vez (`PROCESAMIENTOS_SIMULTANEOS` mayor que 1 suma ~5 GB por clase).
+
 ### A. Núcleo: transcripción y resumen (obligatorio)
 
 Una clase de 92 minutos, de principio a fin (la clase se procesa sola después de terminar; una clase de 45 minutos tarda aproximadamente la mitad):
@@ -107,7 +122,7 @@ Una clase de 92 minutos, de principio a fin (la clase se procesa sola después d
 | 8 núcleos (4 rápidos + 4 lentos) | 22,3 min | 2,3 min | **24,6 min** | 11,6 min | 33,9 min |
 
 - **Desde el 2026-11-27 el modelo por defecto sin GPU es `gemma4:e2b`** (no `llama3.2:1b`): en una clase real de 62,6 min tarda unos 9 min con 3 hilos de CPU y usa unos 4,6 GB de memoria (`QA.md`, «Clase completa en solo CPU»). Es el único probado que cabe a tiempo en un equipo escolar lento y genera el mapa conceptual; `llama3.2:1b` queda como mínimo cuando no hay memoria libre para él (y sin mapa). La tabla de abajo es de las pruebas anteriores con Llama.
-- **Memoria**: la transcripción llega a 2,0 GB; Ollama usa unos 1,6 GB con el modelo de 1B y unos 4,8 GB con el de 3B. Se carga un modelo a la vez y se suelta, así que 8 GB bastan con el de 1B; con el de 3B conviene tener 16 GB.
+- **Memoria**: ver «Requisitos mínimos del servidor» (arriba). En estas pruebas anteriores, la transcripción llegó a 2,0 GB y Ollama usó ~1,6 GB con el modelo de 1B y ~4,8 GB con el de 3B. El trabajador de Whisper no se libera del todo mientras escribe el resumen (queda con ~0,9 GB), así que los modelos no son del todo «uno a la vez».
 - *Lo del 8 núcleos*: el procesador de las pruebas mezcla 4 núcleos rápidos con 4 lentos, y la transcripción esperaba a los lentos; un PC con 8 núcleos iguales debería ser más rápido que el de 4. No se midió uno.
 - Una jornada con varias clases se procesa de a una, en orden: el procesamiento es de varios minutos por clase, no de horas, así que cabe de sobra entre una clase y la siguiente o durante la noche. Esto último es una estimación (no se midió una jornada completa de clases de 45 minutos).
 
