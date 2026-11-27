@@ -8,7 +8,7 @@ import { Download, Info, Loader2 } from 'lucide-react'
 import { Cargando, ErrorForm, Requisito } from '@/components/comunes'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { api, type AjusteClases, type AjusteFotos, type AjusteModeloTexto, type AjusteRespaldos, type DescargaModelo } from '@/lib/api'
+import { api, type AjusteClases, type AjusteFotos, type AjusteModeloTexto, type AjusteRespaldos, type DescargaModelo, type OpcionModelo } from '@/lib/api'
 import { CREDITO } from '@/lib/autoria'
 import { useCarga, useSondeo } from '@/lib/usar'
 import { cn } from '@/lib/utils'
@@ -135,6 +135,8 @@ function ModeloDeResumenes() {
   const ajuste = useSondeo(() => api<AjusteModeloTexto>('/ajustes/modelo-texto'), 3000, [])
   const [trabajando, setTrabajando] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [enCurso, setEnCurso] = useState<string | null>(null) // qué fila del selector está haciendo algo: el modelo, o «auto»
+  const [aviso, setAviso] = useState('')
   const d = ajuste.datos
 
   const descargar = async () => {
@@ -147,6 +149,21 @@ function ModeloDeResumenes() {
       setError((e as Error).message)
     } finally {
       setTrabajando(false)
+    }
+  }
+  /** Una fila del selector: bajar ese modelo, o dejarlo como el que se usa (`auto` = que la aplicación decida sola). */
+  const accion = async (fila: string, llamada: () => Promise<AjusteModeloTexto>, avisar: string) => {
+    setError(null)
+    setAviso('')
+    setEnCurso(fila)
+    try {
+      ajuste.fijar(await llamada())
+      ajuste.actualizar()
+      if (avisar) setAviso(avisar)
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setEnCurso(null)
     }
   }
 
@@ -185,6 +202,42 @@ function ModeloDeResumenes() {
           onDescargar={() => void descargar()}
         />
       </ul>
+      <details className="rounded-xl border p-3.5">
+        <summary className="cursor-pointer text-sm font-medium">Usar otro modelo (opcional)</summary>
+        <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+          Lo normal es dejar «Automático»: la aplicación elige sola según el equipo. Solo se puede usar un modelo que ya esté descargado en este equipo. El cambio vale desde la próxima clase
+          que se procese; la que ya está en marcha termina con el modelo con el que empezó.
+        </p>
+        <ul className="mt-3 space-y-2">
+          <FilaModelo
+            etiqueta="Automático (recomendado)"
+            nota="La aplicación elige sola: Gemma 4 E2B en un equipo sin tarjeta gráfica y Llama 3.2 3B en uno que la tenga."
+            enUso={d.eleccion === 'auto'}
+            instalado
+            tamanoGb={null}
+            descarga={null}
+            ocupado={enCurso !== null}
+            trabajando={enCurso === 'auto'}
+            onUsar={() => void accion('auto', () => api<AjusteModeloTexto>('/ajustes/modelo-texto', { metodo: 'PUT', cuerpo: { modelo: 'auto' } }), 'Listo: la aplicación vuelve a elegir sola.')}
+          />
+          {d.opciones.map((o: OpcionModelo) => (
+            <FilaModelo
+              key={o.modelo}
+              etiqueta={o.etiqueta}
+              nota={o.nota}
+              enUso={d.eleccion === o.modelo}
+              instalado={o.instalado}
+              tamanoGb={o.tamano_gb}
+              descarga={o.descarga}
+              ocupado={enCurso !== null}
+              trabajando={enCurso === o.modelo}
+              onUsar={() => void accion(o.modelo, () => api<AjusteModeloTexto>('/ajustes/modelo-texto', { metodo: 'PUT', cuerpo: { modelo: o.modelo } }), `Listo: se usará ${o.etiqueta} desde la próxima clase.`)}
+              onDescargar={() => void accion(o.modelo, () => api<AjusteModeloTexto>('/ajustes/modelo-texto/descargar', { metodo: 'POST', cuerpo: { modelo: o.modelo } }), '')}
+            />
+          ))}
+        </ul>
+        <p role="status" aria-live="polite" className="mt-2 text-sm text-muted-foreground">{aviso}</p>
+      </details>
       <ErrorForm mensaje={error} />
     </section>
   )
@@ -377,6 +430,49 @@ function FormularioRespaldos({ inicial }: { inicial: AjusteRespaldos }) {
         <ErrorForm mensaje={error} />
       </form>
     </section>
+  )
+}
+
+/** Una opción del selector de modelo: su nombre y para qué sirve, y según su estado, «En uso», «Usar este modelo» o «Descargar». */
+function FilaModelo({ etiqueta, nota, enUso, instalado, tamanoGb, descarga, ocupado, trabajando, onUsar, onDescargar }: {
+  etiqueta: string
+  nota: string
+  enUso: boolean
+  instalado: boolean | null
+  tamanoGb: number | null
+  descarga: DescargaModelo | null
+  ocupado: boolean
+  trabajando: boolean
+  onUsar: () => void
+  onDescargar?: () => void
+}) {
+  const bajando = descarga?.estado === 'descargando'
+  return (
+    <li className={cn('rounded-lg border p-3', enUso && 'border-primary bg-primary/5')}>
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-medium">
+            {etiqueta}
+            {enUso && <span className="ml-2 rounded-full bg-primary px-2 py-0.5 text-xs font-semibold text-primary-foreground">En uso</span>}
+          </p>
+          <p className="text-xs leading-relaxed text-muted-foreground">{nota}</p>
+        </div>
+        {!enUso && instalado && (
+          <Button variant="outline" className="h-11 desk:h-9" aria-label={`Usar ${etiqueta}`} disabled={ocupado} onClick={onUsar}>
+            {trabajando && <Loader2 className="animate-spin" />} Usar este modelo
+          </Button>
+        )}
+        {!enUso && instalado === false && !bajando && onDescargar && (
+          <Button variant="outline" className="h-11 desk:h-9" aria-label={`Descargar ${etiqueta}`} disabled={ocupado} onClick={onDescargar}>
+            {trabajando ? <Loader2 className="animate-spin" /> : <Download />} Descargar{tamanoGb ? ` (${tamanoGb.toLocaleString('es-CL')} GB)` : ''}
+          </Button>
+        )}
+      </div>
+      {instalado === null && <p className="mt-1 text-xs text-muted-foreground">Ollama no responde: no se sabe si está descargado.</p>}
+      {instalado === false && !bajando && <p className="mt-1 text-xs text-muted-foreground">No está descargado en este equipo.</p>}
+      {bajando && descarga && <Avance porcentaje={descarga.porcentaje} mensaje={descarga.mensaje} />}
+      {descarga?.estado === 'error' && instalado === false && <ErrorForm mensaje={descarga.mensaje} />}
+    </li>
   )
 }
 

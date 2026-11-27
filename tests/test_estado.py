@@ -50,6 +50,7 @@ CASOS = [
     ({"disco": {"audio_temporal_mb": 2000}, "procesamiento": {"con_reintento": [{}]}}, None, None),
     ({"ollama": {"responde": False, "modelo_texto_instalado": False}}, "aviso", "Ollama) no responde"),
     ({"ollama": {"modelo_texto_instalado": False}}, "critico", "Falta el modelo que escribe los resúmenes (llama3.2:3b)"),
+    ({"ollama": {"modelo_texto_instalado": False, "modelo_de_respaldo": "llama3.2:1b"}}, "aviso", "mientras tanto se resume con llama3.2:1b"),  # con respaldo la clase sí se resume
     ({"respaldos": {"cantidad": 0, "ultimo": None, "hace_dias": None}}, "aviso", "ningún respaldo"),
     ({"respaldos": {"hace_dias": 2}}, None, None),
     ({"respaldos": {"hace_dias": 3}}, "critico", "hace 3 días"),
@@ -135,15 +136,28 @@ def test_ollama_apagado_no_se_confunde_con_modelo_faltante():
 # --- piezas sueltas --------------------------------------------------------------------------------
 
 
-def test_modelo_de_texto_en_auto_acepta_el_1b_o_el_3b_y_uno_configurado_solo_ese(monkeypatch):
+def test_modelo_de_texto_en_auto_acepta_el_de_cpu_o_el_de_gpu_y_uno_configurado_solo_ese(monkeypatch):
+    db = _base_con_tablas()
     monkeypatch.setattr(se.app_config, "get_param", lambda k: "auto")
     monkeypatch.setattr(sm, "modelos_instalados", lambda url: {"gemma4:e2b"})
-    assert se._ollama() == {"responde": True, "modelo_texto": "gemma4:e2b o llama3.2:3b", "modelo_texto_instalado": True}
+    assert se._ollama(db) == {"responde": True, "modelo_texto": "gemma4:e2b o llama3.2:3b", "modelo_texto_instalado": True, "modelo_de_respaldo": None}
     monkeypatch.setattr(se.app_config, "get_param", lambda k: "qwen3:8b")
-    d = se._ollama()
-    assert d["modelo_texto"] == "qwen3:8b" and d["modelo_texto_instalado"] is False  # el 1b instalado no cuenta
+    d = se._ollama(db)
+    assert d["modelo_texto"] == "qwen3:8b" and d["modelo_texto_instalado"] is False  # el que está instalado no cuenta
     monkeypatch.setattr(sm, "modelos_instalados", lambda url: None)
-    assert se._ollama()["responde"] is False and se._ollama()["modelo_texto_instalado"] is False
+    assert se._ollama(db)["responde"] is False and se._ollama(db)["modelo_texto_instalado"] is False
+
+
+def test_el_panel_exige_el_modelo_que_eligio_el_utp_y_no_el_automatico(monkeypatch):
+    from servicios import servicio_ajustes
+
+    db = _base_con_tablas()
+    monkeypatch.setattr(se.app_config, "get_param", lambda k: "auto")
+    monkeypatch.setattr(sm, "modelos_instalados", lambda url: {"gemma4:e2b", "llama3.2:1b"})
+    servicio_ajustes.cambiar_modelo_de_resumen(db, "llama3.2:1b", True)
+    assert se._ollama(db) == {"responde": True, "modelo_texto": "llama3.2:1b", "modelo_texto_instalado": True, "modelo_de_respaldo": None}
+    monkeypatch.setattr(sm, "modelos_instalados", lambda url: {"gemma4:e2b"})  # el elegido se desinstaló: ahora falta de verdad
+    assert se._ollama(db)["modelo_texto_instalado"] is False
 
 
 def test_misma_unidad(tmp_path, monkeypatch):
@@ -199,7 +213,7 @@ def test_un_servidor_sano_y_ocioso_se_ve_asi(cliente, esc, equipo):
     d = ver(cliente, esc["utp"]).json()
     assert d["alertas"] == []
     assert d["procesamiento"] == {"en_vivo": [], "procesando": [], "con_reintento": [], "con_error": [], "terminadas_24h": 0}
-    assert d["ollama"] == {"responde": True, "modelo_texto": "gemma4:e2b o llama3.2:3b", "modelo_texto_instalado": True}
+    assert d["ollama"] == {"responde": True, "modelo_texto": "gemma4:e2b o llama3.2:3b", "modelo_texto_instalado": True, "modelo_de_respaldo": None}
     assert d["memoria"] == {"total_gb": 15.6, "libre_gb": 9.3}
     assert d["vigilancia"]["activa"] is None  # el servidor de pruebas no enciende la vigilancia
     assert d["generado_en"].endswith(("Z", "+00:00"))

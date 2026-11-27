@@ -12,9 +12,10 @@ from infraestructura.basedatos import obtener_db
 from infraestructura.modelos_orm import Colegio, RolNombre, Usuario
 from interfaz.api.dependencias_auth import requiere_rol
 from interfaz.api.esquemas import (
-    AjusteClasesEditar, AjusteClasesOut, AjusteFotosEditar, AjusteFotosOut, AjusteModeloTextoOut, AjusteRespaldosEditar, AjusteRespaldosOut,
+    AjusteClasesEditar, AjusteClasesOut, AjusteFotosEditar, AjusteFotosOut, AjusteModeloDescargar, AjusteModeloEditar, AjusteModeloTextoOut,
+    AjusteRespaldosEditar, AjusteRespaldosOut,
 )
-from nucleo import configuracion as app_config, modelos_ia
+from nucleo import modelos_ia
 from nucleo.memoria import memoria_total_gb
 from servicios import servicio_ajustes as sa, servicio_modelos, servicio_pizarra, servicio_respaldo
 
@@ -65,33 +66,53 @@ def descargar_modelo(db: Session = Depends(obtener_db), utp: Usuario = Depends(u
     return _estado_fotos(db, utp, esta=bool(esta) if esta is not None else None)
 
 
-def _estado_texto(modelo: str, esta: bool | None) -> dict:
-    """`esta`: lo que dijo Ollama (True/False; None si no responde)."""
+def _estado_texto(db: Session, nombres: set[str] | None) -> dict:
+    """`nombres`: los modelos que tiene Ollama (None si no responde). Una sola pregunta a Ollama alcanza para todas las filas."""
+    modelo = modelos_ia.modelo_a_instalar(sa.modelo_de_resumen(db))
+    esta = lambda m: None if nombres is None else servicio_modelos.esta_en(m, nombres)  # noqa: E731
     total = memoria_total_gb()
     return {
         "modelo": modelo,
-        "ollama_responde": esta is not None,
-        "modelo_instalado": bool(esta),
+        "ollama_responde": nombres is not None,
+        "modelo_instalado": bool(esta(modelo)),
         "memoria_total_gb": round(total, 1) if total else None,
         "memoria_minima_gb": modelos_ia.MEMORIA_MINIMA_GB,
         "tamano_gb": modelos_ia.TAMANO_GB.get(modelo),
         "descarga": servicio_modelos.estado_de_descarga(modelo),
+        "eleccion": sa.modelo_elegido(db) or "auto",
+        "opciones": [
+            {"modelo": m, "etiqueta": etiqueta, "nota": nota, "tamano_gb": modelos_ia.TAMANO_GB.get(m), "instalado": esta(m), "descarga": servicio_modelos.estado_de_descarga(m)}
+            for m, etiqueta, nota in modelos_ia.ELEGIBLES
+        ],
     }
 
 
 @router.get("/modelo-texto", response_model=AjusteModeloTextoOut)
-def ver_modelo_texto(_: Usuario = Depends(utp_actual)):
-    url, modelo = servicio_pizarra.url_ollama(), modelos_ia.modelo_a_instalar(app_config.get_param("ollama_model"))
-    return _estado_texto(modelo, servicio_modelos.instalado(modelo, url))
+def ver_modelo_texto(db: Session = Depends(obtener_db), _: Usuario = Depends(utp_actual)):
+    return _estado_texto(db, servicio_modelos.modelos_instalados(servicio_pizarra.url_ollama()))
+
+
+@router.put("/modelo-texto", response_model=AjusteModeloTextoOut)
+def elegir_modelo_texto(datos: AjusteModeloEditar, db: Session = Depends(obtener_db), _: Usuario = Depends(utp_actual)):
+    """Qué modelo escribe los resúmenes: uno de los que la aplicación ofrece, o `auto` para que decida sola. Solo se puede elegir uno que ya esté
+    descargado. Vale desde la próxima clase que se procese (la que está en marcha termina con el que empezó)."""
+    nombres = servicio_modelos.modelos_instalados(servicio_pizarra.url_ollama())
+    instalado = None if nombres is None else servicio_modelos.esta_en(datos.modelo, nombres)
+    sa.cambiar_modelo_de_resumen(db, datos.modelo, instalado)
+    return _estado_texto(db, nombres)
 
 
 @router.post("/modelo-texto/descargar", response_model=AjusteModeloTextoOut)
-def descargar_modelo_texto(_: Usuario = Depends(utp_actual)):
-    """Baja el modelo que escribe los resúmenes (necesita internet una vez). Se consulta el avance con el GET."""
-    url, modelo = servicio_pizarra.url_ollama(), modelos_ia.modelo_a_instalar(app_config.get_param("ollama_model"))
-    esta = servicio_modelos.instalado(modelo, url)  # una sola pregunta a Ollama por pedido
-    servicio_modelos.iniciar_descarga(modelo, url, ya_esta=bool(esta))
-    return _estado_texto(modelo, bool(esta) if esta is not None else None)
+def descargar_modelo_texto(datos: AjusteModeloDescargar | None = None, db: Session = Depends(obtener_db), _: Usuario = Depends(utp_actual)):
+    """Baja un modelo (necesita internet una vez): el que se pide, que debe ser de los que la aplicación ofrece, o el que se está usando. Se consulta
+    el avance con el GET."""
+    url = servicio_pizarra.url_ollama()
+    modelo = datos.modelo if datos and datos.modelo else modelos_ia.modelo_a_instalar(sa.modelo_de_resumen(db))
+    if modelo not in {m for m, _e, _n in modelos_ia.ELEGIBLES} | {modelos_ia.modelo_a_instalar(sa.modelo_de_resumen(db))}:
+        raise sa.ErrorAjuste("Ese modelo no está entre los que la aplicación ofrece.")
+    nombres = servicio_modelos.modelos_instalados(url)  # una sola pregunta a Ollama por pedido
+    servicio_modelos.iniciar_descarga(modelo, url, ya_esta=bool(nombres is not None and servicio_modelos.esta_en(modelo, nombres)))
+    return _estado_texto(db, nombres)
 
 
 # --- Cómo se tratan las clases (por colegio) y el respaldo diario (de todo el servidor) ---

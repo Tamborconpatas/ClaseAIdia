@@ -24,6 +24,7 @@ from pathlib import Path
 from sqlalchemy.orm import Session, sessionmaker
 
 from infraestructura.seguridad import ahora_utc as reloj_de_revision
+from nucleo import modelos_ia
 from nucleo.disco import espacio_en_disco
 from nucleo.memoria import esperar_memoria
 from servicios import servicio_ajustes, servicio_conexiones
@@ -463,7 +464,10 @@ def _trabajar_aparte(modo: str, grabacion_id: int, fabrica: sessionmaker) -> Non
         if modo == "clase" and libre < DISCO_MINIMO_PARA_PROCESAR_GB:  # transcribir escribe copias temporales del audio
             _fallo(grabacion_id, fabrica, f"El disco del servidor casi no tiene espacio libre ({libre:.1f} GB): no se puede procesar la clase por ahora.")
             return
-        proceso = subprocess.Popen([*COMANDO_TRABAJADOR, modo, str(grabacion_id)], cwd=RAIZ_DEL_PROYECTO)
+        with fabrica() as db:  # el trabajador es un proceso aparte: el modelo que eligió el UTP en «Ajustes» se lo pasa el servidor
+            elegido = servicio_ajustes.modelo_elegido(db)
+        entorno = {**os.environ, modelos_ia.VARIABLE_DEL_TRABAJADOR: elegido or ""}
+        proceso = subprocess.Popen([*COMANDO_TRABAJADOR, modo, str(grabacion_id)], cwd=RAIZ_DEL_PROYECTO, env=entorno)
         _anotar_proceso(grabacion_id, proceso.pid)
         try:
             codigo = proceso.wait(timeout=TIEMPO_MAXIMO_S)
