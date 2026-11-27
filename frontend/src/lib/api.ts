@@ -28,6 +28,8 @@ export interface Curso {
   id: number
   nombre: string
   colegio_id: number
+  /** Máximo de alumnos, lo fija el UTP. */
+  cupo: number
 }
 export interface Bloque {
   id: number
@@ -40,12 +42,16 @@ export interface Bloque {
   dia_semana: number // 0 = lunes
   hora_inicio: string // "08:00:00"
   hora_fin: string
+  /** Primer bloque de su clase: una clase doble (dos bloques seguidos) lleva su material en el primero. */
+  cabeza_id: number
 }
 
 export interface AlumnoDeCurso {
   id: number
   nombre: string
   rut: string
+  /** El nombre sonó a broma y el alumno confirmó que es suyo: el profesor lo revisa. */
+  revisar_nombre: boolean
 }
 export interface ResetPin {
   codigo: string
@@ -172,6 +178,13 @@ export interface EstadoServidor {
   memoria: { total_gb: number | null; libre_gb: number | null }
   /** `activa` es null si la vigilancia no está encendida en ese servidor. */
   vigilancia: { ultima_pasada: string | null; activa: boolean | null }
+  /** Sin IP ni teléfonos: un resumen del equipo («Teléfono · Android · Chrome») y los últimos 4 de su código aleatorio. */
+  conexiones: {
+    conectados: { nombre: string; rol: 'UTP' | 'PROFESOR' | 'ALUMNO' | ''; dispositivo: string | null; codigo: string | null; hace_segundos: number }[]
+    dispositivos_conectados: number
+    nombres_por_revisar: { alumno: string; cursos: string[]; dispositivo: string | null; codigo: string | null; otras_cuentas: string[] }[]
+    dias_de_rastro: number
+  }
 }
 export interface BloqueDeHoy {
   bloque_id: number
@@ -192,6 +205,8 @@ export class ApiError extends Error {
     this.status = status
   }
 }
+
+import { codigoDeDispositivo } from '@/lib/dispositivo'
 
 // La sesión se guarda en localStorage (el token vence solo, a las 12 h). Es razonable mientras la app
 // no use dangerouslySetInnerHTML: un token en localStorage solo se roba con XSS.
@@ -232,6 +247,7 @@ export async function api<T>(
   if (cuerpo !== undefined) cabeceras['Content-Type'] = 'application/json'
   const token = (sesion ?? leerSesion())?.access_token
   if (token) cabeceras.Authorization = `Bearer ${token}`
+  cabeceras['X-Dispositivo'] = codigoDeDispositivo()
 
   let r: Response
   try {

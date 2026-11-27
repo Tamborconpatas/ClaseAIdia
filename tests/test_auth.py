@@ -71,7 +71,7 @@ def test_unirse_curso_crea_alumno_nuevo(cliente, colegio_id, headers_utp):
     assert body["roles"] == ["ALUMNO"]
 
 
-def test_unirse_a_segundo_curso_con_pin_correcto(cliente, colegio_id, headers_utp):
+def test_unirse_a_segundo_curso_se_rechaza_aunque_el_pin_sea_correcto(cliente, colegio_id, headers_utp):
     curso1 = cliente.post("/cursos", json={"nombre": "8A", "colegio_id": colegio_id}, headers=headers_utp).json()
     curso2 = cliente.post("/cursos", json={"nombre": "8B", "colegio_id": colegio_id}, headers=headers_utp).json()
 
@@ -80,7 +80,8 @@ def test_unirse_a_segundo_curso_con_pin_correcto(cliente, colegio_id, headers_ut
     assert r1.status_code == 200
 
     r2 = cliente.post("/cursos/unirse", json={**datos, "codigo_invitacion": curso2["codigo_invitacion"]})
-    assert r2.status_code == 200
+    assert r2.status_code == 409  # un RUT, un solo curso
+    assert cliente.post("/cursos/unirse", json={**datos, "codigo_invitacion": curso1["codigo_invitacion"]}).status_code == 200
 
 
 def test_unirse_con_pin_incorrecto_sobre_cuenta_existente_falla(cliente, colegio_id, headers_utp):
@@ -131,7 +132,13 @@ def test_listar_cursos_no_expone_codigo(cliente, colegio_id, headers_utp):
     assert cursos and "codigo_invitacion" not in cursos[0]
 
 
-def test_unirse_con_rut_de_staff_no_toma_la_cuenta(cliente, colegio_id, rut_utp, headers_utp):
+def test_unirse_con_rut_de_staff_no_toma_la_cuenta(cliente, colegio_id, headers_utp):
+    rut_utp = "22333444-K"  # con RUT de más de 10 millones, para que llegue a esa comprobación
+    cliente.post(
+        "/usuarios",
+        json={"rut": rut_utp, "nombre": "Otro UTP", "colegio_id": colegio_id, "roles": ["UTP"], "password": "clave-segura-123"},
+        headers=headers_utp,
+    )
     curso = _crear_curso(cliente, colegio_id, headers_utp)
     r = cliente.post(
         "/cursos/unirse",

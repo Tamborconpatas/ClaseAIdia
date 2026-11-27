@@ -8,7 +8,7 @@ import { AlertTriangle, ArrowLeft, Camera, CheckCircle2, Clock, Info, Loader2, M
 import { CasillaPrioritaria } from '@/components/CasillaPrioritaria'
 import { Cargando, ErrorForm, Vacio } from '@/components/comunes'
 import { Button } from '@/components/ui/button'
-import { api, subirFoto, type AccionGrabacion, type BloqueDeHoy, type Grabacion } from '@/lib/api'
+import { api, ApiError, subirFoto, type AccionGrabacion, type BloqueDeHoy, type Grabacion } from '@/lib/api'
 import { activarEquipo, equipoActivo, idDeEsteEquipo, puedeGrabarAqui, soltarEquipo, useEquipo } from '@/lib/grabador'
 import { mensajeDeProcesamiento } from '@/lib/cola'
 import { colorAsignatura, hhmm } from '@/lib/horario'
@@ -148,7 +148,8 @@ function Sesion({ id, onSalir, onAbrirClase }: { id: number; onSalir: () => void
       await activarEquipo(g, forzar)
       actualizar()
     } catch (e) {
-      setError((e as Error).message)
+      // Un fallo del micrófono ya lo explica, en español, la tarjeta «Equipo que graba»; aquí solo los del servidor (no el texto crudo del navegador).
+      if (e instanceof ApiError) setError(e.message)
     } finally {
       setTrabajando(null)
       setConfirmando(null)

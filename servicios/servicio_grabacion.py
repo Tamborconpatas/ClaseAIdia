@@ -26,6 +26,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from infraestructura.seguridad import ahora_utc as reloj_de_revision
 from nucleo.disco import espacio_en_disco
 from nucleo.memoria import esperar_memoria
+from servicios import servicio_conexiones
 from servicios.trabajador import CODIGO_SIN_MEMORIA
 
 from infraestructura.modelos_orm import (
@@ -119,7 +120,7 @@ def espacio_libre_gb() -> float:
 
 
 def _corte_de(bloque: Bloque, hoy: datetime.date) -> datetime.datetime:
-    return datetime.datetime.combine(hoy, bloque.hora_fin) + datetime.timedelta(minutes=GRACIA_CORTE_MIN)
+    return datetime.datetime.combine(hoy, bloque.hora_fin_de_cadena) + datetime.timedelta(minutes=GRACIA_CORTE_MIN)
 
 
 def estado_de_hoy(bloque: Bloque, ahora: datetime.datetime) -> tuple[bool, str | None]:
@@ -142,6 +143,7 @@ def crear_o_reanudar(db: Session, profesor: Usuario, bloque_id: int) -> Grabacio
     # 404 también si el bloque es de otro profesor: no revela que existe.
     if bloque is None or bloque.profesor_id != profesor.id:
         raise ErrorGrabacion("Bloque no encontrado", 404)
+    bloque = bloque.cadena()[0]  # una clase doble se graba una vez, en su primer bloque
     ahora = ahora_local()
     clase = db.query(Clase).filter_by(bloque_id=bloque.id, fecha=ahora.date()).first()
     if clase is not None and clase.contenido is not None:
@@ -756,6 +758,7 @@ def vigilar(db: Session, fabrica: sessionmaker, utc: datetime.datetime | None = 
     for g in db.query(Grabacion).filter(Grabacion.estado == E.ERROR, Grabacion.reintento_en.is_not(None), Grabacion.reintento_en <= utc).all():
         _reintentar(db, g)
     _recoger_perdidos(db, utc)
+    servicio_conexiones.limpiar_si_toca(db, utc)  # los equipos sin uso hace más de 30 días se olvidan
     despachar(fabrica)  # por si algo quedó esperando con un lugar libre
     ultima_vigilancia = ahora_utc()  # al terminar la pasada (si falla a medias, el pulso no se renueva y el panel lo avisa)
 

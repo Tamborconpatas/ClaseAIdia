@@ -189,7 +189,8 @@ def test_cada_ruta_rechaza_a_los_roles_que_no_le_tocan(m):
 
 def test_un_token_con_roles_inventados_no_da_poder_los_roles_salen_de_la_base(m):
     """Firmado con la clave de verdad pero con `roles` y `colegio_id` falsos: el servidor mira la base, no el token."""
-    payload = {"sub": str(m["luis_id"]), "rut": "11222333-9", "roles": ["UTP", "PROFESOR"], "colegio_id": m["otro_colegio_id"], "exp": 4102444800, "v": 0}
+    payload = {"sub": str(m["luis_id"]), "rut": "11222333-9", "roles": ["UTP", "PROFESOR"], "colegio_id": m["otro_colegio_id"], "exp": 4102444800,
+               "v": jwt.decode(m["luis"]["Authorization"].split()[1], options={"verify_signature": False})["v"]}
     falso = jwt.encode(payload, seguridad.JWT_SECRET_KEY, algorithm="HS256")
     assert m["c"].get("/usuarios", headers=_con(falso)).status_code == 403
     assert m["c"].post("/cursos", json={"nombre": "X", "colegio_id": m["colegio_id"]}, headers=_con(falso)).status_code == 403

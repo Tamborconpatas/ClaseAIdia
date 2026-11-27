@@ -51,7 +51,7 @@ services:
     volumes:
       - ollama_data_1:/root/.ollama
     environment:
-      - OLLAMA_MODEL=${OLLAMA_MODEL:-llama3.2:1b}
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-gemma4:e2b}
     entrypoint: ["/bin/sh", "-c"]
     command: ["ollama serve & sleep 3 && ollama pull \"$$OLLAMA_MODEL\"; wait"]
     restart: unless-stopped
@@ -61,7 +61,7 @@ services:
     volumes:
       - ollama_data_2:/root/.ollama
     environment:
-      - OLLAMA_MODEL=${OLLAMA_MODEL:-llama3.2:1b}
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-gemma4:e2b}
     entrypoint: ["/bin/sh", "-c"]
     command: ["ollama serve & sleep 3 && ollama pull \"$$OLLAMA_MODEL\"; wait"]
     restart: unless-stopped

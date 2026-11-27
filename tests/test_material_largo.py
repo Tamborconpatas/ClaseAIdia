@@ -283,6 +283,9 @@ def test_ollama_suelta_el_modelo_al_minuto_y_no_a_los_cinco(monkeypatch):
         ("llama3.2:3b", 3.0, True, "llama3.2:1b"),  # no cabe y lo eligió la aplicación: el liviano
         ("llama3.2:3b", 3.0, False, "llama3.2:3b"),  # lo eligió la persona: se respeta
         ("llama3.2:1b", 1.0, True, "llama3.2:1b"),  # ya es el liviano
+        ("gemma4:e2b", 10.0, True, "gemma4:e2b"),  # el de CPU por defecto cabe
+        ("gemma4:e2b", 4.0, True, "llama3.2:1b"),  # necesita ~5 GB: sin memoria se baja al mínimo
+        ("gemma4:e2b", 4.0, False, "gemma4:e2b"),
         ("llama3.2:3b", None, True, "llama3.2:3b"),  # no se puede medir: no se cambia nada
         ("otro:70b", 3.0, True, "llama3.2:1b"),  # un modelo que no se conoce se supone grande
         ("otro:70b", 7.0, True, "otro:70b"),

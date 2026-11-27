@@ -21,6 +21,8 @@ const num = (n: number, decimales = 1) => n.toLocaleString('es-CL', { maximumFra
 const tamaño = (mb: number) => (mb >= 1000 ? `${num(mb / 1000)} GB` : `${num(mb, mb < 10 ? 1 : 0)} MB`)
 const hora = (iso: string) => new Date(iso).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })
 const hace = (dias: number) => (dias === 0 ? 'hoy' : dias === 1 ? 'ayer' : `hace ${dias} días`)
+const ROL: Record<string, string> = { UTP: 'UTP', PROFESOR: 'Profesor', ALUMNO: 'Alumno' }
+const equipoDe = (x: { dispositivo: string | null; codigo: string | null }) => (x.dispositivo ? `${x.dispositivo}${x.codigo ? ` (equipo ${x.codigo})` : ''}` : 'equipo desconocido')
 const ESTADO_EN_VIVO: Record<string, string> = { esperando: 'esperando que empiece', grabando: 'grabando', pausada: 'en pausa', terminando: 'terminando de recibir el audio' }
 
 /**
@@ -32,7 +34,7 @@ export function Estado() {
   const e = estado.datos
   if (!e) return estado.sinConexion ? <ErrorForm mensaje="No se pudo conectar con el servidor." /> : <Cargando />
 
-  const { procesamiento: p, ollama: o, disco: d, respaldos: r, memoria: m, vigilancia: v } = e
+  const { procesamiento: p, ollama: o, disco: d, respaldos: r, memoria: m, vigilancia: v, conexiones: c } = e
   const urgentes = e.alertas.filter((a) => a.nivel === 'critico').length
   const resumen =
     e.alertas.length === 0
@@ -93,6 +95,50 @@ export function Estado() {
         </Grupo>
         <p className="text-sm text-muted-foreground">Terminadas en las últimas 24 horas: {p.terminadas_24h}.</p>
       </Tarjeta>
+
+      <Tarjeta id="titulo-conectados" titulo="Conectados ahora">
+        {c.conectados.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Nadie con la aplicación abierta en los últimos minutos.</p>
+        ) : (
+          <>
+            <p className="text-sm">
+              {c.conectados.length} {c.conectados.length === 1 ? 'persona' : 'personas'} en {c.dispositivos_conectados} {c.dispositivos_conectados === 1 ? 'equipo' : 'equipos'}.
+            </p>
+            <ul aria-label="Personas conectadas" className="divide-y rounded-xl bg-muted/40 text-sm">
+              {c.conectados.map((u, i) => (
+                <li key={`${u.nombre}-${i}`} className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 p-3">
+                  <span className="font-medium">{u.nombre}</span>
+                  <span className="text-xs text-muted-foreground">{ROL[u.rol] ?? ''}</span>
+                  <span className="text-xs text-muted-foreground">{equipoDe(u)}</span>
+                  <span className="ml-auto text-xs tabular-nums text-muted-foreground">{u.hace_segundos < 90 ? 'ahora' : `hace ${Math.round(u.hace_segundos / 60)} min`}</span>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+        <p className="text-xs text-muted-foreground">
+          Se guarda solo el tipo de equipo y un código aleatorio del navegador: no la dirección IP ni el número de teléfono. Se borra a los {c.dias_de_rastro} días.
+        </p>
+      </Tarjeta>
+
+      {c.nombres_por_revisar.length > 0 && (
+        <Tarjeta id="titulo-nombres" titulo="Nombres por revisar">
+          <ul aria-label="Cuentas con un nombre por revisar" className="divide-y rounded-xl bg-muted/40 text-sm">
+            {c.nombres_por_revisar.map((n, i) => (
+              <li key={`${n.alumno}-${i}`} className="space-y-0.5 p-3">
+                <p>
+                  <span className="font-medium">{n.alumno}</span> <span className="text-xs text-muted-foreground">{n.cursos.join(', ')}</span>
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Se registró desde: {equipoDe(n)}
+                  {n.otras_cuentas.length > 0 && ` · el mismo equipo lo usaron: ${n.otras_cuentas.join(', ')}`}
+                </p>
+              </li>
+            ))}
+          </ul>
+          <p className="text-xs text-muted-foreground">Cuando el profesor corrige o da por bueno el nombre, se olvida desde qué equipo se creó.</p>
+        </Tarjeta>
+      )}
 
       <Tarjeta id="titulo-equipo" titulo="Equipo del colegio">
         <ul className="space-y-3">

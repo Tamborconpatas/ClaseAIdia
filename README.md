@@ -15,7 +15,7 @@ Una aplicación de Inteligencia Artificial alojada localmente, diseñada para tr
 
 **Al instalar y usar ClaseAIdia, el colegio acepta estas condiciones.** Como el sistema corre en el servidor del propio colegio, es el colegio quien administra los datos y responde por ellos ante sus alumnos y apoderados.
 
-- **Qué se guarda:** nombre, RUT y curso de cada persona; el PIN de los alumnos y la contraseña del personal solo como hash irreversible (nadie puede leerlos); por cada clase, la transcripción en texto y el material de estudio generado; el horario.
+- **Qué se guarda:** nombre, RUT y curso de cada persona; el PIN de los alumnos y la contraseña del personal solo como hash irreversible (nadie puede leerlos); por cada clase, la transcripción en texto y el material de estudio generado; el horario. De cada equipo desde el que se usa la aplicación: un resumen del tipo («Teléfono · Android · Chrome»), un código aleatorio que el propio navegador se pone y la hora de la última conexión, para mostrarle al UTP quién está conectado y desde qué equipo se creó una cuenta con un nombre indebido; se borra a los 30 días sin uso y el origen de una cuenta se olvida al revisar su nombre. **No se guarda la dirección IP, el número de teléfono, la ubicación ni identificadores del aparato.**
 - **Qué no se guarda:** las fotos de la pizarra que saca el profesor tampoco se guardan: se leen con IA en el propio servidor y la imagen se borra al instante (solo queda el texto leído). El audio nunca se almacena de forma permanente: se borra al terminar de procesarse. Si el procesamiento falla, se conserva en el servidor solo mientras queden reintentos automáticos (a los 5, 15 y 45 minutos; unas 65 min como máximo) y se borra al tener éxito o al agotarse los intentos. No hay cookies de seguimiento, publicidad ni analíticas de terceros. Todo el procesamiento de IA ocurre en el servidor del colegio; nada se envía a servicios de IA en la nube.
 - **Quién ve qué:** cada alumno ve el material de su propio curso; cada profesor, las clases que dicta; el UTP administra cursos, horarios y personal. Un colegio no ve los datos de otro.
 - **Menores de edad:** antes de usar la plataforma con alumnos menores, el colegio debe contar con el **consentimiento informado de sus apoderados**.
@@ -106,6 +106,7 @@ Una clase de 92 minutos, de principio a fin (la clase se procesa sola después d
 | 4 núcleos rápidos | 16,9 min | 2,4 min | **19,3 min** | 17,5 min | 34,4 min |
 | 8 núcleos (4 rápidos + 4 lentos) | 22,3 min | 2,3 min | **24,6 min** | 11,6 min | 33,9 min |
 
+- **Desde el 2026-11-27 el modelo por defecto sin GPU es `gemma4:e2b`** (no `llama3.2:1b`): en una clase real de 62,6 min tarda unos 9 min con 3 hilos de CPU y usa unos 4,6 GB de memoria (`QA.md`, «Clase completa en solo CPU»). Es el único probado que cabe a tiempo en un equipo escolar lento y genera el mapa conceptual; `llama3.2:1b` queda como mínimo cuando no hay memoria libre para él (y sin mapa). La tabla de abajo es de las pruebas anteriores con Llama.
 - **Memoria**: la transcripción llega a 2,0 GB; Ollama usa unos 1,6 GB con el modelo de 1B y unos 4,8 GB con el de 3B. Se carga un modelo a la vez y se suelta, así que 8 GB bastan con el de 1B; con el de 3B conviene tener 16 GB.
 - *Lo del 8 núcleos*: el procesador de las pruebas mezcla 4 núcleos rápidos con 4 lentos, y la transcripción esperaba a los lentos; un PC con 8 núcleos iguales debería ser más rápido que el de 4. No se midió uno.
 - Una jornada con varias clases se procesa de a una, en orden: el procesamiento es de varios minutos por clase, no de horas, así que cabe de sobra entre una clase y la siguiente o durante la noche. Esto último es una estimación (no se midió una jornada completa de clases de 45 minutos).
@@ -236,7 +237,7 @@ Esto levanta:
 
 La primera vez, el servidor no tiene colegio: se crea con su primer UTP como se explica en «Backend» (por ejemplo, con `POST /api/auth/setup`, que desde Docker pasa por nginx).
 
-Por defecto se descarga `llama3.2:1b` (liviano, pensado para CPU — la app elige este mismo modelo automáticamente si `ollama_model` está en `"auto"`). Para usar otro modelo, hay que descargarlo Y decírselo a la app en Configuración:
+Por defecto se descarga `gemma4:e2b` (pensado para CPU, ~4,6 GB de memoria por instancia: con las 2 instancias de Ollama de este despliegue son unos 9 GB — la app elige este mismo modelo automáticamente si `ollama_model` está en `"auto"`; con GPU usa `llama3.2:3b`). Para usar otro modelo, hay que descargarlo Y decírselo a la app en Configuración:
 ```bash
 OLLAMA_MODEL=qwen2.5:7b docker compose -f docker/docker-compose.yml up --build
 ```

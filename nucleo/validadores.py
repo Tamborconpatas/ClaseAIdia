@@ -30,3 +30,19 @@ def validar_rut(rut: str) -> bool:
     dv_esperado = {11: "0", 10: "K"}.get(resto, str(resto))
 
     return dv_informado == dv_esperado
+
+
+# Alumnos de 7° básico a 4° medio: nacidos desde ~1999, con RUT de más de 10 millones. Más abajo, o con
+# todos los dígitos iguales o en secuencia (12.345.678-5 tiene dígito verificador válido y es el RUT falso clásico),
+# no es de un alumno real. No se puede saber si el RUT existe sin consultar al Registro Civil.
+RUT_MINIMO_ALUMNO = 10_000_000
+
+
+def rut_de_alumno_plausible(rut: str) -> bool:
+    cuerpo = normalizar_rut(rut).split("-")[0]
+    return (
+        validar_rut(rut)
+        and int(cuerpo) >= RUT_MINIMO_ALUMNO
+        and len(set(cuerpo)) > 1
+        and cuerpo not in ("12345678", "87654321")
+    )

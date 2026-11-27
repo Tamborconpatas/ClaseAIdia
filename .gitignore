@@ -38,3 +38,14 @@ respaldos/
 logs/
 fotos_temp/
 datos/
+
+# Capturas de scripts/e2e_navegador.py
+e2e_capturas/
+
+# Clase real procesada para el demo (voces y posibles nombres de personas: no se commitea)
+demo_clase_real.json
+demo_comparacion_modelos.json
+demo_medicion_cpu.json
+demo_medicion_cpu_salidas.json
+demo_transcripciones_whisper.md
+demo_resumenes_ia.md
