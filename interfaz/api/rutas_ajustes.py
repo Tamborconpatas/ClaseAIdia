@@ -11,10 +11,12 @@ from sqlalchemy.orm import Session
 from infraestructura.basedatos import obtener_db
 from infraestructura.modelos_orm import Colegio, RolNombre, Usuario
 from interfaz.api.dependencias_auth import requiere_rol
-from interfaz.api.esquemas import AjusteFotosEditar, AjusteFotosOut, AjusteModeloTextoOut
+from interfaz.api.esquemas import (
+    AjusteClasesEditar, AjusteClasesOut, AjusteFotosEditar, AjusteFotosOut, AjusteModeloTextoOut, AjusteRespaldosEditar, AjusteRespaldosOut,
+)
 from nucleo import configuracion as app_config, modelos_ia
 from nucleo.memoria import memoria_total_gb
-from servicios import servicio_modelos, servicio_pizarra
+from servicios import servicio_ajustes as sa, servicio_modelos, servicio_pizarra, servicio_respaldo
 
 router = APIRouter(prefix="/ajustes", tags=["ajustes"])
 utp_actual = requiere_rol(RolNombre.UTP)
@@ -90,3 +92,47 @@ def descargar_modelo_texto(_: Usuario = Depends(utp_actual)):
     esta = servicio_modelos.instalado(modelo, url)  # una sola pregunta a Ollama por pedido
     servicio_modelos.iniciar_descarga(modelo, url, ya_esta=bool(esta))
     return _estado_texto(modelo, bool(esta) if esta is not None else None)
+
+
+# --- Cómo se tratan las clases (por colegio) y el respaldo diario (de todo el servidor) ---
+
+
+def _clases(colegio: Colegio) -> dict:
+    return {
+        "horas_revision": sa.horas_de_revision(colegio), "minutos_corte": sa.minutos_de_corte(colegio),
+        "horas_revision_por_defecto": sa.HORAS_REVISION_POR_DEFECTO, "minutos_corte_por_defecto": sa.MINUTOS_CORTE_POR_DEFECTO,
+        "rango_horas_revision": list(sa.RANGO_HORAS_REVISION), "rango_minutos_corte": list(sa.RANGO_MINUTOS_CORTE),
+    }
+
+
+@router.get("/clases", response_model=AjusteClasesOut)
+def ver_clases(db: Session = Depends(obtener_db), utp: Usuario = Depends(utp_actual)):
+    return _clases(db.get(Colegio, utp.colegio_id))
+
+
+@router.put("/clases", response_model=AjusteClasesOut)
+def cambiar_clases(datos: AjusteClasesEditar, db: Session = Depends(obtener_db), utp: Usuario = Depends(utp_actual)):
+    """Plazo de revisión del profesor y minutos del corte automático, de este colegio. `null` = el valor predeterminado. Vale de inmediato."""
+    colegio = db.get(Colegio, utp.colegio_id)
+    sa.cambiar_ajustes_del_colegio(db, colegio, datos.horas_revision, datos.minutos_corte)
+    return _clases(colegio)
+
+
+def _respaldos(db: Session) -> dict:
+    return {
+        "carpeta": str(sa.carpeta_de_respaldos(db).resolve()), "carpeta_por_defecto": str(servicio_respaldo.carpeta_de_respaldos().resolve()),
+        "dias": sa.dias_de_respaldo(db), "dias_por_defecto": sa.DIAS_RESPALDO_POR_DEFECTO, "rango_dias": list(sa.RANGO_DIAS_RESPALDO),
+    }
+
+
+@router.get("/respaldos", response_model=AjusteRespaldosOut)
+def ver_respaldos(db: Session = Depends(obtener_db), _: Usuario = Depends(utp_actual)):
+    return _respaldos(db)
+
+
+@router.put("/respaldos", response_model=AjusteRespaldosOut)
+def cambiar_respaldos(datos: AjusteRespaldosEditar, db: Session = Depends(obtener_db), _: Usuario = Depends(utp_actual)):
+    """Carpeta y días del respaldo diario. Vale para todo el servidor (la base es una sola) desde el próximo respaldo. La carpeta se prueba
+    escribiendo en ella antes de guardar. `null` = el valor predeterminado."""
+    sa.cambiar_ajustes_de_respaldo(db, datos.carpeta, datos.dias)
+    return _respaldos(db)

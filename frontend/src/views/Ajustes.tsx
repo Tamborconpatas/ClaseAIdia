@@ -3,13 +3,14 @@
  * Este archivo forma parte del proyecto "Transcriptor de clases (ClaseAIdia)".
  * Licencia Apache v2.0 + Commons Clause v1.0. Uso comercial restringido para terceros.
  */
-import { useState } from 'react'
-import { Download, Info } from 'lucide-react'
+import { useState, type FormEvent } from 'react'
+import { Download, Info, Loader2 } from 'lucide-react'
 import { Cargando, ErrorForm, Requisito } from '@/components/comunes'
 import { Button } from '@/components/ui/button'
-import { api, type AjusteFotos, type AjusteModeloTexto, type DescargaModelo } from '@/lib/api'
+import { Input } from '@/components/ui/input'
+import { api, type AjusteClases, type AjusteFotos, type AjusteModeloTexto, type AjusteRespaldos, type DescargaModelo } from '@/lib/api'
 import { CREDITO } from '@/lib/autoria'
-import { useSondeo } from '@/lib/usar'
+import { useCarga, useSondeo } from '@/lib/usar'
 import { cn } from '@/lib/utils'
 
 /** Con menos memoria que esto las fotos casi siempre se saltan solas al procesar (medido; ver el README). */
@@ -17,13 +18,15 @@ const MEMORIA_MINIMA_GB = 12
 
 /**
  * Ajustes del colegio. El UTP decide aquí lo que en otras aplicaciones se tocaría en un archivo de configuración: la app se
- * reparte portable y nadie edita archivos ni escribe comandos. Hoy: el modelo que escribe los resúmenes (necesario) y las fotos
- * de la pizarra (opcionales).
+ * reparte portable y nadie edita archivos ni escribe comandos. Hoy: el modelo que escribe los resúmenes (necesario), cómo se tratan
+ * las clases (plazo de revisión y corte automático), el respaldo diario y las fotos de la pizarra (opcionales).
  */
 export function Ajustes() {
   return (
     <div className="mx-auto max-w-2xl space-y-4">
       <ModeloDeResumenes />
+      <ClasesDelColegio />
+      <RespaldosDelServidor />
       <FotosDePizarra />
       <p className="text-center text-xs text-muted-foreground">{CREDITO}</p>
     </div>
@@ -183,6 +186,196 @@ function ModeloDeResumenes() {
         />
       </ul>
       <ErrorForm mensaje={error} />
+    </section>
+  )
+}
+
+/** Un número entero que el UTP puede cambiar, con su rango y lo que significa. */
+function CampoNumerico({ id, etiqueta, ayuda, valor, onCambio, min, max }: {
+  id: string
+  etiqueta: string
+  ayuda: string
+  valor: string
+  onCambio: (v: string) => void
+  min: number
+  max: number
+}) {
+  const n = Number(valor)
+  const ok = valor.trim() !== '' && Number.isInteger(n) && n >= min && n <= max
+  return (
+    <div className="space-y-1">
+      <label htmlFor={id} className="text-sm font-medium">{etiqueta}</label>
+      <Input id={id} type="number" inputMode="numeric" min={min} max={max} value={valor} aria-invalid={!ok} aria-describedby={`${id}-ayuda`} onChange={(e) => onCambio(e.target.value)} className="h-11 w-28 text-base desk:h-9 desk:text-sm" />
+      <p id={`${id}-ayuda`} className={cn('text-xs leading-relaxed', ok ? 'text-muted-foreground' : 'text-destructive')}>
+        {ok ? ayuda : `Escribe un número entero de ${min} a ${max}.`}
+      </p>
+    </div>
+  )
+}
+
+/** Plazo de revisión del profesor y corte automático de la grabación: reglas de este colegio. */
+function ClasesDelColegio() {
+  const carga = useCarga(() => api<AjusteClases>('/ajustes/clases'), [])
+  if (carga.error) return <ErrorForm mensaje={carga.error} />
+  if (!carga.datos) return <Cargando />
+  return <FormularioClases inicial={carga.datos} />
+}
+
+function FormularioClases({ inicial }: { inicial: AjusteClases }) {
+  const [guardado, setGuardado] = useState(inicial)
+  const [horas, setHoras] = useState(String(inicial.horas_revision))
+  const [minutos, setMinutos] = useState(String(inicial.minutos_corte))
+  const [enviando, setEnviando] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [aviso, setAviso] = useState('')
+  const [h0, h1] = guardado.rango_horas_revision
+  const [m0, m1] = guardado.rango_minutos_corte
+  const valido = Number.isInteger(Number(horas)) && horas.trim() !== '' && Number(horas) >= h0 && Number(horas) <= h1 && Number.isInteger(Number(minutos)) && minutos.trim() !== '' && Number(minutos) >= m0 && Number(minutos) <= m1
+  const cambio = Number(horas) !== guardado.horas_revision || Number(minutos) !== guardado.minutos_corte
+  const propio = guardado.horas_revision !== guardado.horas_revision_por_defecto || guardado.minutos_corte !== guardado.minutos_corte_por_defecto
+
+  const enviar = async (h: number | null, m: number | null) => {
+    setEnviando(true)
+    setError(null)
+    setAviso('')
+    try {
+      const nuevo = await api<AjusteClases>('/ajustes/clases', { metodo: 'PUT', cuerpo: { horas_revision: h, minutos_corte: m } })
+      setGuardado(nuevo)
+      setHoras(String(nuevo.horas_revision))
+      setMinutos(String(nuevo.minutos_corte))
+      setAviso('Guardado. Vale desde ahora.')
+    } catch (e) {
+      setError((e as Error).message)
+    }
+    setEnviando(false)
+  }
+  const guardar = (e: FormEvent) => {
+    e.preventDefault()
+    void enviar(Number(horas), Number(minutos))
+  }
+
+  return (
+    <section aria-labelledby="titulo-clases" className="space-y-4 rounded-2xl border bg-card p-4 desk:p-5">
+      <div>
+        <h2 id="titulo-clases" className="text-lg font-semibold">Revisión y corte de las clases</h2>
+        <p className="mt-1 text-sm leading-relaxed text-muted-foreground">Dos reglas de este colegio sobre cómo se tratan las clases.</p>
+      </div>
+      <form onSubmit={guardar} className="space-y-4">
+        <CampoNumerico
+          id="horas-revision"
+          etiqueta="Horas para que el profesor revise el material"
+          ayuda={`Pasado este plazo sin revisar, el material se publica igual como «provisorio», con una advertencia para los alumnos. Lo predeterminado es ${guardado.horas_revision_por_defecto} horas.`}
+          valor={horas}
+          onCambio={setHoras}
+          min={h0}
+          max={h1}
+        />
+        <CampoNumerico
+          id="minutos-corte"
+          etiqueta="Minutos de gracia del corte automático"
+          ayuda={`Si el profesor olvida terminar la grabación, se corta sola pasados estos minutos del término del bloque. Lo predeterminado es ${guardado.minutos_corte_por_defecto} minutos.`}
+          valor={minutos}
+          onCambio={setMinutos}
+          min={m0}
+          max={m1}
+        />
+        <div className="flex flex-wrap items-center gap-2">
+          <Button type="submit" className="h-11 desk:h-9" disabled={enviando || !valido || !cambio}>
+            {enviando && <Loader2 className="animate-spin" />} Guardar
+          </Button>
+          {propio && (
+            <Button type="button" variant="ghost" className="h-11 desk:h-9" disabled={enviando} onClick={() => void enviar(null, null)}>
+              Volver a lo predeterminado
+            </Button>
+          )}
+        </div>
+        <p role="status" aria-live="polite" className="text-sm text-muted-foreground">{aviso}</p>
+        <ErrorForm mensaje={error} />
+      </form>
+    </section>
+  )
+}
+
+/** Dónde se guarda el respaldo diario de la base y cuántos días se conservan. Vale para todo el servidor. */
+function RespaldosDelServidor() {
+  const carga = useCarga(() => api<AjusteRespaldos>('/ajustes/respaldos'), [])
+  if (carga.error) return <ErrorForm mensaje={carga.error} />
+  if (!carga.datos) return <Cargando />
+  return <FormularioRespaldos inicial={carga.datos} />
+}
+
+function FormularioRespaldos({ inicial }: { inicial: AjusteRespaldos }) {
+  const [guardado, setGuardado] = useState(inicial)
+  const [carpeta, setCarpeta] = useState(inicial.carpeta)
+  const [dias, setDias] = useState(String(inicial.dias))
+  const [enviando, setEnviando] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [aviso, setAviso] = useState('')
+  const [d0, d1] = guardado.rango_dias
+  const diasValidos = dias.trim() !== '' && Number.isInteger(Number(dias)) && Number(dias) >= d0 && Number(dias) <= d1
+  const valido = carpeta.trim() !== '' && diasValidos
+  const cambio = carpeta.trim() !== guardado.carpeta || Number(dias) !== guardado.dias
+  const propio = guardado.carpeta !== guardado.carpeta_por_defecto || guardado.dias !== guardado.dias_por_defecto
+
+  const enviar = async (c: string | null, d: number | null) => {
+    setEnviando(true)
+    setError(null)
+    setAviso('')
+    try {
+      const nuevo = await api<AjusteRespaldos>('/ajustes/respaldos', { metodo: 'PUT', cuerpo: { carpeta: c, dias: d } })
+      setGuardado(nuevo)
+      setCarpeta(nuevo.carpeta)
+      setDias(String(nuevo.dias))
+      setAviso('Guardado. Vale desde el próximo respaldo, que se hace una vez al día.')
+    } catch (e) {
+      setError((e as Error).message)
+    }
+    setEnviando(false)
+  }
+  const guardar = (e: FormEvent) => {
+    e.preventDefault()
+    void enviar(carpeta.trim() === guardado.carpeta_por_defecto ? null : carpeta.trim(), Number(dias) === guardado.dias_por_defecto ? null : Number(dias))
+  }
+
+  return (
+    <section aria-labelledby="titulo-respaldos" className="space-y-4 rounded-2xl border bg-card p-4 desk:p-5">
+      <div>
+        <h2 id="titulo-respaldos" className="text-lg font-semibold">Respaldo diario</h2>
+        <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+          Una vez al día se copia la base de datos (horario, usuarios y texto de las clases; nunca audio). Esto vale para todo el servidor.
+        </p>
+      </div>
+      <form onSubmit={guardar} className="space-y-4">
+        <div className="space-y-1">
+          <label htmlFor="carpeta-respaldos" className="text-sm font-medium">Carpeta de los respaldos</label>
+          <Input id="carpeta-respaldos" value={carpeta} maxLength={300} aria-describedby="carpeta-respaldos-ayuda" onChange={(e) => setCarpeta(e.target.value)} className="h-11 text-base desk:h-9 desk:text-sm" />
+          <p id="carpeta-respaldos-ayuda" className="text-xs leading-relaxed text-muted-foreground">
+            Escribe la ruta completa. Conviene que sea otro disco o una unidad externa: una copia en el mismo disco no protege si el disco falla. Si la carpeta no existe se crea, y antes de
+            guardar se comprueba que se pueda escribir en ella. Los respaldos ya hechos quedan donde estaban.
+          </p>
+        </div>
+        <CampoNumerico
+          id="dias-respaldo"
+          etiqueta="Días de respaldos que se conservan"
+          ayuda={`Las copias más antiguas se borran solas. Lo predeterminado es ${guardado.dias_por_defecto} días.`}
+          valor={dias}
+          onCambio={setDias}
+          min={d0}
+          max={d1}
+        />
+        <div className="flex flex-wrap items-center gap-2">
+          <Button type="submit" className="h-11 desk:h-9" disabled={enviando || !valido || !cambio}>
+            {enviando && <Loader2 className="animate-spin" />} Guardar
+          </Button>
+          {propio && (
+            <Button type="button" variant="ghost" className="h-11 desk:h-9" disabled={enviando} onClick={() => void enviar(null, null)}>
+              Volver a lo predeterminado
+            </Button>
+          )}
+        </div>
+        <p role="status" aria-live="polite" className="text-sm text-muted-foreground">{aviso}</p>
+        <ErrorForm mensaje={error} />
+      </form>
     </section>
   )
 }

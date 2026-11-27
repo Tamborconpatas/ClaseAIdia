@@ -6,6 +6,8 @@
 
 """Ajustes del colegio que decide el UTP desde la aplicación (no un archivo de configuración): las fotos de la pizarra y el modelo
 que escribe los resúmenes."""
+import datetime
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -13,6 +15,8 @@ from pathlib import Path
 import pytest
 
 from nucleo import modelos_ia
+from servicios import servicio_ajustes as sa
+from servicios import servicio_grabacion as sg
 from servicios import servicio_modelos as sm
 from servicios import servicio_pizarra as sp
 from test_clases import esc  # noqa: F401
@@ -170,3 +174,142 @@ def test_el_servidor_web_no_carga_pytorch_para_ofrecer_la_descarga():
     codigo = "import sys, interfaz.api.rutas_ajustes, servicios.servicio_estado; assert 'torch' not in sys.modules, 'se cargó torch'"
     r = subprocess.run([sys.executable, "-c", codigo], cwd=Path(__file__).resolve().parent.parent, capture_output=True, text=True)
     assert r.returncode == 0, r.stderr[-400:]
+
+
+# --- Plazo de revisión y corte automático (por colegio) ---
+
+CLASES = "/ajustes/clases"
+
+
+def poner_clases(cliente, headers, horas, minutos):
+    return cliente.put(CLASES, json={"horas_revision": horas, "minutos_corte": minutos}, headers=headers)
+
+
+def test_sin_tocar_nada_valen_los_predeterminados_de_siempre(cliente, esc):
+    d = cliente.get(CLASES, headers=esc["utp"]).json()
+    assert (d["horas_revision"], d["minutos_corte"]) == (sa.HORAS_REVISION_POR_DEFECTO, sa.MINUTOS_CORTE_POR_DEFECTO)
+    assert (d["horas_revision_por_defecto"], d["minutos_corte_por_defecto"]) == (sa.HORAS_REVISION_POR_DEFECTO, sa.MINUTOS_CORTE_POR_DEFECTO)
+    assert d["rango_horas_revision"] == [1, 168] and d["rango_minutos_corte"] == [0, 120]
+
+
+def test_el_utp_cambia_el_plazo_y_el_corte_se_recuerda_y_se_puede_volver_al_predeterminado(cliente, esc):
+    d = poner_clases(cliente, esc["utp"], 48, 5).json()
+    assert (d["horas_revision"], d["minutos_corte"]) == (48, 5)
+    assert cliente.get(CLASES, headers=esc["utp"]).json()["minutos_corte"] == 5  # quedó en la base
+    d = poner_clases(cliente, esc["utp"], None, None).json()
+    assert (d["horas_revision"], d["minutos_corte"]) == (sa.HORAS_REVISION_POR_DEFECTO, sa.MINUTOS_CORTE_POR_DEFECTO)
+
+
+def test_cero_minutos_de_corte_es_valido_y_cero_horas_de_revision_no(cliente, esc):
+    assert poner_clases(cliente, esc["utp"], None, 0).json()["minutos_corte"] == 0  # se corta justo al terminar el bloque
+    r = poner_clases(cliente, esc["utp"], 0, None)
+    assert r.status_code == 422 and "Plazo de revisión" in r.json()["detail"]
+
+
+@pytest.mark.parametrize("horas,minutos", [(0, 15), (169, 15), (-5, 15), (24, -1), (24, 121)])
+def test_un_valor_fuera_de_rango_se_rechaza_con_un_motivo_y_no_se_guarda_nada(cliente, esc, horas, minutos):
+    poner_clases(cliente, esc["utp"], 30, 10)
+    r = poner_clases(cliente, esc["utp"], horas, minutos)
+    assert r.status_code == 422 and "número entero" in r.json()["detail"]
+    d = cliente.get(CLASES, headers=esc["utp"]).json()
+    assert (d["horas_revision"], d["minutos_corte"]) == (30, 10)  # ni siquiera el que sí era válido
+
+
+def test_los_numeros_con_formato_raro_dan_error_del_cliente_nunca_500(cliente, esc):
+    for cuerpo in ({"horas_revision": "mucho", "minutos_corte": None}, {"horas_revision": 1.5, "minutos_corte": None}, {"horas_revision": None}, {}):
+        assert cliente.put(CLASES, json=cuerpo, headers=esc["utp"]).status_code == 422
+
+
+def test_cada_colegio_tiene_su_propio_plazo_y_corte(cliente, esc, otro_colegio):
+    poner_clases(cliente, esc["utp"], 72, 30)
+    d = cliente.get(CLASES, headers=otro_colegio[1]).json()
+    assert (d["horas_revision"], d["minutos_corte"]) == (sa.HORAS_REVISION_POR_DEFECTO, sa.MINUTOS_CORTE_POR_DEFECTO)
+    assert cliente.get(CLASES, headers=esc["utp"]).json()["horas_revision"] == 72
+
+
+def test_el_corte_automatico_usa_los_minutos_del_colegio(cliente, esc):
+    from infraestructura.modelos_orm import Bloque
+
+    hoy = datetime.date(2026, 9, 28)
+
+    def corte():
+        with cliente.sesion() as db:
+            return sg._corte_de(db.get(Bloque, esc["bloques"]["mat"]), hoy)
+
+    con_el_predeterminado = corte()
+    poner_clases(cliente, esc["utp"], None, 0)
+    assert corte() == con_el_predeterminado - datetime.timedelta(minutes=sa.MINUTOS_CORTE_POR_DEFECTO)
+    poner_clases(cliente, esc["utp"], None, 60)
+    assert corte() == con_el_predeterminado + datetime.timedelta(minutes=60 - sa.MINUTOS_CORTE_POR_DEFECTO)
+
+
+# --- Respaldo diario (de todo el servidor) ---
+
+RESPALDOS = "/ajustes/respaldos"
+
+
+def poner_respaldos(cliente, headers, carpeta, dias):
+    return cliente.put(RESPALDOS, json={"carpeta": carpeta, "dias": dias}, headers=headers)
+
+
+def test_sin_tocar_nada_el_respaldo_usa_la_variable_de_entorno_y_14_dias(cliente, esc, tmp_path, monkeypatch):
+    monkeypatch.setenv("CARPETA_RESPALDOS", str(tmp_path / "del_entorno"))
+    d = cliente.get(RESPALDOS, headers=esc["utp"]).json()
+    assert d["carpeta"] == d["carpeta_por_defecto"] == str((tmp_path / "del_entorno").resolve())
+    assert d["dias"] == d["dias_por_defecto"] == sa.DIAS_RESPALDO_POR_DEFECTO and d["rango_dias"] == [1, 365]
+
+
+def test_el_utp_elige_la_carpeta_y_los_dias_y_se_recuerdan(cliente, esc, tmp_path):
+    destino = tmp_path / "discoB"
+    d = poner_respaldos(cliente, esc["utp"], str(destino), 30).json()
+    assert d["carpeta"] == str(destino) and d["dias"] == 30
+    assert destino.is_dir()  # se creó (un nivel) y se comprobó que se puede escribir
+    assert list(destino.iterdir()) == []  # el archivo de prueba no queda
+    d = cliente.get(RESPALDOS, headers=esc["utp"]).json()
+    assert d["carpeta"] == str(destino) and d["dias"] == 30
+    d = poner_respaldos(cliente, esc["utp"], None, None).json()  # de vuelta al predeterminado
+    assert d["carpeta"] == d["carpeta_por_defecto"] and d["dias"] == sa.DIAS_RESPALDO_POR_DEFECTO
+
+
+@pytest.mark.parametrize("dias", [0, 366, -3])
+def test_los_dias_fuera_de_rango_se_rechazan_y_no_cambian_la_carpeta(cliente, esc, tmp_path, dias):
+    antes = cliente.get(RESPALDOS, headers=esc["utp"]).json()["carpeta"]
+    r = poner_respaldos(cliente, esc["utp"], str(tmp_path / "nueva"), dias)
+    assert r.status_code == 422 and "Días de respaldo" in r.json()["detail"]
+    assert cliente.get(RESPALDOS, headers=esc["utp"]).json()["carpeta"] == antes
+
+
+def test_una_carpeta_que_no_sirve_se_rechaza_con_un_motivo_claro(cliente, esc, tmp_path):
+    archivo = tmp_path / "un_archivo.txt"
+    archivo.write_text("x")
+    casos = {
+        "": "ruta completa", "   ": "ruta completa", "relativa/respaldos": "ruta completa", "con\0nulo": "ruta completa",
+        str(archivo): "archivo, no una carpeta",
+        str(tmp_path / "no_existe" / "dentro"): "no existe",
+        str(Path(tmp_path.anchor)): "raíz del disco",
+    }
+    for carpeta, motivo in casos.items():
+        r = poner_respaldos(cliente, esc["utp"], carpeta.replace("\\0", "\0"), None)
+        assert r.status_code == 422 and motivo in r.json()["detail"], (carpeta, r.json())
+
+
+@pytest.mark.skipif(os.name != "posix" or os.geteuid() == 0, reason="como administrador siempre se puede escribir")
+def test_una_carpeta_donde_no_se_puede_escribir_se_rechaza_antes_de_guardarla(cliente, esc, tmp_path):
+    cerrada = tmp_path / "cerrada"
+    cerrada.mkdir()
+    cerrada.chmod(0o500)
+    try:
+        r = poner_respaldos(cliente, esc["utp"], str(cerrada), None)
+        assert r.status_code == 422 and "No se puede guardar nada" in r.json()["detail"]
+    finally:
+        cerrada.chmod(0o700)
+
+
+def test_solo_el_utp_ve_y_cambia_los_ajustes_de_clases_y_de_respaldo(cliente, esc, tmp_path):
+    for url, cuerpo in ((CLASES, {"horas_revision": 1, "minutos_corte": 1}), (RESPALDOS, {"carpeta": str(tmp_path / "x"), "dias": 5})):
+        assert cliente.get(url).status_code == 401 and cliente.put(url, json=cuerpo).status_code == 401
+        for quien in ("ana", "alumno"):
+            assert cliente.get(url, headers=esc[quien]).status_code == 403
+            assert cliente.put(url, json=cuerpo, headers=esc[quien]).status_code == 403
+    assert not (tmp_path / "x").exists()  # un rechazo no deja carpetas creadas
+    assert cliente.get(CLASES, headers=esc["utp"]).json()["horas_revision"] == sa.HORAS_REVISION_POR_DEFECTO

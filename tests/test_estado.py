@@ -94,11 +94,36 @@ def test_la_carpeta_de_respaldos_se_muestra_completa_y_con_su_ultimo_respaldo(tm
     (carpeta / f"escuela-{ayer}.db").write_bytes(b"x" * 1000)
     monkeypatch.setenv("CARPETA_RESPALDOS", str(carpeta))
     monkeypatch.chdir(tmp_path)  # un nombre relativo no le dice nada al UTP: se muestra la ruta completa
-    d = se._respaldos()
+    db = _base_con_tablas()
+    d = se._respaldos(db)
     assert d["carpeta"] == str(carpeta.resolve())
     monkeypatch.setenv("CARPETA_RESPALDOS", "copias")
-    assert se._respaldos()["carpeta"] == str(carpeta.resolve()) and os.path.isabs(se._respaldos()["carpeta"])
+    assert se._respaldos(db)["carpeta"] == str(carpeta.resolve()) and os.path.isabs(se._respaldos(db)["carpeta"])
     assert (d["cantidad"], d["ultimo"], d["hace_dias"]) == (1, ayer, 1)
+
+
+def _base_con_tablas():
+    """Una base vacía en memoria, con las tablas: los ajustes del UTP viven en ella."""
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session
+
+    from infraestructura.modelos_orm import Base
+
+    motor = create_engine("sqlite://")
+    Base.metadata.create_all(motor)
+    return Session(motor)
+
+
+def test_la_carpeta_que_fijo_el_utp_gana_sobre_la_variable_de_entorno_en_el_panel(tmp_path, monkeypatch):
+    elegida, de_entorno = tmp_path / "elegida", tmp_path / "entorno"
+    elegida.mkdir(), de_entorno.mkdir()
+    monkeypatch.setenv("CARPETA_RESPALDOS", str(de_entorno))
+    db = _base_con_tablas()
+    assert se._respaldos(db)["carpeta"] == str(de_entorno.resolve())
+    from servicios import servicio_ajustes
+
+    servicio_ajustes.cambiar_ajustes_de_respaldo(db, str(elegida), None)
+    assert se._respaldos(db)["carpeta"] == str(elegida.resolve())
 
 
 def test_ollama_apagado_no_se_confunde_con_modelo_faltante():
@@ -149,7 +174,7 @@ def equipo(monkeypatch, tmp_path):
     monkeypatch.setattr(se.app_config, "get_param", lambda k: "auto")
     monkeypatch.setattr(sm, "modelos_instalados", lambda url: {"llama3.2:3b"})
     monkeypatch.setattr(se, "_disco", lambda: sano()["disco"])
-    monkeypatch.setattr(se, "_respaldos", lambda: sano()["respaldos"])
+    monkeypatch.setattr(se, "_respaldos", lambda db: sano()["respaldos"])
     monkeypatch.setattr(se, "memoria_total_gb", lambda: 15.64)
     monkeypatch.setattr(se, "memoria_libre_gb", lambda: 9.26)
 

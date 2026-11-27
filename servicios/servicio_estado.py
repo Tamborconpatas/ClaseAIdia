@@ -22,7 +22,7 @@ from nucleo import configuracion as app_config, modelos_ia
 from nucleo.disco import ancestro_existente, espacio_en_disco
 from nucleo.memoria import memoria_libre_gb, memoria_total_gb
 from servicios import servicio_grabacion as sg
-from servicios import servicio_conexiones, servicio_modelos, servicio_pizarra, servicio_respaldo
+from servicios import servicio_ajustes, servicio_conexiones, servicio_modelos, servicio_pizarra, servicio_respaldo
 
 DISCO_AVISO_GB = 5.0
 DISCO_CRITICO_GB = sg.DISCO_MINIMO_PARA_GRABAR_GB  # con menos no se puede empezar a grabar: el aviso y el bloqueo hablan del mismo número
@@ -108,8 +108,8 @@ def _disco() -> dict:
     }
 
 
-def _respaldos() -> dict:
-    carpeta = servicio_respaldo.carpeta_de_respaldos()
+def _respaldos(db: Session) -> dict:
+    carpeta = servicio_ajustes.carpeta_de_respaldos(db)
     datos = servicio_respaldo.estado(carpeta)
     base = Path(basedatos.engine.url.database) if basedatos.engine.url.get_backend_name() == "sqlite" and basedatos.engine.url.database else None
     hoy = datetime.date.today()
@@ -165,7 +165,7 @@ def estado_del_servidor(db: Session, colegio_id: int, vigilando: bool = True) ->
         "procesamiento": _procesamiento(db, colegio_id),
         "ollama": _ollama(),
         "disco": _disco(),
-        "respaldos": _respaldos(),
+        "respaldos": _respaldos(db),
         "memoria": {"total_gb": round(total, 1) if total else None, "libre_gb": round(libre, 1) if libre is not None else None},
         "vigilancia": {
             "ultima_pasada": ultimo.replace(tzinfo=datetime.timezone.utc) if ultimo else None,
