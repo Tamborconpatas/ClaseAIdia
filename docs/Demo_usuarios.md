@@ -4,7 +4,7 @@ Todos los datos son **de ejemplo** (los crea `scripts/sembrar_demo.py`); no hay 
 
 ## Cómo iniciar
 
-Doble clic en **`iniciar.bat demo`** (o `python -m scripts.iniciar demo`). Rehace la base de ejemplo, levanta el servidor y la interfaz, y abre `http://localhost:5173`. Se detiene con Ctrl+C o cerrando la ventana.
+Doble clic en **`iniciar.bat demo`** (o `./iniciar.sh demo`, o `python -m scripts.iniciar demo`). Rehace la base de ejemplo, levanta el servidor y la interfaz, y abre **tres ventanas, una por rol** (UTP, profesor y alumno), cada una ya con su sesión: no hace falta escribir las claves. Se detiene con Ctrl+C o cerrando la ventana.
 
 La demo se usa en el mismo PC (el micrófono funciona en `localhost`). Grabar con un celular exige https y se prueba con `iniciar.bat celular`, que usa la base real, no la demo.
 
@@ -55,6 +55,6 @@ La demo trae **9 clases de ejemplo** en todos los estados: publicada, por aproba
 
 ## Para tener en cuenta
 
-- **«Grabar»** solo muestra los bloques que el profesor tiene **hoy**; el horario de la demo es de lunes a viernes, así que en fin de semana no hay clase para grabar. Para grabar de verdad hace falta **Ollama** abierto con `llama3.2:1b` instalado (la transcripción usa Whisper local).
+- **«Grabar»** en la demo deja grabar cualquier bloque de clase del profesor **a cualquier hora** (en fin de semana muestra los del lunes); fuera de la demo solo se graba un bloque de hoy y antes de su corte. Para grabar de verdad hace falta **Ollama** abierto con `llama3.2:1b` instalado (la transcripción usa Whisper local).
 - Grabar solo funciona desde la **red local** del colegio; en la demo, desde el mismo equipo.
 - Al cerrar y volver a abrir con `iniciar.bat demo` los datos vuelven a su estado inicial (lo que se haya cambiado en la demo se pierde).

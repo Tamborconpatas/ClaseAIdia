@@ -171,6 +171,14 @@ def test_solo_se_graba_un_bloque_de_clase_de_hoy_y_antes_del_corte(g, tiempo):
     assert _crear(g).status_code == 201
 
 
+def test_en_la_demostracion_se_graba_cualquier_bloque_de_clase_a_cualquier_hora(g, tiempo, monkeypatch):
+    monkeypatch.setenv("DEMO_GRABACION_LIBRE", "1")
+    tiempo["local"] = datetime.datetime(2026, 9, 28, 22, 0)  # bien pasado el término del bloque
+    assert _crear(g).status_code == 201
+    assert _crear(g, bloque="bloque_martes").status_code == 201  # ni siquiera es de hoy
+    assert _crear(g, bloque="recreo").status_code == 404  # un bloque ajeno sigue siendo ajeno
+
+
 def test_crear_dos_veces_retoma_la_misma_sesion_y_no_duplica(g):
     a = _crear(g)
     b = _crear(g)
