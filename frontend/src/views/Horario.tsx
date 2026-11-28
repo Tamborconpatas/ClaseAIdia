@@ -370,10 +370,10 @@ function Agenda({ bloques, nombreCurso, multiCurso, onAbrir, buscando, mostrarPr
                   b={b}
                   onAbrir={onAbrir}
                   editar={editar}
-                  className={cn('block flex-1 rounded-xl border-l-4 px-3.5 py-3 short:py-2', colorAsignatura(b.asignatura), esAhora(b) && 'ring-2 ring-primary')}
+                  className={cn('block min-w-0 flex-1 rounded-xl border-l-4 px-3.5 py-3 short:py-2', colorAsignatura(b.asignatura), esAhora(b) && 'ring-2 ring-primary')}
                 >
                   <div className="flex items-start justify-between gap-2">
-                    <p className="text-base font-semibold leading-tight">{b.asignatura}</p>
+                    <p className="min-w-0 text-base font-semibold leading-tight [overflow-wrap:anywhere]">{b.asignatura}</p>
                     <span className="flex shrink-0 items-center gap-1.5">
                       {esAhora(b) && <span className="rounded-full bg-primary px-2 py-0.5 text-[11px] font-medium text-primary-foreground">Ahora</span>}
                       {buscando === b.id ? <Loader2 className="size-4 animate-spin" /> : onAbrir && <ChevronRight className="size-4 opacity-40" />}

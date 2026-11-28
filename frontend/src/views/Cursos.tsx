@@ -71,8 +71,8 @@ export function Cursos({ esUtp, esProfesor, onVerClases }: Props) {
           {lista.map((c) => {
             const abierto = panel?.cursoId === c.id
             return (
-              <li key={c.id} className={cn('rounded-2xl border bg-card p-4', abierto && 'desk:col-span-2 xl:col-span-3')}>
-                <div className="flex items-center justify-between gap-3">
+              <li key={c.id} className={cn('min-w-0 rounded-2xl border bg-card p-4', abierto && 'desk:col-span-2 xl:col-span-3')}>
+                <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="flex min-w-0 items-center gap-3">
                     <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-secondary text-sm font-semibold text-secondary-foreground">
                       {c.nombre.slice(0, 3)}

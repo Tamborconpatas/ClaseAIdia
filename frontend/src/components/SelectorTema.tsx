@@ -17,7 +17,7 @@ const OPCIONES: { tema: Tema; etiqueta: string; icono: typeof Sun }[] = [
 export function SelectorTema({ className, conTexto = false }: { className?: string; conTexto?: boolean }) {
   const { tema } = useTema()
   return (
-    <div role="group" aria-label="Tema de color" className={cn('inline-flex rounded-lg border bg-card p-0.5', className)}>
+    <div role="group" aria-label="Tema de color" className={cn('inline-flex max-w-full flex-wrap rounded-lg border bg-card p-0.5', className)}>
       {OPCIONES.map(({ tema: t, etiqueta, icono: Icono }) => (
         <button
           key={t}

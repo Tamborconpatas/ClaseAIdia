@@ -91,12 +91,12 @@ export function AppShell({ items, activo, onCambiar, usuario, etiquetaRol, onSal
 
       {/* ---------- Teléfono: barra superior ---------- */}
       <header className="sticky top-0 z-20 flex h-14 items-center justify-between border-b bg-background/90 pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] backdrop-blur short:h-11 desk:hidden">
-        <h1 className="text-lg font-semibold">{actual.etiqueta}</h1>
-        <div className="flex items-center gap-1">
-          <span className="rounded-full bg-secondary px-2.5 py-1 text-xs font-medium text-secondary-foreground">
+        <h1 className="min-w-0 truncate text-lg font-semibold">{actual.etiqueta}</h1>
+        <div className="flex min-w-0 items-center gap-1">
+          <span className="min-w-0 truncate rounded-full bg-secondary px-2.5 py-1 text-xs font-medium text-secondary-foreground" title={etiquetaRol}>
             {etiquetaRol}
           </span>
-          <Button variant="ghost" size="icon-lg" onClick={onSalir} aria-label="Cerrar sesión">
+          <Button variant="ghost" size="icon-lg" className="shrink-0" onClick={onSalir} aria-label="Cerrar sesión">
             <LogOut />
           </Button>
         </div>
@@ -116,7 +116,7 @@ export function AppShell({ items, activo, onCambiar, usuario, etiquetaRol, onSal
       {/* ---------- Teléfono: pestañas abajo ---------- */}
       <nav
         aria-label="Principal"
-        className="fixed inset-x-0 bottom-0 z-20 flex border-t bg-background/95 pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] backdrop-blur desk:hidden"
+        className="fixed inset-x-0 bottom-0 z-20 flex overflow-x-auto border-t bg-background/95 pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] backdrop-blur desk:hidden"
       >
         {items.map((it) => {
           const sel = it.id === actual.id
@@ -129,7 +129,7 @@ export function AppShell({ items, activo, onCambiar, usuario, etiquetaRol, onSal
             >
               <span
                 className={cn(
-                  'flex h-8 w-14 items-center justify-center rounded-full transition-colors short:h-7 short:w-12',
+                  'flex h-8 w-12 items-center justify-center rounded-full transition-colors min-[360px]:w-14 short:h-7 short:w-12',
                   sel ? 'bg-primary/12 text-primary' : 'text-muted-foreground',
                 )}
               >
