@@ -495,7 +495,7 @@ def test_el_segundo_colegio_no_ve_ni_toca_nada_del_primero(m):
             continue
         url = _llenar(r["ruta"], m)
         resp = m["c"].request(r["metodo"], url, headers=m["otro_utp"], json={"nombre": "x", "texto": "x", "relaciones": [], "resumen": "x", "puntos_clave": "x", "hoja_repaso": "x", "tarjetas": [], "activada": True})
-        if resp.status_code < 300 and r["ruta"] not in ("/auth/me", "/auth/cerrar-sesiones", "/cursos", "/clases", "/usuarios", "/estado", "/ajustes/fotos-pizarra", "/ajustes/modelo-texto") and r["ruta"] not in ("/cursos/{curso_id}/bloques",):
+        if resp.status_code < 300 and r["ruta"] not in ("/auth/me", "/auth/cerrar-sesiones", "/cursos", "/clases", "/usuarios", "/estado", "/ajustes/fotos-pizarra", "/ajustes/modelo-texto", "/ajustes/clases", "/ajustes/respaldos") and r["ruta"] not in ("/cursos/{curso_id}/bloques",):
             fallas.append(f"{ID(r)} -> {resp.status_code} {resp.text[:100]}")
         if resp.status_code < 300 and r["metodo"] == "GET" and r["ruta"] in ("/cursos", "/clases", "/usuarios"):
             assert all(x.get("colegio_id", m["otro_colegio_id"]) == m["otro_colegio_id"] for x in resp.json()), ID(r)

@@ -59,9 +59,25 @@ class Colegio(Base):
     # Ajuste del colegio (lo cambia el UTP en «Ajustes», no un archivo de configuración): ¿los profesores pueden sacar fotos de la
     # pizarra? Es opcional porque pide un modelo aparte (3,2 GB) y mucha memoria; apagado por defecto.
     fotos_pizarra: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # Más ajustes del colegio. Nulo = el predeterminado (las variables de entorno HORAS_REVISION_PROFESOR y MINUTOS_CORTE_GRABACION):
+    # horas que tiene el profesor para revisar el material antes de que se publique como «provisorio», y minutos después del término
+    # del bloque en que la grabación se corta sola.
+    horas_revision: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    minutos_corte: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     usuarios: Mapped[list["Usuario"]] = relationship(back_populates="colegio")
     cursos: Mapped[list["Curso"]] = relationship(back_populates="colegio")
+
+
+class AjusteServidor(Base):
+    """Ajustes que valen para todo el servidor (la base es una sola) y que el UTP cambia en «Ajustes»: la carpeta y los días del respaldo
+    diario. Viven en la base y no en un archivo porque en Docker la base está en el volumen y un archivo de la aplicación se perdería
+    al recrear el contenedor. Sin fila = el predeterminado (CARPETA_RESPALDOS y DIAS_DE_RESPALDO)."""
+
+    __tablename__ = "ajustes_servidor"
+
+    clave: Mapped[str] = mapped_column(String, primary_key=True)
+    valor: Mapped[str] = mapped_column(String, nullable=False)
 
 
 class Dispositivo(Base):

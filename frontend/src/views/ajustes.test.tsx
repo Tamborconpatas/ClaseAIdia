@@ -8,7 +8,7 @@ import axe from 'axe-core'
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { AjusteFotos, AjusteModeloTexto } from '@/lib/api'
+import type { AjusteClases, AjusteFotos, AjusteModeloTexto, AjusteRespaldos } from '@/lib/api'
 
 vi.mock('@/lib/api', async (original) => ({ ...(await original<typeof import('@/lib/api')>()), api: vi.fn() }))
 
@@ -22,15 +22,35 @@ const base: AjusteFotos = {
 }
 // El modelo de resúmenes empieza instalado: así las pruebas de las fotos no ven barras ni botones de la otra sección.
 const baseTexto: AjusteModeloTexto = { modelo: 'gemma4:e2b', ollama_responde: true, modelo_instalado: true, memoria_total_gb: 15.6, memoria_minima_gb: 12, tamano_gb: 4.6, descarga: null }
+const baseClases: AjusteClases = { horas_revision: 24, minutos_corte: 15, horas_revision_por_defecto: 24, minutos_corte_por_defecto: 15, rango_horas_revision: [1, 168], rango_minutos_corte: [0, 120] }
+const baseRespaldos: AjusteRespaldos = { carpeta: '/datos/respaldos', carpeta_por_defecto: '/datos/respaldos', dias: 14, dias_por_defecto: 14, rango_dias: [1, 365] }
 let estado: AjusteFotos
 let texto: AjusteModeloTexto
+let clases: AjusteClases
+let respaldos: AjusteRespaldos
 let raices: Root[] = []
 const llamadas = () => (api as unknown as ReturnType<typeof vi.fn>).mock.calls.map((c) => `${c[1]?.metodo ?? 'GET'} ${c[0]}`)
 
 beforeEach(() => {
   estado = { ...base }
   texto = { ...baseTexto }
-  ;(api as unknown as ReturnType<typeof vi.fn>).mockReset().mockImplementation(async (ruta: string, opciones?: { metodo?: string; cuerpo?: { activada?: boolean } }) => {
+  clases = { ...baseClases }
+  respaldos = { ...baseRespaldos }
+  ;(api as unknown as ReturnType<typeof vi.fn>).mockReset().mockImplementation(async (ruta: string, opciones?: { metodo?: string; cuerpo?: Record<string, unknown> & { activada?: boolean } }) => {
+    if (ruta === '/ajustes/clases') {
+      if (opciones?.metodo === 'PUT') {
+        const c = opciones.cuerpo as { horas_revision: number | null; minutos_corte: number | null }
+        clases = { ...clases, horas_revision: c.horas_revision ?? clases.horas_revision_por_defecto, minutos_corte: c.minutos_corte ?? clases.minutos_corte_por_defecto }
+      }
+      return clases
+    }
+    if (ruta === '/ajustes/respaldos') {
+      if (opciones?.metodo === 'PUT') {
+        const c = opciones.cuerpo as { carpeta: string | null; dias: number | null }
+        respaldos = { ...respaldos, carpeta: c.carpeta ?? respaldos.carpeta_por_defecto, dias: c.dias ?? respaldos.dias_por_defecto }
+      }
+      return respaldos
+    }
     if (ruta.startsWith('/ajustes/modelo-texto')) {
       if (opciones?.metodo === 'POST') texto = { ...texto, descarga: { estado: 'descargando', porcentaje: 0, mensaje: 'Preparando la descarga…' } }
       return texto
@@ -67,6 +87,21 @@ async function violaciones(c: HTMLElement) {
 
 const boton = (c: HTMLElement, texto: string) => [...c.querySelectorAll('button')].find((b) => b.textContent?.includes(texto)) as HTMLButtonElement | undefined
 const interruptor = (c: HTMLElement) => c.querySelector('[role=switch]') as HTMLButtonElement
+const campo = (c: HTMLElement, id: string) => c.querySelector(`#${id}`) as HTMLInputElement
+async function escribir(c: HTMLElement, id: string, valor: string) {
+  const el = campo(c, id)
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(el, valor) // así React se entera, como si se hubiera tecleado
+    el.dispatchEvent(new Event('input', { bubbles: true }))
+  })
+}
+const pulsar = async (b: HTMLButtonElement | undefined) => {
+  await act(async () => b!.click())
+  await act(async () => {
+    await new Promise((r) => setTimeout(r, 30))
+  })
+}
+const put = (ruta: string) => (api as unknown as ReturnType<typeof vi.fn>).mock.calls.filter((k) => k[0] === ruta && k[1]?.metodo === 'PUT').map((k) => k[1].cuerpo)
 
 describe('Ajustes del colegio (el UTP decide en la aplicación, sin archivos ni comandos)', () => {
   it('muestra el estado y lo que hace falta para decidir, sin violaciones de accesibilidad', async () => {
@@ -254,6 +289,89 @@ describe('Ajustes del colegio (el UTP decide en la aplicación, sin archivos ni 
         await new Promise((r) => setTimeout(r, 30))
       })
       expect(c.querySelector('[role=alert]')?.textContent).toContain('Ya se está descargando')
+    })
+  })
+  describe('cómo se tratan las clases (plazo de revisión y corte automático) y el respaldo diario', () => {
+    it('muestra lo que vale hoy y lo predeterminado; no deja guardar mientras no cambie nada', async () => {
+      const c = await montar()
+      expect(c.textContent).toContain('Revisión y corte de las clases')
+      expect(campo(c, 'horas-revision').value).toBe('24')
+      expect(campo(c, 'minutos-corte').value).toBe('15')
+      expect(c.textContent).toContain('Lo predeterminado es 24 horas.')
+      expect(c.textContent).toContain('Lo predeterminado es 15 minutos.')
+      expect(boton(c, 'Volver a lo predeterminado')).toBeUndefined() // ya vale lo predeterminado
+      expect(await violaciones(c)).toEqual([])
+    })
+
+    it('el UTP cambia el plazo: se manda con el corte, se avisa y aparece «Volver a lo predeterminado»', async () => {
+      const c = await montar()
+      await escribir(c, 'horas-revision', '48')
+      const guardar = [...c.querySelectorAll('form')][0].querySelector('button[type=submit]') as HTMLButtonElement
+      expect(guardar.disabled).toBe(false)
+      await pulsar(guardar)
+      expect(put('/ajustes/clases')).toEqual([{ horas_revision: 48, minutos_corte: 15 }])
+      expect(c.textContent).toContain('Guardado. Vale desde ahora.')
+      expect(campo(c, 'horas-revision').value).toBe('48')
+      await pulsar(boton(c, 'Volver a lo predeterminado'))
+      expect(put('/ajustes/clases')[1]).toEqual({ horas_revision: null, minutos_corte: null })
+      expect(campo(c, 'horas-revision').value).toBe('24')
+      expect(boton(c, 'Volver a lo predeterminado')).toBeUndefined()
+      expect(await violaciones(c)).toEqual([])
+    })
+
+    it('un valor fuera de rango se marca y no se puede guardar', async () => {
+      const c = await montar()
+      await escribir(c, 'horas-revision', '0')
+      expect(c.textContent).toContain('Escribe un número entero de 1 a 168.')
+      expect(campo(c, 'horas-revision').getAttribute('aria-invalid')).toBe('true')
+      expect(([...c.querySelectorAll('form')][0].querySelector('button[type=submit]') as HTMLButtonElement).disabled).toBe(true)
+      await escribir(c, 'minutos-corte', '0') // cero minutos sí vale: el corte es justo al terminar el bloque
+      expect(campo(c, 'minutos-corte').getAttribute('aria-invalid')).toBe('false')
+      expect(await violaciones(c)).toEqual([])
+    })
+
+    it('si el servidor rechaza el valor, lo dice y no cambia lo que se ve guardado', async () => {
+      const c = await montar()
+      const mock = api as unknown as ReturnType<typeof vi.fn>
+      const anterior = mock.getMockImplementation() as (...a: unknown[]) => unknown
+      mock.mockImplementation((ruta: string, opciones?: { metodo?: string }) =>
+        ruta === '/ajustes/clases' && opciones?.metodo === 'PUT' ? Promise.reject(new Error('Plazo de revisión: escribe un número entero de 1 a 168 horas.')) : anterior(ruta, opciones),
+      )
+      await escribir(c, 'horas-revision', '30')
+      await pulsar([...c.querySelectorAll('form')][0].querySelector('button[type=submit]') as HTMLButtonElement)
+      expect(c.querySelector('[role=alert]')?.textContent).toContain('Plazo de revisión')
+      expect(c.textContent).not.toContain('Guardado. Vale desde ahora.')
+    })
+
+    it('el respaldo: carpeta y días se mandan juntos; lo que es igual a lo predeterminado se manda como null', async () => {
+      const c = await montar()
+      expect(c.textContent).toContain('Respaldo diario')
+      expect(campo(c, 'carpeta-respaldos').value).toBe('/datos/respaldos')
+      expect(c.textContent).toContain('Esto vale para todo el servidor.')
+      await escribir(c, 'carpeta-respaldos', '/discoB/respaldos')
+      const guardar = [...c.querySelectorAll('form')][1].querySelector('button[type=submit]') as HTMLButtonElement
+      await pulsar(guardar)
+      expect(put('/ajustes/respaldos')).toEqual([{ carpeta: '/discoB/respaldos', dias: null }])
+      expect(c.textContent).toContain('Guardado. Vale desde el próximo respaldo')
+      await escribir(c, 'dias-respaldo', '30')
+      await pulsar([...c.querySelectorAll('form')][1].querySelector('button[type=submit]') as HTMLButtonElement)
+      expect(put('/ajustes/respaldos')[1]).toEqual({ carpeta: '/discoB/respaldos', dias: 30 })
+      await pulsar(boton(c, 'Volver a lo predeterminado'))
+      expect(campo(c, 'carpeta-respaldos').value).toBe('/datos/respaldos')
+      expect(await violaciones(c)).toEqual([])
+    })
+
+    it('si la carpeta no sirve, el servidor dice por qué y la pantalla lo muestra', async () => {
+      const c = await montar()
+      const mock = api as unknown as ReturnType<typeof vi.fn>
+      const anterior = mock.getMockImplementation() as (...a: unknown[]) => unknown
+      mock.mockImplementation((ruta: string, opciones?: { metodo?: string }) =>
+        ruta === '/ajustes/respaldos' && opciones?.metodo === 'PUT' ? Promise.reject(new Error('No se puede guardar nada en esa carpeta. Elige otra o revisa los permisos.')) : anterior(ruta, opciones),
+      )
+      await escribir(c, 'carpeta-respaldos', '/solo/lectura')
+      await pulsar([...c.querySelectorAll('form')][1].querySelector('button[type=submit]') as HTMLButtonElement)
+      expect(c.querySelector('[role=alert]')?.textContent).toContain('No se puede guardar nada en esa carpeta')
+      expect(c.textContent).not.toContain('Guardado. Vale desde el próximo respaldo')
     })
   })
 })

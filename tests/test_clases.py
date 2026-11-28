@@ -196,13 +196,14 @@ def test_una_clase_retirada_nunca_se_publica_sola(cliente, esc):
     assert cid not in _ids(cliente, esc["alumno"])
 
 
-def test_el_plazo_es_configurable(cliente, esc, monkeypatch):
-    from interfaz.api import rutas_clases
-
+def test_el_plazo_lo_cambia_el_utp_en_ajustes_y_vale_de_inmediato(cliente, esc):
     cid = _con_material(cliente, esc["bloques"]["mat"], horas_atras=2)
     assert _estado(cliente, esc["alumno"], cid) is None  # con 24 h de plazo, aún no
-    monkeypatch.setattr(rutas_clases, "HORAS_REVISION", 1)
+    r = cliente.put("/ajustes/clases", json={"horas_revision": 1, "minutos_corte": None}, headers=esc["utp"])
+    assert r.status_code == 200 and r.json()["horas_revision"] == 1
     assert _estado(cliente, esc["alumno"], cid) == "provisoria"
+    cliente.put("/ajustes/clases", json={"horas_revision": None, "minutos_corte": None}, headers=esc["utp"])  # de vuelta al predeterminado
+    assert _estado(cliente, esc["alumno"], cid) is None
 
 
 def test_el_profesor_aprueba_y_el_alumno_la_ve_sin_advertencia(cliente, esc):

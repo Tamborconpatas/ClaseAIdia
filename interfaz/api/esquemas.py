@@ -540,6 +540,39 @@ class AjusteFotosOut(BaseModel):
     descarga: DescargaOut | None = None
 
 
+class AjusteClasesEditar(BaseModel):
+    """Las dos llaves son obligatorias; `null` = volver al valor predeterminado. El rango lo valida el servicio, con un mensaje claro."""
+
+    horas_revision: int | None
+    minutos_corte: int | None
+
+
+class AjusteClasesOut(BaseModel):
+    """Cómo se tratan las clases en este colegio: cuánto tiene el profesor para revisar el material y cuándo se corta sola la grabación."""
+
+    horas_revision: int
+    minutos_corte: int
+    horas_revision_por_defecto: int
+    minutos_corte_por_defecto: int
+    rango_horas_revision: list[int]
+    rango_minutos_corte: list[int]
+
+
+class AjusteRespaldosEditar(BaseModel):
+    carpeta: str | None
+    dias: int | None
+
+
+class AjusteRespaldosOut(BaseModel):
+    """El respaldo diario de la base: dónde se guarda y cuántos días de copias se conservan (vale para todo el servidor)."""
+
+    carpeta: str
+    carpeta_por_defecto: str
+    dias: int
+    dias_por_defecto: int
+    rango_dias: list[int]
+
+
 class AjusteModeloTextoOut(BaseModel):
     """El modelo que escribe los resúmenes: sin él ninguna clase se resume. El UTP lo deja listo desde la aplicación, sin una consola."""
 

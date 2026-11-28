@@ -164,6 +164,23 @@ export interface AjusteModeloTexto {
   tamano_gb: number | null
   descarga: DescargaModelo | null
 }
+/** Cómo se tratan las clases en el colegio. `null` al guardar = volver al valor predeterminado. */
+export interface AjusteClases {
+  horas_revision: number
+  minutos_corte: number
+  horas_revision_por_defecto: number
+  minutos_corte_por_defecto: number
+  rango_horas_revision: [number, number]
+  rango_minutos_corte: [number, number]
+}
+/** El respaldo diario de la base: vale para todo el servidor. */
+export interface AjusteRespaldos {
+  carpeta: string
+  carpeta_por_defecto: string
+  dias: number
+  dias_por_defecto: number
+  rango_dias: [number, number]
+}
 /** Panel de estado del servidor (solo el UTP). Las alertas ya vienen redactadas por el servidor. */
 interface ClaseEnEstado {
   clase_id: number

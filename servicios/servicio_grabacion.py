@@ -26,7 +26,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from infraestructura.seguridad import ahora_utc as reloj_de_revision
 from nucleo.disco import espacio_en_disco
 from nucleo.memoria import esperar_memoria
-from servicios import servicio_conexiones
+from servicios import servicio_ajustes, servicio_conexiones
 from servicios.trabajador import CODIGO_SIN_MEMORIA
 
 from infraestructura.modelos_orm import (
@@ -48,7 +48,6 @@ MODELO_WHISPER = os.environ.get("MODELO_WHISPER", "small")
 MODOS_DE_LIMPIEZA = ("none", "light_dsp", "dsp", "heavy_dsp", "mmse")
 LIMPIEZA_POR_DEFECTO = "light_dsp"
 # Minutos después del término del bloque en que la grabación se corta sola (por si el profesor olvida terminarla).
-GRACIA_CORTE_MIN = int(os.environ.get("MINUTOS_CORTE_GRABACION", "15"))
 # El procesamiento de una clase corre en un proceso aparte (servicios/trabajador.py) para que, si se queda sin memoria,
 # caiga solo él y no el servidor que atiende a alumnos y profesores.
 RAIZ_DEL_PROYECTO = Path(__file__).resolve().parent.parent
@@ -119,8 +118,13 @@ def espacio_libre_gb() -> float:
     return espacio_en_disco(CARPETA_AUDIO)[0]
 
 
+def _gracia_de(bloque: Bloque) -> int:
+    """Minutos después del término del bloque en que la grabación se corta sola: lo decide el UTP de su colegio en «Ajustes»."""
+    return servicio_ajustes.minutos_de_corte(bloque.curso.colegio)
+
+
 def _corte_de(bloque: Bloque, hoy: datetime.date) -> datetime.datetime:
-    return datetime.datetime.combine(hoy, bloque.hora_fin_de_cadena) + datetime.timedelta(minutes=GRACIA_CORTE_MIN)
+    return datetime.datetime.combine(hoy, bloque.hora_fin_de_cadena) + datetime.timedelta(minutes=_gracia_de(bloque))
 
 
 def estado_de_hoy(bloque: Bloque, ahora: datetime.datetime) -> tuple[bool, str | None]:
@@ -131,7 +135,7 @@ def estado_de_hoy(bloque: Bloque, ahora: datetime.datetime) -> tuple[bool, str |
     if bloque.dia_semana != ahora.weekday():
         return False, "Este bloque no es de hoy"
     if ahora > _corte_de(bloque, ahora.date()):
-        return False, f"El bloque terminó hace más de {GRACIA_CORTE_MIN} minutos"
+        return False, f"El bloque terminó hace más de {_gracia_de(bloque)} minutos"
     libre = espacio_libre_gb()
     if libre < DISCO_MINIMO_PARA_GRABAR_GB:
         return False, f"El disco del servidor casi no tiene espacio libre ({libre:.1f} GB): no se puede empezar a grabar. Avisa al UTP para que libere espacio."
