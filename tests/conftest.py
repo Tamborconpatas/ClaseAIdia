@@ -44,6 +44,15 @@ def sin_contadores_de_intentos():
 
 
 @pytest.fixture(autouse=True)
+def sin_ollama_de_verdad_al_elegir_el_modelo(monkeypatch):
+    """El servicio de resumen le pregunta a Ollama qué modelos tiene (para usar uno que esté descargado): en las pruebas «no responde», salvo que la
+    prueba diga otra cosa. Así ninguna depende del Ollama de la máquina."""
+    from servicios import servicio_material_estudio as sme
+
+    monkeypatch.setattr(sme, "_modelos_instalados", lambda url: None)
+
+
+@pytest.fixture(autouse=True)
 def sin_trabajadores_de_verdad(monkeypatch):
     """Ninguna prueba arranca un trabajador (Whisper, Ollama) de verdad (lo que llega a la cola se queda ahí) ni depende del disco real,
     salvo que la prueba diga otra cosa."""

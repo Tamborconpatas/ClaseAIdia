@@ -573,6 +573,25 @@ class AjusteRespaldosOut(BaseModel):
     rango_dias: list[int]
 
 
+class OpcionModeloOut(BaseModel):
+    """Un modelo de los que el UTP puede elegir para los resúmenes. `instalado`: None si Ollama no responde y no se sabe."""
+
+    modelo: str
+    etiqueta: str
+    nota: str
+    tamano_gb: float | None = None
+    instalado: bool | None
+    descarga: DescargaOut | None = None
+
+
+class AjusteModeloEditar(BaseModel):
+    modelo: str  # uno de los que se ofrecen, o «auto»
+
+
+class AjusteModeloDescargar(BaseModel):
+    modelo: str | None = None  # sin él, el que se está usando
+
+
 class AjusteModeloTextoOut(BaseModel):
     """El modelo que escribe los resúmenes: sin él ninguna clase se resume. El UTP lo deja listo desde la aplicación, sin una consola."""
 
@@ -583,6 +602,8 @@ class AjusteModeloTextoOut(BaseModel):
     memoria_minima_gb: float
     tamano_gb: float | None = None
     descarga: DescargaOut | None = None
+    eleccion: str = "auto"  # lo que eligió el UTP, o «auto» si no eligió
+    opciones: list[OpcionModeloOut] = []
 
 
 # --- Estado del servidor (panel del UTP) ---------------------------------------------------------
@@ -628,6 +649,7 @@ class EstadoOllamaOut(BaseModel):
     responde: bool
     modelo_texto: str
     modelo_texto_instalado: bool
+    modelo_de_respaldo: str | None = None  # con cuál se resume mientras falta el modelo (None: con ninguno)
 
 
 class EstadoDiscoOut(BaseModel):
