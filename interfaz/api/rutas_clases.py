@@ -5,7 +5,6 @@
 # Términos completos en el archivo LICENSE de la raíz.
 
 import datetime
-import os
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import and_, or_
@@ -16,6 +15,7 @@ from infraestructura.modelos_orm import (
     AlumnoCurso,
     Bloque,
     Clase,
+    Colegio,
     ContenidoClase,
     Curso,
     EstadoGrabacion,
@@ -25,6 +25,7 @@ from infraestructura.modelos_orm import (
     Usuario,
 )
 from infraestructura.seguridad import ahora_utc
+from servicios import servicio_ajustes
 from interfaz.api.dependencias_auth import requiere_rol, rol_principal, usuario_actual
 from interfaz.api.esquemas import ClaseDetalleOut, ClaseOut, ContenidoEditar, ContenidoOut, MapaEditar, PizarraEditar, PizarraOut, RelacionMapa, TarjetaOut
 
@@ -32,12 +33,12 @@ router = APIRouter(prefix="/clases", tags=["clases"])
 
 # Horas que tiene el profesor, desde que el material queda listo, para aprobarlo o retirarlo. Pasado
 # ese plazo sin hacer nada, el material se publica como "provisorio" (los alumnos ven una advertencia):
-# un olvido del profesor no deja a los alumnos sin material. Configurable con HORAS_REVISION_PROFESOR.
-HORAS_REVISION = int(os.environ.get("HORAS_REVISION_PROFESOR", "24"))
+# un olvido del profesor no deja a los alumnos sin material. Lo decide el UTP de cada colegio en «Ajustes»
+# (predeterminado: HORAS_REVISION_PROFESOR, 24).
 
 
-def _plazo() -> datetime.timedelta:
-    return datetime.timedelta(hours=HORAS_REVISION)
+def _plazo(colegio: Colegio) -> datetime.timedelta:
+    return datetime.timedelta(hours=servicio_ajustes.horas_de_revision(colegio))
 
 
 def _utc(dt: datetime.datetime) -> datetime.datetime:
@@ -56,7 +57,7 @@ def _estado_sin_material(g: Grabacion | None) -> str:
     return "grabando"
 
 
-def _estado(k: ContenidoClase | None, ahora: datetime.datetime, g: Grabacion | None = None) -> str:
+def _estado(k: ContenidoClase | None, ahora: datetime.datetime, plazo: datetime.timedelta, g: Grabacion | None = None) -> str:
     if k is None or (g is not None and g.estado in (EstadoGrabacion.ERROR, EstadoGrabacion.PROCESANDO) and not k.resumen):
         # Sin material todavía; o falló/está regenerándose la generación y solo se conserva la transcripción.
         return _estado_sin_material(g)
@@ -64,7 +65,7 @@ def _estado(k: ContenidoClase | None, ahora: datetime.datetime, g: Grabacion | N
         return "publicada"
     if k.retirado:
         return "retirada"
-    return "provisoria" if ahora >= (k.generado_en or ahora) + _plazo() else "por_aprobar"
+    return "provisoria" if ahora >= (k.generado_en or ahora) + plazo else "por_aprobar"
 
 
 def _clases_visibles(db: Session, usuario: Usuario) -> Query:
@@ -83,7 +84,7 @@ def _clases_visibles(db: Session, usuario: Usuario) -> Query:
     if rol == RolNombre.PROFESOR:
         consulta = consulta.filter(Bloque.profesor_id == usuario.id)
     elif rol == RolNombre.ALUMNO:
-        provisorio = and_(ContenidoClase.retirado.is_(False), ContenidoClase.generado_en <= ahora_utc() - _plazo())
+        provisorio = and_(ContenidoClase.retirado.is_(False), ContenidoClase.generado_en <= ahora_utc() - _plazo(db.get(Colegio, usuario.colegio_id)))
         consulta = (
             consulta.join(AlumnoCurso, AlumnoCurso.curso_id == Curso.id)
             .filter(AlumnoCurso.usuario_id == usuario.id)
@@ -95,8 +96,9 @@ def _clases_visibles(db: Session, usuario: Usuario) -> Query:
 
 def _resumen(c: Clase) -> dict:
     ahora = ahora_utc()
-    estado = _estado(c.contenido, ahora, c.grabacion)
     b = c.bloque
+    plazo = _plazo(b.curso.colegio)
+    estado = _estado(c.contenido, ahora, plazo, c.grabacion)
     return {
         "id": c.id,
         "bloque_id": c.bloque_id,
@@ -110,7 +112,7 @@ def _resumen(c: Clase) -> dict:
         "profesor_id": b.profesor_id,
         "estado": estado,
         # Cuándo se publicará como provisorio si el profesor no la revisa (solo mientras espera revisión).
-        "revision_vence": _utc((c.contenido.generado_en or ahora) + _plazo()) if estado == "por_aprobar" else None,
+        "revision_vence": _utc((c.contenido.generado_en or ahora) + plazo) if estado == "por_aprobar" else None,
         "prioritaria": c.prioritaria,
     }
 

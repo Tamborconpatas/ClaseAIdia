@@ -540,6 +540,72 @@ class AjusteFotosOut(BaseModel):
     descarga: DescargaOut | None = None
 
 
+class AjusteClasesEditar(BaseModel):
+    """Las dos llaves son obligatorias; `null` = volver al valor predeterminado. El rango lo valida el servicio, con un mensaje claro."""
+
+    horas_revision: int | None
+    minutos_corte: int | None
+
+
+class AjusteClasesOut(BaseModel):
+    """Cómo se tratan las clases en este colegio: cuánto tiene el profesor para revisar el material y cuándo se corta sola la grabación."""
+
+    horas_revision: int
+    minutos_corte: int
+    horas_revision_por_defecto: int
+    minutos_corte_por_defecto: int
+    rango_horas_revision: list[int]
+    rango_minutos_corte: list[int]
+
+
+class AjusteRespaldosEditar(BaseModel):
+    carpeta: str | None
+    dias: int | None
+
+
+class AjusteRespaldosOut(BaseModel):
+    """El respaldo diario de la base: dónde se guarda y cuántos días de copias se conservan (vale para todo el servidor)."""
+
+    carpeta: str
+    carpeta_por_defecto: str
+    dias: int
+    dias_por_defecto: int
+    rango_dias: list[int]
+
+
+class OpcionModeloOut(BaseModel):
+    """Un modelo de los que el UTP puede elegir para los resúmenes. `instalado`: None si Ollama no responde y no se sabe."""
+
+    modelo: str
+    etiqueta: str
+    nota: str
+    tamano_gb: float | None = None
+    instalado: bool | None
+    descarga: DescargaOut | None = None
+
+
+class AjusteModeloEditar(BaseModel):
+    modelo: str  # uno de los que se ofrecen, o «auto»
+
+
+class AjusteModeloDescargar(BaseModel):
+    modelo: str | None = None  # sin él, el que se está usando
+
+
+class AjusteModeloTextoOut(BaseModel):
+    """El modelo que escribe los resúmenes: sin él ninguna clase se resume. El UTP lo deja listo desde la aplicación, sin una consola."""
+
+    modelo: str
+    ollama_responde: bool
+    modelo_instalado: bool
+    memoria_total_gb: float | None
+    memoria_minima_gb: float
+    tamano_gb: float | None = None
+    descarga: DescargaOut | None = None
+    eleccion: str = "auto"  # lo que eligió el UTP, o «auto» si no eligió
+    opciones: list[OpcionModeloOut] = []
+
+
 # --- Estado del servidor (panel del UTP) ---------------------------------------------------------
 
 
@@ -583,6 +649,7 @@ class EstadoOllamaOut(BaseModel):
     responde: bool
     modelo_texto: str
     modelo_texto_instalado: bool
+    modelo_de_respaldo: str | None = None  # con cuál se resume mientras falta el modelo (None: con ninguno)
 
 
 class EstadoDiscoOut(BaseModel):

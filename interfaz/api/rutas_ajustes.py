@@ -11,9 +11,13 @@ from sqlalchemy.orm import Session
 from infraestructura.basedatos import obtener_db
 from infraestructura.modelos_orm import Colegio, RolNombre, Usuario
 from interfaz.api.dependencias_auth import requiere_rol
-from interfaz.api.esquemas import AjusteFotosEditar, AjusteFotosOut
+from interfaz.api.esquemas import (
+    AjusteClasesEditar, AjusteClasesOut, AjusteFotosEditar, AjusteFotosOut, AjusteModeloDescargar, AjusteModeloEditar, AjusteModeloTextoOut,
+    AjusteRespaldosEditar, AjusteRespaldosOut,
+)
+from nucleo import modelos_ia
 from nucleo.memoria import memoria_total_gb
-from servicios import servicio_modelos, servicio_pizarra
+from servicios import servicio_ajustes as sa, servicio_modelos, servicio_pizarra, servicio_respaldo
 
 router = APIRouter(prefix="/ajustes", tags=["ajustes"])
 utp_actual = requiere_rol(RolNombre.UTP)
@@ -60,3 +64,96 @@ def descargar_modelo(db: Session = Depends(obtener_db), utp: Usuario = Depends(u
     esta = servicio_modelos.instalado(modelo, url)  # una sola pregunta a Ollama por pedido
     servicio_modelos.iniciar_descarga(modelo, url, ya_esta=bool(esta))
     return _estado_fotos(db, utp, esta=bool(esta) if esta is not None else None)
+
+
+def _estado_texto(db: Session, nombres: set[str] | None) -> dict:
+    """`nombres`: los modelos que tiene Ollama (None si no responde). Una sola pregunta a Ollama alcanza para todas las filas."""
+    modelo = modelos_ia.modelo_a_instalar(sa.modelo_de_resumen(db))
+    esta = lambda m: None if nombres is None else servicio_modelos.esta_en(m, nombres)  # noqa: E731
+    total = memoria_total_gb()
+    return {
+        "modelo": modelo,
+        "ollama_responde": nombres is not None,
+        "modelo_instalado": bool(esta(modelo)),
+        "memoria_total_gb": round(total, 1) if total else None,
+        "memoria_minima_gb": modelos_ia.MEMORIA_MINIMA_GB,
+        "tamano_gb": modelos_ia.TAMANO_GB.get(modelo),
+        "descarga": servicio_modelos.estado_de_descarga(modelo),
+        "eleccion": sa.modelo_elegido(db) or "auto",
+        "opciones": [
+            {"modelo": m, "etiqueta": etiqueta, "nota": nota, "tamano_gb": modelos_ia.TAMANO_GB.get(m), "instalado": esta(m), "descarga": servicio_modelos.estado_de_descarga(m)}
+            for m, etiqueta, nota in modelos_ia.ELEGIBLES
+        ],
+    }
+
+
+@router.get("/modelo-texto", response_model=AjusteModeloTextoOut)
+def ver_modelo_texto(db: Session = Depends(obtener_db), _: Usuario = Depends(utp_actual)):
+    return _estado_texto(db, servicio_modelos.modelos_instalados(servicio_pizarra.url_ollama()))
+
+
+@router.put("/modelo-texto", response_model=AjusteModeloTextoOut)
+def elegir_modelo_texto(datos: AjusteModeloEditar, db: Session = Depends(obtener_db), _: Usuario = Depends(utp_actual)):
+    """Qué modelo escribe los resúmenes: uno de los que la aplicación ofrece, o `auto` para que decida sola. Solo se puede elegir uno que ya esté
+    descargado. Vale desde la próxima clase que se procese (la que está en marcha termina con el que empezó)."""
+    nombres = servicio_modelos.modelos_instalados(servicio_pizarra.url_ollama())
+    instalado = None if nombres is None else servicio_modelos.esta_en(datos.modelo, nombres)
+    sa.cambiar_modelo_de_resumen(db, datos.modelo, instalado)
+    return _estado_texto(db, nombres)
+
+
+@router.post("/modelo-texto/descargar", response_model=AjusteModeloTextoOut)
+def descargar_modelo_texto(datos: AjusteModeloDescargar | None = None, db: Session = Depends(obtener_db), _: Usuario = Depends(utp_actual)):
+    """Baja un modelo (necesita internet una vez): el que se pide, que debe ser de los que la aplicación ofrece, o el que se está usando. Se consulta
+    el avance con el GET."""
+    url = servicio_pizarra.url_ollama()
+    modelo = datos.modelo if datos and datos.modelo else modelos_ia.modelo_a_instalar(sa.modelo_de_resumen(db))
+    if modelo not in {m for m, _e, _n in modelos_ia.ELEGIBLES} | {modelos_ia.modelo_a_instalar(sa.modelo_de_resumen(db))}:
+        raise sa.ErrorAjuste("Ese modelo no está entre los que la aplicación ofrece.")
+    nombres = servicio_modelos.modelos_instalados(url)  # una sola pregunta a Ollama por pedido
+    servicio_modelos.iniciar_descarga(modelo, url, ya_esta=bool(nombres is not None and servicio_modelos.esta_en(modelo, nombres)))
+    return _estado_texto(db, nombres)
+
+
+# --- Cómo se tratan las clases (por colegio) y el respaldo diario (de todo el servidor) ---
+
+
+def _clases(colegio: Colegio) -> dict:
+    return {
+        "horas_revision": sa.horas_de_revision(colegio), "minutos_corte": sa.minutos_de_corte(colegio),
+        "horas_revision_por_defecto": sa.HORAS_REVISION_POR_DEFECTO, "minutos_corte_por_defecto": sa.MINUTOS_CORTE_POR_DEFECTO,
+        "rango_horas_revision": list(sa.RANGO_HORAS_REVISION), "rango_minutos_corte": list(sa.RANGO_MINUTOS_CORTE),
+    }
+
+
+@router.get("/clases", response_model=AjusteClasesOut)
+def ver_clases(db: Session = Depends(obtener_db), utp: Usuario = Depends(utp_actual)):
+    return _clases(db.get(Colegio, utp.colegio_id))
+
+
+@router.put("/clases", response_model=AjusteClasesOut)
+def cambiar_clases(datos: AjusteClasesEditar, db: Session = Depends(obtener_db), utp: Usuario = Depends(utp_actual)):
+    """Plazo de revisión del profesor y minutos del corte automático, de este colegio. `null` = el valor predeterminado. Vale de inmediato."""
+    colegio = db.get(Colegio, utp.colegio_id)
+    sa.cambiar_ajustes_del_colegio(db, colegio, datos.horas_revision, datos.minutos_corte)
+    return _clases(colegio)
+
+
+def _respaldos(db: Session) -> dict:
+    return {
+        "carpeta": str(sa.carpeta_de_respaldos(db).resolve()), "carpeta_por_defecto": str(servicio_respaldo.carpeta_de_respaldos().resolve()),
+        "dias": sa.dias_de_respaldo(db), "dias_por_defecto": sa.DIAS_RESPALDO_POR_DEFECTO, "rango_dias": list(sa.RANGO_DIAS_RESPALDO),
+    }
+
+
+@router.get("/respaldos", response_model=AjusteRespaldosOut)
+def ver_respaldos(db: Session = Depends(obtener_db), _: Usuario = Depends(utp_actual)):
+    return _respaldos(db)
+
+
+@router.put("/respaldos", response_model=AjusteRespaldosOut)
+def cambiar_respaldos(datos: AjusteRespaldosEditar, db: Session = Depends(obtener_db), _: Usuario = Depends(utp_actual)):
+    """Carpeta y días del respaldo diario. Vale para todo el servidor (la base es una sola) desde el próximo respaldo. La carpeta se prueba
+    escribiendo en ella antes de guardar. `null` = el valor predeterminado."""
+    sa.cambiar_ajustes_de_respaldo(db, datos.carpeta, datos.dias)
+    return _respaldos(db)

@@ -9,17 +9,18 @@ import os
 import re
 
 from nucleo import configuracion as app_config
-from nucleo import limpieza_texto
+from nucleo import limpieza_texto, modelos_ia
 from nucleo.memoria import memoria_libre_gb
 from infraestructura import cliente_ollama as ollama_client
 from infraestructura import hardware
+from servicios.servicio_modelos import esta_en as _esta_en, modelos_instalados as _modelos_instalados
 
 # Modelos que elige la aplicación cuando "ollama_model" está en "auto". Medido en QA.md («Clase completa en solo CPU»):
 # en CPU, Gemma 4 E2B hace una clase de 62 min en ~9 min (Llama 3B, 24) y ~4,6 GB de memoria; en GPU se queda Llama 3B.
 # El mínimo (Llama 1B, ~2 GB) solo entra cuando no hay memoria libre para los otros; con él no se genera el mapa conceptual.
-_OLLAMA_MODEL_CPU = "gemma4:e2b"
-_OLLAMA_MODEL_GPU = "llama3.2:3b"
-_OLLAMA_MODEL_MINIMO = "llama3.2:1b"
+_OLLAMA_MODEL_CPU = modelos_ia.MODELO_CPU
+_OLLAMA_MODEL_GPU = modelos_ia.MODELO_GPU
+_OLLAMA_MODEL_MINIMO = modelos_ia.MODELO_MINIMO
 
 
 def _resolve_ollama_model(configured: str) -> str:
@@ -46,6 +47,28 @@ def _modelo_que_cabe(modelo: str, es_auto: bool) -> str:
         print(f"[study_material] AVISO: {modelo} necesita ~{necesita:.0f} GB y hay {libre:.1f} GB libres: se usa {_OLLAMA_MODEL_MINIMO}.")
         return _OLLAMA_MODEL_MINIMO
     return modelo
+
+def _modelo_a_usar(ollama_url: str) -> str:
+    """El modelo con el que se escribe el resumen: el que corresponde (lo que eligió el UTP o, si no, lo que la aplicación decide según el equipo)
+    pero siempre uno que esté descargado. Un resumen con otro de los modelos de la aplicación es mejor que una clase sin resumen:
+    - si el UTP eligió uno en «Ajustes» y ya no está, se usa el automático mientras tanto (el panel «Estado» avisa);
+    - si el automático (que en un equipo con GPU es otro que en uno sin ella) no está pero otro de la aplicación sí, se usa ese.
+    Un modelo que fijó quien administra el servidor se respeta tal cual. Si Ollama no responde no se puede saber: se deja el que corresponde
+    (falla con el motivo de siempre y se reintenta sola)."""
+    configurado = modelos_ia.configurado()
+    elegido_por_el_utp = os.environ.get(modelos_ia.VARIABLE_DEL_TRABAJADOR)
+    nombres = _modelos_instalados(ollama_url)  # None: Ollama no responde y no se sabe
+    if nombres is not None and elegido_por_el_utp and not _esta_en(elegido_por_el_utp, nombres):
+        print(f"[study_material] AVISO: el modelo elegido en «Ajustes» ({elegido_por_el_utp}) no está instalado: se usa el automático.")
+        configurado = "auto"
+    modelo = _modelo_que_cabe(_resolve_ollama_model(configurado), es_auto=configurado == "auto")
+    if configurado == "auto" and nombres is not None and not _esta_en(modelo, nombres):
+        for otro in (_OLLAMA_MODEL_CPU, _OLLAMA_MODEL_GPU, _OLLAMA_MODEL_MINIMO):
+            if _esta_en(otro, nombres):
+                print(f"[study_material] AVISO: {modelo} no está instalado: se usa {otro}, que sí lo está.")
+                return otro
+    return modelo
+
 
 # Regex tolerante en vez de string exacto: modelos locales pequeños no
 # siempre reproducen los marcadores al pie de la letra.
@@ -293,10 +316,9 @@ def generate_study_material(text: str, asignatura: str | None = None, pizarra: s
 
     text = limpieza_texto.limpiar_transcripcion(text)
 
-    configurado = app_config.get_param("ollama_model")
-    model_name = _modelo_que_cabe(_resolve_ollama_model(configurado), es_auto=configurado == "auto")
-    max_tokens = int(app_config.get_param("ollama_max_tokens"))
     ollama_url = os.environ.get("OLLAMA_URL") or app_config.get_param("ollama_url")
+    model_name = _modelo_a_usar(ollama_url)
+    max_tokens = int(app_config.get_param("ollama_max_tokens"))
     chunk_chars = int(app_config.get_param("ollama_chunk_chars"))
 
     chunks = _split_into_chunks(text, max_chars=chunk_chars)
@@ -401,8 +423,7 @@ def _limpiar_relaciones(crudas) -> list[dict]:
 def generar_mapa_conceptual(resumen: str, puntos_clave: str, asignatura: str | None = None) -> list[dict]:
     """Relaciones entre los conceptos de la clase, a partir del material ya generado (más corto que la transcripción).
     Devuelve [] si el modelo es muy pequeño, si falla o si no salen relaciones suficientes: el mapa es un extra."""
-    configurado = app_config.get_param("ollama_model")
-    modelo = _modelo_que_cabe(_resolve_ollama_model(configurado), es_auto=configurado == "auto")
+    modelo = _modelo_a_usar(os.environ.get("OLLAMA_URL") or app_config.get_param("ollama_url"))
     if modelo == _OLLAMA_MODEL_MINIMO:
         return []
     texto = f"{resumen or ''}\n\n{puntos_clave or ''}".strip()[:6000]

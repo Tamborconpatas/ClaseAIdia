@@ -44,11 +44,40 @@ def test_el_servidor_respalda_la_base_al_vigilar(tmp_path, monkeypatch):
     from infraestructura import basedatos
     from interfaz.api import aplicacion
 
+    from sqlalchemy.orm import Session
+
+    from infraestructura.modelos_orm import Base
+
     origen = _base(tmp_path / "escuela.db")
-    monkeypatch.setattr(basedatos, "engine", create_engine(f"sqlite:///{origen}"))
+    motor = create_engine(f"sqlite:///{origen}")
+    Base.metadata.create_all(motor)  # la tabla de ajustes del servidor
+    monkeypatch.setattr(basedatos, "engine", motor)
     monkeypatch.setenv("CARPETA_RESPALDOS", str(tmp_path / "resp"))
-    aplicacion._respaldar()
+    with Session(motor) as db:
+        aplicacion._respaldar(db)
     assert len(list((tmp_path / "resp").glob("escuela-*.db"))) == 1
+
+
+def test_el_respaldo_va_a_la_carpeta_y_con_los_dias_que_fijo_el_utp(tmp_path, monkeypatch):
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session
+
+    from infraestructura import basedatos
+    from infraestructura.modelos_orm import Base
+    from interfaz.api import aplicacion
+    from servicios import servicio_ajustes
+
+    origen = _base(tmp_path / "escuela.db")
+    motor = create_engine(f"sqlite:///{origen}")
+    Base.metadata.create_all(motor)
+    monkeypatch.setattr(basedatos, "engine", motor)
+    monkeypatch.setenv("CARPETA_RESPALDOS", str(tmp_path / "de_entorno"))
+    elegida = tmp_path / "elegida"
+    with Session(motor) as db:
+        servicio_ajustes.cambiar_ajustes_de_respaldo(db, str(elegida), 3)
+        aplicacion._respaldar(db)
+    assert len(list(elegida.glob("escuela-*.db"))) == 1
+    assert not (tmp_path / "de_entorno").exists()  # la variable de entorno ya no manda
 
 
 def test_cada_pasada_del_vigilante_intenta_respaldar(monkeypatch):
@@ -60,7 +89,7 @@ def test_cada_pasada_del_vigilante_intenta_respaldar(monkeypatch):
     llamadas = []
     monkeypatch.setattr(aplicacion, "INTERVALO_VIGILANTE_S", 0.01)
     monkeypatch.setattr(aplicacion.servicio_grabacion, "vigilar", lambda *a: None)
-    monkeypatch.setattr(aplicacion, "_respaldar", lambda: llamadas.append(1))
+    monkeypatch.setattr(aplicacion, "_respaldar", lambda db: llamadas.append(1))
 
     async def correr():
         t = asyncio.create_task(aplicacion._vigilante(contextlib.nullcontext))

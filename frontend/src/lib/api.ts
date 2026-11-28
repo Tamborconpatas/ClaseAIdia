@@ -154,6 +154,45 @@ export interface AjusteFotos {
   memoria_recomendada_gb: number
   descarga: DescargaModelo | null
 }
+/** El modelo que escribe los resúmenes: sin él ninguna clase se resume. El UTP lo deja listo sin una consola. */
+export interface OpcionModelo {
+  modelo: string
+  etiqueta: string
+  nota: string
+  tamano_gb: number | null
+  /** null: Ollama no responde y no se sabe. */
+  instalado: boolean | null
+  descarga: DescargaModelo | null
+}
+export interface AjusteModeloTexto {
+  modelo: string
+  ollama_responde: boolean
+  modelo_instalado: boolean
+  memoria_total_gb: number | null
+  memoria_minima_gb: number
+  tamano_gb: number | null
+  descarga: DescargaModelo | null
+  /** Lo que eligió el UTP, o «auto» si no eligió. */
+  eleccion: string
+  opciones: OpcionModelo[]
+}
+/** Cómo se tratan las clases en el colegio. `null` al guardar = volver al valor predeterminado. */
+export interface AjusteClases {
+  horas_revision: number
+  minutos_corte: number
+  horas_revision_por_defecto: number
+  minutos_corte_por_defecto: number
+  rango_horas_revision: [number, number]
+  rango_minutos_corte: [number, number]
+}
+/** El respaldo diario de la base: vale para todo el servidor. */
+export interface AjusteRespaldos {
+  carpeta: string
+  carpeta_por_defecto: string
+  dias: number
+  dias_por_defecto: number
+  rango_dias: [number, number]
+}
 /** Panel de estado del servidor (solo el UTP). Las alertas ya vienen redactadas por el servidor. */
 interface ClaseEnEstado {
   clase_id: number
@@ -172,7 +211,7 @@ export interface EstadoServidor {
     con_error: (ClaseEnEstado & { error: string | null })[]
     terminadas_24h: number
   }
-  ollama: { responde: boolean; modelo_texto: string; modelo_texto_instalado: boolean }
+  ollama: { responde: boolean; modelo_texto: string; modelo_texto_instalado: boolean; modelo_de_respaldo?: string | null }
   disco: { libre_gb: number; total_gb: number; audio_temporal_mb: number; fotos_temporales_mb: number; base_de_datos_mb: number | null }
   respaldos: { carpeta: string; cantidad: number; mb: number; ultimo: string | null; hace_dias: number | null; en_el_mismo_disco: boolean | null }
   memoria: { total_gb: number | null; libre_gb: number | null }

@@ -29,6 +29,7 @@ from interfaz.api import limites, rutas_ajustes, rutas_auth, rutas_bloques, ruta
 from interfaz.api.aplicacion import crear_app
 from nucleo.limitador import LimitadorDeFallos
 from servicios import servicio_grabacion as sg
+from servicios import servicio_modelos
 
 CLAVE = "clave-segura-123"
 WEBM = b"\x1a\x45\xdf\xa3" + b"\x00" * 200
@@ -97,6 +98,7 @@ def m(cliente, colegio_id, headers_utp, tmp_path, monkeypatch):
     """Un colegio con UTP, una profesora (Ana), un alumno (Luis), un curso, un bloque, una clase con material y una
     grabación en curso; más un segundo colegio con su UTP. Con límites altos: aquí se prueba la API, no el freno por IP."""
     monkeypatch.setattr(limites, "por_ip", LimitadorDeFallos(10**9, 600))
+    monkeypatch.setattr(servicio_modelos, "modelos_instalados", lambda url: type("T", (set,), {"__contains__": lambda s, x: True})())  # ninguna barrida de rutas toca el Ollama real ni arranca una descarga
     monkeypatch.setattr(sg, "ahora_local", lambda: LUNES_0930)
     monkeypatch.setattr(sg, "ahora_utc", lambda: datetime.datetime(2026, 9, 28, 12, 30))
     monkeypatch.setattr(sg, "CARPETA_AUDIO", tmp_path / "audio")
@@ -493,7 +495,7 @@ def test_el_segundo_colegio_no_ve_ni_toca_nada_del_primero(m):
             continue
         url = _llenar(r["ruta"], m)
         resp = m["c"].request(r["metodo"], url, headers=m["otro_utp"], json={"nombre": "x", "texto": "x", "relaciones": [], "resumen": "x", "puntos_clave": "x", "hoja_repaso": "x", "tarjetas": [], "activada": True})
-        if resp.status_code < 300 and r["ruta"] not in ("/auth/me", "/auth/cerrar-sesiones", "/cursos", "/clases", "/usuarios", "/estado", "/ajustes/fotos-pizarra") and r["ruta"] not in ("/cursos/{curso_id}/bloques",):
+        if resp.status_code < 300 and r["ruta"] not in ("/auth/me", "/auth/cerrar-sesiones", "/cursos", "/clases", "/usuarios", "/estado", "/ajustes/fotos-pizarra", "/ajustes/modelo-texto", "/ajustes/clases", "/ajustes/respaldos") and r["ruta"] not in ("/cursos/{curso_id}/bloques",):
             fallas.append(f"{ID(r)} -> {resp.status_code} {resp.text[:100]}")
         if resp.status_code < 300 and r["metodo"] == "GET" and r["ruta"] in ("/cursos", "/clases", "/usuarios"):
             assert all(x.get("colegio_id", m["otro_colegio_id"]) == m["otro_colegio_id"] for x in resp.json()), ID(r)

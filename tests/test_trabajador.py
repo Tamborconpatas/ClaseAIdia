@@ -404,3 +404,24 @@ def test_el_audio_de_una_sesion_que_nadie_procesa_ni_graba_se_borra_al_arrancar(
 def test_se_sabe_si_un_proceso_esta_vivo():
     assert sg._proceso_vivo(os.getpid()) is True
     assert sg._proceso_vivo(2_000_000_000) is False
+
+
+def _modelo_que_ve_el_trabajador(s, monkeypatch, tmp_path, elegido):
+    """Lanza un trabajador de mentira que anota la variable de entorno del modelo, y devuelve lo que vio."""
+    from nucleo import modelos_ia
+    from servicios import servicio_ajustes
+
+    salida = tmp_path / "modelo_visto.txt"
+    _con_hijo(monkeypatch, f"import os, pathlib; pathlib.Path({str(salida)!r}).write_text(os.environ.get({modelos_ia.VARIABLE_DEL_TRABAJADOR!r}, '<ausente>'))")
+    if elegido:
+        servicio_ajustes.cambiar_modelo_de_resumen(s["db"], elegido, True)
+    sg._trabajar_aparte("clase", s["id"], s["fabrica"])
+    return salida.read_text()
+
+
+def test_el_servidor_le_pasa_al_trabajador_el_modelo_que_eligio_el_utp(sesion_procesando, monkeypatch, tmp_path):
+    assert _modelo_que_ve_el_trabajador(sesion_procesando, monkeypatch, tmp_path, "llama3.2:1b") == "llama3.2:1b"
+
+
+def test_si_el_utp_no_eligio_el_trabajador_recibe_la_variable_vacia_y_decide_la_aplicacion(sesion_procesando, monkeypatch, tmp_path):
+    assert _modelo_que_ve_el_trabajador(sesion_procesando, monkeypatch, tmp_path, None) == ""

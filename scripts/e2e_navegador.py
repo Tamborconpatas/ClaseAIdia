@@ -372,6 +372,25 @@ def utp(navegador) -> None:
     pg.context.close()
 
 
+def ajustes_modelo_texto(navegador) -> None:
+    print("\n[8b] UTP: «Ajustes» muestra el modelo que escribe los resúmenes y se baja desde la app (sin consola)")
+    pg = navegador.new_context(viewport={"width": 1280, "height": 1000}).new_page()
+    paso(pg, "Entra el UTP y abre «Ajustes»")
+    entrar_staff(pg, "11111111-1")
+    ir(pg, "Ajustes").click()
+    seccion = pg.locator("section[aria-labelledby=titulo-resumenes]")
+    seccion.wait_for()
+    pg.wait_for_timeout(800)
+    paso(pg, "Ve si el modelo de resúmenes está instalado en este equipo, y cuánto pesa si falta")
+    texto = seccion.inner_text()
+    comprobar("dice si el modelo de resúmenes está instalado o cuánto pesa bajarlo", "Instalado." in texto or "Falta descargarlo" in texto, texto[:140])
+    comprobar("no manda a una consola ni a editar archivos", not re.search(r"ollama pull|consola|\.env", texto, re.I), texto[:140])
+    if "Falta descargarlo" in texto:
+        comprobar("ofrece el botón para bajarlo", pg.get_by_role("button", name="Descargar el modelo de resúmenes").is_visible())
+    paso(pg, "Revisa la accesibilidad de la pantalla")
+    axe(pg, "Ajustes con el modelo de resúmenes")
+
+
 def llamar(metodo: str, ruta: str, cuerpo=None, token: str | None = None):
     """Llamada directa a la API (para preparar datos que la pantalla no crea sola)."""
     cabeceras = {"Content-Type": "application/json", **({"Authorization": f"Bearer {token}"} if token else {})}
@@ -677,7 +696,7 @@ def main() -> int:
             if args.telefono:
                 print("   (en el teléfono no corren «accesibilidad» ni «UTP»: dependen de cambiar el tema y de teclear números; ya pasan en --movil)")
             else:
-                recorridos += [lambda: accesibilidad(navegador), lambda: utp(navegador)]
+                recorridos += [lambda: accesibilidad(navegador), lambda: utp(navegador), lambda: ajustes_modelo_texto(navegador)]
             if DISPOSITIVO:
                 if motor_nombre != "chromium":  # el micrófono simulado es de Chromium
                     recorridos = [r for r in recorridos if r.__code__.co_names.count("grabar_clase_doble") == 0]
