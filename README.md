@@ -110,6 +110,8 @@ Medidos con el servidor y el trabajador reales procesando voz de una clase (`scr
 
 Lo que usa la propia aplicación: **5,8 GB como máximo** al escribir el resumen (modelo 4,7 GB + trabajador 0,9 GB + servidor 0,2 GB), y **1,8 GB** mientras transcribe; con una clase larga el modelo llega a 4,85 GB (≈ 6 GB en total). Todo lo demás es del sistema operativo: en Windows se estima en 3–4 GB en reposo (**no se midió**), de ahí los 12 GB. La app mide la memoria libre antes de cada paso: si no hay ~5 GB para el modelo por defecto, baja sola al liviano, y si no hay para la pizarra, salta las fotos y procesa la clase igual.
 
+**Tiempo en un equipo lento (medido, `QA.md` «La cola en un equipo lento»)**: con 4 núcleos lentos, 12 GB y sin GPU, una clase de **90 minutos tarda unos 60** en procesarse (17,7 transcribiendo y 42,6 resumiendo), con un pico de memoria de 6,3 GB; una de 45 min, unos 31. Mientras el PC no sea más de ~1,5 veces más lento que ese, procesa las clases en el tiempo en que se dictan; si lo es, se forma atraso que se vacía de noche (ninguna clase se pierde). Es una aproximación con núcleos de un procesador reciente, no un PC escolar real.
+
 **No incluido en esas cifras**: el túnel de acceso remoto, un navegador abierto en el mismo PC y procesar dos clases a la vez (`PROCESAMIENTOS_SIMULTANEOS` mayor que 1 suma ~5 GB por clase).
 
 ### A. Núcleo: transcripción y resumen (obligatorio)

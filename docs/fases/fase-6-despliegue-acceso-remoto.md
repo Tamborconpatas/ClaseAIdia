@@ -1,5 +1,7 @@
 # Fase 6 — Despliegue y acceso remoto
 
+**Estado (2026-11-27): en curso.** Hechos: la seguridad previa al túnel (revocación de sesiones, límites de intentos, documentación de la API apagada, auditorías) y Docker. Faltan: el empaquetado portable (PyInstaller), el túnel de acceso remoto (con `CF-Connecting-IP` para el límite de intentos), la réplica Turso/libSQL, el CORS de producción y la configuración del PC (sin suspensión).
+
 Última fase antes del piloto. Requiere que las Fases 1-5 estén funcionando en dev/local — esta fase es sobre empaquetar y exponer lo ya construido, no sobre nueva funcionalidad de producto.
 
 ## Qué debe tener

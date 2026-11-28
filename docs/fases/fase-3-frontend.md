@@ -1,6 +1,6 @@
 # Fase 3 — Frontend (React + TypeScript + Vite + Tailwind + shadcn/ui)
 
-**Estado (2026-10-01): completa y probada en navegador (PC y marco de teléfono).** Solo falta algo que no depende del código: la prueba en un teléfono físico.
+**Estado (2026-11-27): completa y probada en navegador (PC, marco de teléfono y, desde noviembre de 2026, dos teléfonos Android reales con `scripts/e2e_navegador.py --telefono`).** Falta algo que no depende del código: probar con lectores de pantalla reales (NVDA, VoiceOver, TalkBack).
 
 Requisito previo: Fase 2 (login y JWT funcionando en el backend). El código vive en `frontend/` (ver `frontend/README.md` para correrlo).
 
@@ -54,4 +54,4 @@ Detalle, hallazgos y mediciones en `QA.md` (entradas del 2026-10-01).
 - **Frontend, en navegador** (PC y un marco del tamaño de un teléfono vertical 390 × 780 y horizontal 820 × 380): login de los tres roles, primer arranque (validaciones, alta y cierre automático), horario por rol, jornada larga, editor del horario completo (editar, rechazo por cruce, eliminar, crear con profesor), clases, aprobar y retirar (también con toques en el marco de teléfono), unirse con QR, y el QR decodificado.
 - **Tests del frontend**: `npm test` (vitest, 15 pruebas) cubre RUT, PIN, contraseña y horario, para que el cliente no se desvíe de las reglas del backend. Los componentes se prueban en el navegador, no automáticamente. Además `tsc`, `oxlint` y `npm run build`.
 - **Pantallas nuevas en teléfono** (marco de 390 × 780 px, 2026-10-01): Personal, alumnos y reseteo de PIN, editor de material (incluida una clase "por aprobar", editada y aprobada), páginas legales: sin desbordes, sin botones de menos de 36 px ni campos de letra chica; se corrigieron dos fallos que mostró la revisión (filas de Personal aplastadas, botones "Volver" de 20 px).
-- **Pendiente**: un teléfono físico (teclado, muesca, toques reales).
+- **Hecho (noviembre de 2026)**: dos teléfonos Android reales por USB (Brave): el recorrido automático de inscripción, «Grabar» con micrófono real y la descarga del PDF. **Pendiente**: lectores de pantalla reales y un iPhone.

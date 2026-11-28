@@ -2,7 +2,7 @@
 
 > **Nota (2026-10-07):** el prototipo Gradio que se menciona en este documento se retiró del repositorio (rama `quitar-prototipo-gradio`). El texto de abajo es el registro de cómo se trabajó en esa fase y se deja tal cual.
 
-**Estado (2026-10-01): hecha y probada de punta a punta con voz real, en PC y en marco de teléfono, con el corte automático probado en vivo; falta probarla con un celular y un lavalier reales.** Detalle y mediciones en `QA.md` (secciones «Fase 4»).
+**Estado (2026-10-01): hecha y probada de punta a punta con voz real, en PC y en marco de teléfono, con el corte automático probado en vivo; desde noviembre de 2026 también con dos celulares Android reales (recorrido automático por USB, con micrófono real); falta probarla con un lavalier real, audio de sala con ruido, Safari/iOS y clases de 90 minutos.** Detalle y mediciones en `QA.md` (secciones «Fase 4»).
 
 ## Cómo quedó (decisión del usuario: las dos formas de grabar son válidas)
 
@@ -24,7 +24,7 @@
 - [x] **Fotos de la pizarra** (2026-10-02, extra n.º 1): botón «Foto de la pizarra» en la pantalla de grabar (el celular del profesor sube la foto), lectura con un modelo de visión local (`qwen2.5vl:3b`) después de la clase, texto sumado al material y mostrado al alumno como «De la pizarra» con las fórmulas dibujadas; la imagen se borra apenas se lee. El profesor corrige o quita lo leído sin ver LaTeX ni Mermaid. Probado de punta a punta con el servidor, el trabajador y los modelos reales (ver `QA.md`, «Prueba de punta a punta de las fotos»).
 - [x] **Reintentos automáticos y recuperación sola** (2026-10-02): un fallo del procesamiento se reintenta a los 5, 15 y 45 min conservando el audio solo mientras queden intentos; respaldo diario de la base; Ollama que se levanta solo; scripts de Windows para que el servidor arranque y se recupere sin nadie al teclado.
 - [x] **Panel de estado del UTP** (2026-10-02): pantalla «Estado» (solo lectura, se actualiza cada 10 s) con las clases en proceso, las que fallaron, el estado del equipo (IA, disco, respaldos, memoria, vigilancia) y avisos en palabras de persona; probada con el servidor real y en el navegador (ver `QA.md`).
-- [ ] **Probar con un celular real** (micrófono, Wake Lock, qué hace al bloquearse la pantalla), un lavalier, audio de sala con ruido, Safari/iOS y clases de 90 minutos.
+- [ ] **Probar con un lavalier real, audio de sala con ruido, Safari/iOS, qué hace el celular al bloquearse la pantalla (Wake Lock) y clases de 90 minutos.** Hecho (noviembre de 2026): el celular real graba y controla en dos Android, con micrófono real.
 
 ## Contexto original de la fase
 
