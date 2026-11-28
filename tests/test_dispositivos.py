@@ -94,3 +94,20 @@ def test_el_panel_es_solo_del_utp_y_de_su_colegio(cliente, colegio_id, headers_u
     assert cliente.get("/estado").status_code == 401
     ajeno = cliente.get("/estado", headers=otro_colegio[1]).json()["conexiones"]
     assert [c["nombre"] for c in ajeno["conectados"]] == ["UTP B"] and ajeno["dispositivos_conectados"] == 0
+
+
+def test_dos_pedidos_a_la_vez_con_el_mismo_equipo_nuevo_no_fallan(cliente, colegio_id, monkeypatch):
+    """Al abrir la aplicación un equipo nuevo manda varios pedidos juntos: si otro ya lo creó entre la consulta y la inserción, se usa ese en vez de dar error 500."""
+    import types
+
+    pedido = types.SimpleNamespace(headers={"x-dispositivo": CODIGO_A, "user-agent": PIXEL})
+    with cliente.sesion() as db:
+        db.add(Dispositivo(colegio_id=colegio_id, codigo=CODIGO_A, resumen="viejo", ultima_vez=datetime.datetime(2026, 1, 1)))
+        db.commit()
+        buscar = sc._buscar
+        llamadas = []
+        monkeypatch.setattr(sc, "_buscar", lambda *a: None if not llamadas.append(1) and len(llamadas) == 1 else buscar(*a))  # la primera consulta «no lo ve»: la carrera
+        d = sc.dispositivo_de(db, colegio_id, pedido)
+        assert d is not None and d.resumen == "Teléfono · Android · Chrome"  # se actualizó el que ya existía
+        db.commit()
+        assert db.query(Dispositivo).filter_by(colegio_id=colegio_id, codigo=CODIGO_A).count() == 1

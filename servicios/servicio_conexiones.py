@@ -14,6 +14,7 @@ Es el rastro que permite ubicar de dónde salió una cuenta con un nombre indebi
 import datetime
 import re
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from infraestructura.modelos_orm import AlumnoCurso, Dispositivo, Usuario
@@ -50,6 +51,10 @@ def codigo_de(request) -> str | None:
     return valor if _CODIGO.fullmatch(valor) else None
 
 
+def _buscar(db: Session, colegio_id: int, codigo: str) -> Dispositivo | None:
+    return db.query(Dispositivo).filter_by(colegio_id=colegio_id, codigo=codigo).first()
+
+
 def dispositivo_de(db: Session, colegio_id: int, request, ahora: datetime.datetime | None = None) -> Dispositivo | None:
     """El dispositivo de esta petición (se crea la primera vez). None si el navegador no mandó su código."""
     codigo = codigo_de(request)
@@ -57,13 +62,19 @@ def dispositivo_de(db: Session, colegio_id: int, request, ahora: datetime.dateti
         return None
     ahora = ahora or ahora_utc()
     resumen = resumen_dispositivo(request.headers.get("user-agent"))
-    d = db.query(Dispositivo).filter_by(colegio_id=colegio_id, codigo=codigo).first()
+    d = _buscar(db, colegio_id, codigo)
     if d is None:
-        d = Dispositivo(colegio_id=colegio_id, codigo=codigo, resumen=resumen, ultima_vez=ahora)
-        db.add(d)
-        db.flush()
-    else:
-        d.resumen, d.ultima_vez = resumen, ahora
+        # Un equipo nuevo manda varios pedidos a la vez al abrir la aplicación: si otro lo creó justo ahora, este usa el que ya existe en vez de fallar
+        # (el índice único lo impide, y sin esto el primer ingreso podía terminar en error 500).
+        try:
+            with db.begin_nested():
+                d = Dispositivo(colegio_id=colegio_id, codigo=codigo, resumen=resumen, ultima_vez=ahora)
+                db.add(d)
+                db.flush()
+            return d
+        except IntegrityError:
+            d = _buscar(db, colegio_id, codigo)
+    d.resumen, d.ultima_vez = resumen, ahora
     return d
 
 
