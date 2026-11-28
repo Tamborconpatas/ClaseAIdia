@@ -25,7 +25,7 @@ from fastapi.testclient import TestClient
 
 from infraestructura import seguridad
 from infraestructura.modelos_orm import Base, Clase, ContenidoClase, RolNombre, Usuario
-from interfaz.api import limites, rutas_ajustes, rutas_auth, rutas_bloques, rutas_clases, rutas_colegios, rutas_cursos, rutas_estado, rutas_grabaciones, rutas_usuarios
+from interfaz.api import limites, rutas_ajustes, rutas_auth, rutas_bloques, rutas_cierre_anio, rutas_clases, rutas_colegios, rutas_cursos, rutas_estado, rutas_grabaciones, rutas_usuarios
 from interfaz.api.aplicacion import crear_app
 from nucleo.limitador import LimitadorDeFallos
 from servicios import servicio_grabacion as sg
@@ -38,7 +38,7 @@ LUNES_0930 = datetime.datetime(2026, 9, 28, 9, 30)
 
 # --- Inventario de rutas -----------------------------------------------------------------------------------------------
 
-MODULOS = (rutas_ajustes, rutas_auth, rutas_bloques, rutas_clases, rutas_colegios, rutas_cursos, rutas_estado, rutas_grabaciones, rutas_usuarios)
+MODULOS = (rutas_ajustes, rutas_auth, rutas_bloques, rutas_cierre_anio, rutas_clases, rutas_colegios, rutas_cursos, rutas_estado, rutas_grabaciones, rutas_usuarios)
 PUBLICAS = {
     ("GET", "/auth/estado"), ("POST", "/auth/setup"), ("POST", "/auth/login/staff"), ("POST", "/auth/login/alumno"),
     ("POST", "/auth/restablecer-pin"), ("POST", "/auth/restablecer-password"), ("POST", "/cursos/unirse"), ("GET", "/salud"),
@@ -495,7 +495,7 @@ def test_el_segundo_colegio_no_ve_ni_toca_nada_del_primero(m):
             continue
         url = _llenar(r["ruta"], m)
         resp = m["c"].request(r["metodo"], url, headers=m["otro_utp"], json={"nombre": "x", "texto": "x", "relaciones": [], "resumen": "x", "puntos_clave": "x", "hoja_repaso": "x", "tarjetas": [], "activada": True})
-        if resp.status_code < 300 and r["ruta"] not in ("/auth/me", "/auth/cerrar-sesiones", "/cursos", "/clases", "/usuarios", "/estado", "/ajustes/fotos-pizarra", "/ajustes/modelo-texto", "/ajustes/clases", "/ajustes/respaldos") and r["ruta"] not in ("/cursos/{curso_id}/bloques",):
+        if resp.status_code < 300 and r["ruta"] not in ("/auth/me", "/auth/cerrar-sesiones", "/cursos", "/clases", "/usuarios", "/estado", "/ajustes/fotos-pizarra", "/ajustes/modelo-texto", "/ajustes/clases", "/ajustes/respaldos", "/ajustes/grabaciones", "/ajustes/conservacion", "/cierre-anio/estado", "/cierre-anio/cerrar", "/cierre-anio/anio-nuevo/vista-previa", "/cierre-anio/anio-nuevo") and r["ruta"] not in ("/cursos/{curso_id}/bloques",):
             fallas.append(f"{ID(r)} -> {resp.status_code} {resp.text[:100]}")
         if resp.status_code < 300 and r["metodo"] == "GET" and r["ruta"] in ("/cursos", "/clases", "/usuarios"):
             assert all(x.get("colegio_id", m["otro_colegio_id"]) == m["otro_colegio_id"] for x in resp.json()), ID(r)

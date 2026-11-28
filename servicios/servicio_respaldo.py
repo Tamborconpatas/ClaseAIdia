@@ -57,6 +57,46 @@ def respaldar_si_toca(origen: Path, carpeta: Path, ahora: datetime.datetime, con
     return destino
 
 
+def compactar(base: Path | None) -> bool:
+    """Borrar un año de clases deja páginas libres que SQLite no devuelve al disco solo: se compacta la base (una vez al año, con las grabaciones en pausa).
+    Si otra conexión la tiene ocupada simplemente no se hace (devuelve False): es una optimización, nunca un requisito. El SQL es texto fijo."""
+    if base is None or not base.is_file():
+        return False
+    try:
+        con = sqlite3.connect(base, timeout=30, isolation_level=None)
+        try:
+            con.execute("VACUUM")
+        finally:
+            con.close()
+        return True
+    except sqlite3.Error:
+        return False
+
+
+def respaldar_antes_del_cierre(origen: Path, carpeta: Path, ahora: datetime.datetime) -> Path | None:
+    """Copia aparte de la base justo antes de cada paso del cierre del año (`cierre-de-anio-AAAA-MM-DD-HHMMSS.db`, con un número al final si coincide con otra: nunca pisa una copia). No lleva el prefijo `escuela-` de los respaldos diarios,
+    así que la limpieza de copias viejas nunca la borra, y `restaurar_respaldo` la acepta si se le indica el archivo."""
+    if not origen.is_file():
+        return None
+    carpeta.mkdir(parents=True, exist_ok=True)
+    destino = carpeta / f"cierre-de-anio-{ahora:%Y-%m-%d-%H%M%S}.db"
+    for n in range(2, 100):
+        if not destino.exists():
+            break
+        destino = carpeta / f"cierre-de-anio-{ahora:%Y-%m-%d-%H%M%S}-{n}.db"
+    parcial = destino.with_suffix(".parcial")
+    src, dst = sqlite3.connect(origen), sqlite3.connect(parcial)
+    try:
+        src.backup(dst)
+    except Exception:
+        parcial.unlink(missing_ok=True)
+        raise
+    finally:
+        dst.close(), src.close()
+    os.replace(parcial, destino)
+    return destino
+
+
 class ErrorRespaldo(Exception):
     """Un respaldo que no se puede usar (falta, está dañado o no es de ClaseAIdia): se explica en palabras de persona."""
 

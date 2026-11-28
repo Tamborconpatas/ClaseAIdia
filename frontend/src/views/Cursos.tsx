@@ -7,10 +7,11 @@ import { useMemo, useState, type FormEvent } from 'react'
 import { QRCodeSVG } from 'qrcode.react'
 import { BookOpen, Check, Copy, Loader2, Pencil, Plus, QrCode, Sparkles, Trash2, Users } from 'lucide-react'
 import { Cargando, ErrorForm, Vacio } from '@/components/comunes'
+import { CerrarElAnio, PrepararAnioNuevo } from '@/components/CierreDeAnio'
 import { FilaAlumno } from '@/components/GestionAlumnos'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { api, type AlumnoDeCurso, type Curso } from '@/lib/api'
+import { api, type AlumnoDeCurso, type CierreEstado, type Curso } from '@/lib/api'
 import { cargarBloques } from '@/lib/datos'
 import { useSesion } from '@/lib/sesion'
 import { useCarga } from '@/lib/usar'
@@ -32,6 +33,9 @@ export function Cursos({ esUtp, esProfesor, onVerClases }: Props) {
   const [panel, setPanel] = useState<Panel | null>(null)
   const [renombrando, setRenombrando] = useState<number | null>(null)
   const [borrando, setBorrando] = useState<number | null>(null)
+  const [cierre, setCierre] = useState<'cerrar' | 'nuevo' | null>(null)
+  // Solo el UTP: si el año ya está cerrado, el paso que sigue es preparar el año nuevo.
+  const estadoCierre = useCarga(() => (esUtp ? api<CierreEstado>('/cierre-anio/estado') : Promise.resolve(null)), [esUtp])
   const lista = useMemo(() => cursos.datos ?? [], [cursos.datos])
 
   // Para el profesor: qué asignaturas dicta en cada curso (se deduce de sus bloques).
@@ -50,6 +54,15 @@ export function Cursos({ esUtp, esProfesor, onVerClases }: Props) {
 
   const alternar = (cursoId: number, tipo: Panel['tipo']) =>
     setPanel(panel?.cursoId === cursoId && panel.tipo === tipo ? null : { cursoId, tipo })
+
+  const terminarCierre = () => {
+    setCierre(null)
+    setPanel(null)
+    cursos.recargar()
+    estadoCierre.recargar()
+  }
+  if (cierre === 'cerrar') return <CerrarElAnio onSalir={() => setCierre(null)} onTerminado={terminarCierre} />
+  if (cierre === 'nuevo') return <PrepararAnioNuevo cursos={lista} onSalir={() => setCierre(null)} onTerminado={terminarCierre} />
 
   return (
     <div className="space-y-5">
@@ -138,6 +151,29 @@ export function Cursos({ esUtp, esProfesor, onVerClases }: Props) {
             )
           })}
         </ul>
+      )}
+
+      {esUtp && lista.length > 0 && estadoCierre.datos && (
+        <div className="rounded-2xl border border-dashed p-4">
+          {estadoCierre.datos.anio_cerrado ? (
+            <>
+              <h2 className="font-medium">El año está cerrado</h2>
+              <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+                Las grabaciones siguen en pausa. Cuando se acerque el regreso a clases (los alumnos cambian de curso en febrero), prepara el año nuevo: decides quién pasa de curso,
+                quién repite y quién se fue, y se reactivan las grabaciones.
+              </p>
+              <Button className="mt-3 h-auto min-h-11 whitespace-normal py-2 desk:min-h-9" onClick={() => setCierre('nuevo')}>Preparar el año nuevo</Button>
+            </>
+          ) : (
+            <>
+              <h2 className="font-medium">Cierre del año escolar</h2>
+              <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+                Al terminar las clases, se borra el material del año y las grabaciones quedan en pausa. Los alumnos siguen en su curso; lo que pasa con ellos se decide más adelante, al preparar el año nuevo.
+              </p>
+              <Button variant="outline" className="mt-3 h-auto min-h-11 whitespace-normal py-2 desk:min-h-9" onClick={() => setCierre('cerrar')}>Cerrar el año escolar</Button>
+            </>
+          )}
+        </div>
       )}
     </div>
   )

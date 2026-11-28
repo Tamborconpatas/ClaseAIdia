@@ -131,8 +131,8 @@ def test_payloads_en_nombres_se_guardan_como_texto_y_no_se_ejecutan(cliente, col
 
 def test_no_hay_sql_armado_a_mano_en_el_backend():
     """Guardia contra regresiones: todo acceso a datos va por el ORM. La única excepción
-    es el PRAGMA fijo de basedatos.py y la verificación de un respaldo
-    (un PRAGMA y un SELECT fijos sobre el archivo de la copia, sin datos de nadie)."""
+    es el PRAGMA fijo de basedatos.py, la verificación de un respaldo (un PRAGMA y un SELECT fijos sobre el archivo de la copia, sin datos de nadie) y la
+    compactación de la base tras el cierre del año (un VACUUM fijo)."""
     patron = re.compile(r"\btext\(|exec_driver_sql|\.execute\(|executescript|\.raw\(")
     encontrados = {}
     for carpeta in ["interfaz", "infraestructura", "servicios", "nucleo"]:
@@ -140,7 +140,7 @@ def test_no_hay_sql_armado_a_mano_en_el_backend():
             n = len(patron.findall(archivo.read_text(encoding="utf-8")))
             if n:
                 encontrados[archivo.relative_to(RAIZ).as_posix()] = n
-    assert encontrados == {"infraestructura/basedatos.py": 1, "servicios/servicio_respaldo.py": 2}
+    assert encontrados == {"infraestructura/basedatos.py": 1, "servicios/servicio_respaldo.py": 3}
 
     respaldo = (RAIZ / "servicios" / "servicio_respaldo.py").read_text(encoding="utf-8")
     assert not re.search(r"""\.execute\(\s*(f['"]|['"][^'"]*['"]\s*[+%]|[^'"\s])""", respaldo), "el SQL de la verificación debe ser solo texto fijo"

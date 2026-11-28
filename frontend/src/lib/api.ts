@@ -53,6 +53,47 @@ export interface AlumnoDeCurso {
   /** El nombre sonó a broma y el alumno confirmó que es suyo: el profesor lo revisa. */
   revisar_nombre: boolean
 }
+/** Cierre del año escolar, en dos tiempos: cerrar el año al terminar las clases y preparar el año nuevo (qué pasa con los alumnos) antes de volver a grabar. */
+export interface CierreEstado {
+  anio_cerrado: boolean
+  clases_a_borrar: number
+  problemas: string[]
+}
+export interface CierreHecho {
+  clases_borradas: number
+  respaldo: string | null
+}
+export interface CierreCurso {
+  curso_id: number
+  destino_id?: number | null
+  destino_nuevo?: string | null
+  egresa?: boolean
+}
+export interface CierrePlan {
+  cursos: CierreCurso[]
+  repiten: number[]
+  se_van: number[]
+}
+export interface CierreResumen {
+  pasan: number
+  repiten: number
+  se_van: number
+  egresan: number
+  cuentas_a_borrar: number
+  cursos_nuevos: string[]
+  codigos_nuevos: number
+}
+export interface CierreVistaPrevia {
+  problemas: string[]
+  resumen: CierreResumen
+  cursos: { curso_id: number; curso: string; alumnos: number; destino: string | null }[]
+}
+export interface CierreAnioNuevo {
+  resumen: CierreResumen
+  respaldo: string | null
+  /** Los códigos de invitación nuevos de todos los cursos, para dárselos a los alumnos que entran. */
+  codigos: { curso: string; codigo: string }[]
+}
 export interface ResetPin {
   codigo: string
   vence: string // ISO con zona (UTC)
@@ -144,6 +185,23 @@ export interface DescargaModelo {
   porcentaje: number
   mensaje: string
 }
+/** Receso del colegio: con `activas` en false los profesores no pueden empezar a grabar. */
+export interface AjusteGrabaciones {
+  activas: boolean
+  /** Día (AAAA-MM-DD) en que se reactivan solas, si el UTP lo puso. */
+  hasta: string | null
+  /** El UTP cerró el año: para volver a grabar hay que preparar el año nuevo. */
+  anio_cerrado: boolean
+}
+/** Cuánto se guarda el material de una clase; `se_borrarian` es lo que se borraría esta noche con el plazo consultado. */
+export interface AjusteConservacion {
+  dias: number
+  dias_por_defecto: number
+  rango_dias: [number, number]
+  se_borrarian: number
+  /** Al guardar: las clases que se borraron en ese momento. */
+  borradas?: number
+}
 /** Lo que el UTP necesita para decidir si activa las fotos de la pizarra y dejarlas listas sin una consola. */
 export interface AjusteFotos {
   activada: boolean
@@ -203,7 +261,7 @@ interface ClaseEnEstado {
 export interface EstadoServidor {
   /** UTC, con zona. */
   generado_en: string
-  alertas: { tema: 'disco' | 'ollama' | 'respaldos' | 'memoria' | 'vigilancia' | 'clases'; nivel: 'critico' | 'aviso'; texto: string }[]
+  alertas: { tema: 'disco' | 'ollama' | 'respaldos' | 'memoria' | 'vigilancia' | 'clases' | 'grabaciones'; nivel: 'critico' | 'aviso'; texto: string }[]
   procesamiento: {
     en_vivo: (ClaseEnEstado & { estado: string })[]
     procesando: (ClaseEnEstado & { turno: 'ahora' | 'espera'; minutos: number | null; posicion: number | null; prioritaria: boolean })[]

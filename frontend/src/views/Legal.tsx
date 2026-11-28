@@ -111,7 +111,7 @@ const PRIVACIDAD = (
     <Seccion titulo="Tus derechos">
       <p>
         Puedes pedir acceso a tus datos, que se corrijan o que se eliminen. En el caso de un alumno menor de edad, lo pide su
-        apoderado. Por cuánto tiempo se conservan las transcripciones lo define el colegio.
+        apoderado. La cuenta de un alumno se borra cuando egresa o deja el colegio. El material de cada clase (la transcripción, el resumen y todo lo generado) se borra solo un año después de la fecha de la clase (el colegio puede acortar o alargar ese plazo, de 3 meses a 2 años).
       </p>
     </Seccion>
     <Contacto />

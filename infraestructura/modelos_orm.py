@@ -64,6 +64,16 @@ class Colegio(Base):
     # del bloque en que la grabación se corta sola.
     horas_revision: Mapped[int | None] = mapped_column(Integer, nullable=True)
     minutos_corte: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Receso: el UTP apaga las grabaciones cuando terminan las clases o hay vacaciones (no se puede empezar una nueva; lo ya grabado se
+    # procesa y los alumnos siguen viendo el material). Encendido por defecto.
+    grabaciones_activas: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1", nullable=False)
+    # Si el UTP puso una fecha de regreso, la vigilancia las reactiva sola ese día (nulo = las reactiva a mano).
+    grabaciones_hasta: Mapped[datetime.date | None] = mapped_column(Date, nullable=True)
+    # El UTP cerró el año (al terminar las clases): las clases del año ya se borraron y las grabaciones solo se reactivan preparando antes el año nuevo
+    # (qué pasa con los alumnos), porque los alumnos cambian de curso en febrero y no en diciembre.
+    anio_cerrado: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0", nullable=False)
+    # Días que se guarda el material de una clase antes de borrarse. Nulo = el predeterminado (365).
+    dias_conservacion: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     usuarios: Mapped[list["Usuario"]] = relationship(back_populates="colegio")
     cursos: Mapped[list["Curso"]] = relationship(back_populates="colegio")

@@ -17,7 +17,7 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 
 from infraestructura import basedatos
-from infraestructura.modelos_orm import Bloque, Clase, Curso, EstadoGrabacion as E, Grabacion
+from infraestructura.modelos_orm import Bloque, Clase, Colegio, Curso, EstadoGrabacion as E, Grabacion
 from nucleo import configuracion as app_config, modelos_ia
 from nucleo.disco import ancestro_existente, espacio_en_disco
 from nucleo.memoria import memoria_libre_gb, memoria_total_gb
@@ -122,6 +122,9 @@ def _respaldos(db: Session) -> dict:
     }
 
 
+MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
+
+
 def construir_alertas(e: dict) -> list[dict]:
     """De los datos al aviso en palabras de persona. `critico` pide actuar hoy; `aviso`, pronto."""
     a: list[dict] = []
@@ -155,6 +158,15 @@ def construir_alertas(e: dict) -> list[dict]:
     if p["con_error"]:
         n = len(p["con_error"])
         alerta("clases", "critico", f"{n} {'clase' if n == 1 else 'clases'} con error sin reintento pendiente: hay que grabarla de nuevo o revisarla.")
+    if e.get("anio_cerrado"):
+        hasta = e.get("grabaciones_hasta")
+        llego = hasta is not None and hasta <= datetime.date.today()
+        alerta("grabaciones", "critico" if llego else "aviso", ("Llegó la fecha de regreso, pero el año está cerrado: " if llego else "El año está cerrado y las grabaciones siguen en pausa: ")
+               + "para volver a grabar, prepara el año nuevo (qué pasa con los alumnos) en «Cursos» → «Preparar el año nuevo».")
+    elif e.get("grabaciones_en_pausa"):
+        hasta = e.get("grabaciones_hasta")
+        cuando = f"Se reactivan solas el {hasta.day} de {MESES[hasta.month - 1]}." if hasta else "Se reactivan en «Ajustes»."
+        alerta("grabaciones", "aviso", f"Las grabaciones están en pausa (fin de clases o vacaciones): los profesores no pueden empezar a grabar. {cuando}")
     a.sort(key=lambda x: x["nivel"] != "critico")  # lo urgente primero (el orden es estable: dentro de cada nivel queda el de arriba)
     return a
 
@@ -176,6 +188,9 @@ def estado_del_servidor(db: Session, colegio_id: int, vigilando: bool = True) ->
             "activa": (ahora - (ultimo or sg.ARRANQUE)).total_seconds() < SIN_PULSO_S if vigilando else None,
         },
         "conexiones": servicio_conexiones.conexiones(db, colegio_id),
+        "grabaciones_en_pausa": not servicio_ajustes.grabaciones_activas(db.get(Colegio, colegio_id)),
+        "grabaciones_hasta": db.get(Colegio, colegio_id).grabaciones_hasta,
+        "anio_cerrado": db.get(Colegio, colegio_id).anio_cerrado,
     }
     e["alertas"] = construir_alertas(e)
     return e

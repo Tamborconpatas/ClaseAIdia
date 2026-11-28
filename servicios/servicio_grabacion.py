@@ -27,7 +27,7 @@ from infraestructura.seguridad import ahora_utc as reloj_de_revision
 from nucleo import modelos_ia
 from nucleo.disco import espacio_en_disco
 from nucleo.memoria import esperar_memoria
-from servicios import servicio_ajustes, servicio_conexiones
+from servicios import servicio_ajustes, servicio_conexiones, servicio_conservacion
 from servicios.trabajador import CODIGO_SIN_MEMORIA
 
 from infraestructura.modelos_orm import (
@@ -105,6 +105,12 @@ def borrar_audio(grabacion_id: int) -> None:
     shutil.rmtree(_carpeta(grabacion_id), ignore_errors=True)
 
 
+def olvidar_archivos(grabacion_id: int) -> None:
+    """Al borrar una clase por cierre del año o por antigüedad: su audio temporal y sus fotos pendientes (si quedaba un reintento) no sobreviven a la clase."""
+    borrar_audio(grabacion_id)
+    _pizarra().borrar_fotos(grabacion_id)
+
+
 def _pizarra():
     from servicios import servicio_pizarra  # import tardío: ese módulo importa este
 
@@ -141,6 +147,8 @@ def estado_de_hoy(bloque: Bloque, ahora: datetime.datetime) -> tuple[bool, str |
     y que no haya pasado el corte."""
     if bloque.tipo != TipoBloque.CLASE:
         return False, "Solo se graba un bloque de clase"
+    if not servicio_ajustes.grabaciones_activas(bloque.curso.colegio):
+        return False, "Las grabaciones están en pausa (fin de clases o vacaciones). El UTP las vuelve a activar en «Ajustes»."
     if not grabacion_libre():
         if bloque.dia_semana != ahora.weekday():
             return False, "Este bloque no es de hoy"
@@ -776,6 +784,8 @@ def vigilar(db: Session, fabrica: sessionmaker, utc: datetime.datetime | None = 
         _reintentar(db, g)
     _recoger_perdidos(db, utc)
     servicio_conexiones.limpiar_si_toca(db, utc)  # los equipos sin uso hace más de 30 días se olvidan
+    servicio_conservacion.limpiar_si_toca(db, utc)  # el material de las clases que pasaron su plazo se borra (una vez al día)
+    servicio_ajustes.reactivar_si_toca(db, local.date())  # las pausas con fecha de regreso terminan solas ese día
     despachar(fabrica)  # por si algo quedó esperando con un lugar libre
     ultima_vigilancia = ahora_utc()  # al terminar la pasada (si falla a medias, el pulso no se renueva y el panel lo avisa)
 

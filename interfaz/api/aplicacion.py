@@ -23,6 +23,7 @@ from interfaz.api import (
     rutas_ajustes,
     rutas_auth,
     rutas_bloques,
+    rutas_cierre_anio,
     rutas_clases,
     rutas_colegios,
     rutas_cursos,
@@ -148,6 +149,7 @@ def crear_app(vigilar: bool = False) -> FastAPI:
     app.include_router(rutas_clases.router)
     app.include_router(rutas_grabaciones.router)
     app.include_router(rutas_ajustes.router)
+    app.include_router(rutas_cierre_anio.router)
     app.include_router(rutas_estado.router)
 
     return app

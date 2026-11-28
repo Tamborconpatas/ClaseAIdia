@@ -8,7 +8,7 @@ import axe from 'axe-core'
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { AjusteClases, AjusteFotos, AjusteModeloTexto, AjusteRespaldos, OpcionModelo } from '@/lib/api'
+import type { AjusteClases, AjusteConservacion, AjusteFotos, AjusteGrabaciones, AjusteModeloTexto, AjusteRespaldos, OpcionModelo } from '@/lib/api'
 
 vi.mock('@/lib/api', async (original) => ({ ...(await original<typeof import('@/lib/api')>()), api: vi.fn() }))
 
@@ -32,6 +32,9 @@ let estado: AjusteFotos
 let texto: AjusteModeloTexto
 let clases: AjusteClases
 let respaldos: AjusteRespaldos
+let receso: AjusteGrabaciones
+let conservacion: AjusteConservacion
+let borrarian = 0 // lo que la vista previa dice que se borraría
 let raices: Root[] = []
 const llamadas = () => (api as unknown as ReturnType<typeof vi.fn>).mock.calls.map((c) => `${c[1]?.metodo ?? 'GET'} ${c[0]}`)
 
@@ -40,6 +43,9 @@ beforeEach(() => {
   texto = { ...baseTexto }
   clases = { ...baseClases }
   respaldos = { ...baseRespaldos }
+  receso = { activas: true, hasta: null, anio_cerrado: false }
+  conservacion = { dias: 365, dias_por_defecto: 365, rango_dias: [90, 730], se_borrarian: 0 }
+  borrarian = 0
   ;(api as unknown as ReturnType<typeof vi.fn>).mockReset().mockImplementation(async (ruta: string, opciones?: { metodo?: string; cuerpo?: Record<string, unknown> & { activada?: boolean } }) => {
     if (ruta === '/ajustes/clases') {
       if (opciones?.metodo === 'PUT') {
@@ -47,6 +53,17 @@ beforeEach(() => {
         clases = { ...clases, horas_revision: c.horas_revision ?? clases.horas_revision_por_defecto, minutos_corte: c.minutos_corte ?? clases.minutos_corte_por_defecto }
       }
       return clases
+    }
+    if (ruta === '/ajustes/grabaciones') {
+      if (opciones?.metodo === 'PUT') {
+        const c = opciones.cuerpo as { activas: boolean; hasta: string | null }
+        receso = { ...receso, activas: c.activas, hasta: c.activas ? null : c.hasta }
+      }
+      return receso
+    }
+    if (ruta.startsWith('/ajustes/conservacion')) {
+      if (opciones?.metodo === 'PUT') conservacion = { ...conservacion, dias: (opciones.cuerpo as { dias: number | null }).dias ?? conservacion.dias_por_defecto }
+      return { ...conservacion, se_borrarian: opciones?.metodo === 'PUT' ? 0 : borrarian, borradas: opciones?.metodo === 'PUT' ? borrarian : undefined }
     }
     if (ruta === '/ajustes/respaldos') {
       if (opciones?.metodo === 'PUT') {
@@ -113,6 +130,119 @@ const pulsar = async (b: HTMLButtonElement | undefined) => {
   })
 }
 const put = (ruta: string) => (api as unknown as ReturnType<typeof vi.fn>).mock.calls.filter((k) => k[0] === ruta && k[1]?.metodo === 'PUT').map((k) => k[1].cuerpo)
+
+async function escribirFecha(c: HTMLElement, id: string, valor: string) {
+  const el = campo(c, id)
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(el, valor)
+    el.dispatchEvent(new Event('input', { bubbles: true }))
+  })
+}
+const interruptorReceso = (c: HTMLElement) => c.querySelector('[aria-labelledby=etiqueta-receso]') as HTMLButtonElement
+
+describe('Fin de clases y vacaciones: el UTP apaga las grabaciones sin archivos ni comandos', () => {
+  it('parte activado y el interruptor las pone en pausa y las reactiva, anunciándolo', async () => {
+    const c = await montar()
+    expect(c.textContent).toContain('Fin de clases y vacaciones')
+    expect(interruptorReceso(c).getAttribute('aria-checked')).toBe('true')
+    expect(c.textContent).toContain('Activadas: los profesores pueden grabar sus clases.')
+    await pulsar(interruptorReceso(c))
+    expect(put('/ajustes/grabaciones')).toEqual([{ activas: false, hasta: null }])
+    expect(interruptorReceso(c).getAttribute('aria-checked')).toBe('false')
+    expect(c.textContent).toContain('En pausa: nadie puede empezar a grabar.')
+    expect([...c.querySelectorAll('[role=status].sr-only')].map((x) => x.textContent)).toContain('Grabaciones en pausa.')
+    await pulsar(interruptorReceso(c))
+    expect(put('/ajustes/grabaciones')).toEqual([{ activas: false, hasta: null }, { activas: true, hasta: null }])
+    expect(interruptorReceso(c).getAttribute('aria-checked')).toBe('true')
+  })
+
+  it('con una fecha de regreso, la pausa la lleva y dice cuándo se reactiva sola', async () => {
+    const c = await montar()
+    await escribirFecha(c, 'fecha-regreso', '2027-03-04')
+    await pulsar(interruptorReceso(c))
+    expect(put('/ajustes/grabaciones')).toEqual([{ activas: false, hasta: '2027-03-04' }])
+    expect(c.textContent).toContain('En pausa: se reactivan solas el 4 de marzo de 2027.')
+    await pulsar(interruptorReceso(c)) // al reactivar a mano la fecha se olvida
+    expect(put('/ajustes/grabaciones')[1]).toEqual({ activas: true, hasta: null })
+    expect((c.querySelector('#fecha-regreso') as HTMLInputElement).value).toBe('')
+  })
+
+  it('en pausa se puede poner, cambiar o quitar la fecha de regreso sin reactivar', async () => {
+    const c = await montar()
+    await pulsar(interruptorReceso(c))
+    expect(boton(c, 'Guardar la fecha')).toBeUndefined()
+    await escribirFecha(c, 'fecha-regreso', '2027-03-04')
+    await pulsar(boton(c, 'Guardar la fecha'))
+    expect(put('/ajustes/grabaciones')[1]).toEqual({ activas: false, hasta: '2027-03-04' })
+    await escribirFecha(c, 'fecha-regreso', '')
+    await pulsar(boton(c, 'Quitar la fecha'))
+    expect(put('/ajustes/grabaciones')[2]).toEqual({ activas: false, hasta: null })
+    expect(c.textContent).toContain('En pausa: nadie puede empezar a grabar.')
+  })
+
+  it('con el año cerrado el interruptor no se puede activar a mano: pide preparar el año nuevo', async () => {
+    receso = { activas: false, hasta: null, anio_cerrado: true }
+    const c = await montar()
+    expect(interruptorReceso(c).disabled).toBe(true)
+    expect(c.querySelector('[role=note]')?.textContent).toContain('«Cursos» → «Preparar el año nuevo»')
+    await pulsar(interruptorReceso(c))
+    expect(put('/ajustes/grabaciones')).toEqual([])
+  })
+
+  it('si no se puede guardar, lo dice y el interruptor queda como estaba', async () => {
+    const c = await montar()
+    const antes = (api as unknown as ReturnType<typeof vi.fn>).getMockImplementation()! as (ruta: string, o?: unknown) => Promise<unknown>
+    ;(api as unknown as ReturnType<typeof vi.fn>).mockImplementation(async (ruta: string, o?: { metodo?: string }) => {
+      if (ruta === '/ajustes/grabaciones' && o?.metodo === 'PUT') throw new Error('No se pudo guardar')
+      return antes(ruta, o)
+    })
+    await pulsar(interruptorReceso(c))
+    expect(c.textContent).toContain('No se pudo guardar')
+    expect(interruptorReceso(c).getAttribute('aria-checked')).toBe('true')
+  })
+})
+
+const sec = (c: HTMLElement) => c.querySelector('section[aria-labelledby=titulo-conservacion]') as HTMLElement
+
+describe('Cuánto tiempo se guardan las clases: el plazo se cambia con aviso antes de borrar', () => {
+  it('muestra el plazo y cambiarlo sin nada por borrar guarda directo', async () => {
+    const c = await montar()
+    expect(c.textContent).toContain('Cuánto tiempo se guardan las clases')
+    expect(campo(c, 'dias-conservacion').value).toBe('365')
+    await escribir(c, 'dias-conservacion', '500')
+    await pulsar(boton(sec(c), 'Guardar'))
+    expect(put('/ajustes/conservacion')).toEqual([{ dias: 500 }])
+    expect(sec(c).textContent).toContain('Guardado.')
+    expect(sec(c).textContent).not.toContain('Guardar y borrar')
+  })
+
+  it('si el plazo nuevo borraría clases, dice cuántas y no guarda hasta que se confirma', async () => {
+    borrarian = 12
+    const c = await montar()
+    await escribir(c, 'dias-conservacion', '180')
+    await pulsar(boton(sec(c), 'Guardar'))
+    expect(put('/ajustes/conservacion')).toEqual([])
+    expect(c.querySelector('[role=alert]')?.textContent).toContain('se borrarán ahora 12 clases')
+    await pulsar(boton(sec(c), 'Cancelar'))
+    expect(put('/ajustes/conservacion')).toEqual([])
+    await pulsar(boton(sec(c), 'Guardar'))
+    await pulsar(boton(sec(c), 'Guardar y borrar'))
+    expect(put('/ajustes/conservacion')).toEqual([{ dias: 180 }])
+    expect(sec(c).textContent).toContain('Guardado. Se borraron 12 clases que ya pasaron el plazo.')
+  })
+
+  it('no deja guardar un plazo fuera de rango y puede volver al predeterminado', async () => {
+    const c = await montar()
+    await escribir(c, 'dias-conservacion', '30')
+    expect(boton(sec(c), 'Guardar')!.disabled).toBe(true)
+    expect(sec(c).textContent).toContain('Escribe un número entero de 90 a 730.')
+    await escribir(c, 'dias-conservacion', '200')
+    await pulsar(boton(sec(c), 'Guardar'))
+    await pulsar(boton(sec(c), 'Volver a 365 días'))
+    expect(put('/ajustes/conservacion')).toEqual([{ dias: 200 }, { dias: null }])
+    expect(campo(c, 'dias-conservacion').value).toBe('365')
+  })
+})
 
 describe('Ajustes del colegio (el UTP decide en la aplicación, sin archivos ni comandos)', () => {
   it('muestra el estado y lo que hace falta para decidir, sin violaciones de accesibilidad', async () => {
