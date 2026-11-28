@@ -8,7 +8,7 @@ import axe from 'axe-core'
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { AjusteClases, AjusteFotos, AjusteModeloTexto, AjusteRespaldos } from '@/lib/api'
+import type { AjusteClases, AjusteFotos, AjusteModeloTexto, AjusteRespaldos, OpcionModelo } from '@/lib/api'
 
 vi.mock('@/lib/api', async (original) => ({ ...(await original<typeof import('@/lib/api')>()), api: vi.fn() }))
 
@@ -21,7 +21,11 @@ const base: AjusteFotos = {
   activada: false, modelo: 'qwen2.5vl:3b', ollama_responde: true, modelo_instalado: false, memoria_total_gb: 15.6, memoria_recomendada_gb: 16, descarga: null,
 }
 // El modelo de resúmenes empieza instalado: así las pruebas de las fotos no ven barras ni botones de la otra sección.
-const baseTexto: AjusteModeloTexto = { modelo: 'gemma4:e2b', ollama_responde: true, modelo_instalado: true, memoria_total_gb: 15.6, memoria_minima_gb: 12, tamano_gb: 4.6, descarga: null }
+const opcion = (modelo: string, etiqueta: string, tamano: number): OpcionModelo => ({ modelo, etiqueta, nota: `Nota de ${etiqueta}.`, tamano_gb: tamano, instalado: true, descarga: null })
+const baseTexto: AjusteModeloTexto = {
+  modelo: 'gemma4:e2b', ollama_responde: true, modelo_instalado: true, memoria_total_gb: 15.6, memoria_minima_gb: 12, tamano_gb: 4.6, descarga: null, eleccion: 'auto',
+  opciones: [opcion('gemma4:e2b', 'Gemma 4 E2B', 4.6), opcion('llama3.2:3b', 'Llama 3.2 3B', 2), opcion('llama3.2:1b', 'Llama 3.2 1B', 1.3)],
+}
 const baseClases: AjusteClases = { horas_revision: 24, minutos_corte: 15, horas_revision_por_defecto: 24, minutos_corte_por_defecto: 15, rango_horas_revision: [1, 168], rango_minutos_corte: [0, 120] }
 const baseRespaldos: AjusteRespaldos = { carpeta: '/datos/respaldos', carpeta_por_defecto: '/datos/respaldos', dias: 14, dias_por_defecto: 14, rango_dias: [1, 365] }
 let estado: AjusteFotos
@@ -52,7 +56,14 @@ beforeEach(() => {
       return respaldos
     }
     if (ruta.startsWith('/ajustes/modelo-texto')) {
-      if (opciones?.metodo === 'POST') texto = { ...texto, descarga: { estado: 'descargando', porcentaje: 0, mensaje: 'Preparando la descarga…' } }
+      const cuerpo = opciones?.cuerpo as { modelo?: string } | undefined
+      const bajando = { estado: 'descargando' as const, porcentaje: 0, mensaje: 'Preparando la descarga…' }
+      if (opciones?.metodo === 'PUT') texto = { ...texto, eleccion: cuerpo!.modelo!, modelo: cuerpo!.modelo === 'auto' ? 'gemma4:e2b' : cuerpo!.modelo! }
+      if (opciones?.metodo === 'POST') {
+        texto = cuerpo?.modelo
+          ? { ...texto, opciones: texto.opciones.map((o) => (o.modelo === cuerpo.modelo ? { ...o, descarga: bajando } : o)) }
+          : { ...texto, descarga: bajando }
+      }
       return texto
     }
     if (opciones?.metodo === 'PUT') estado = { ...estado, activada: opciones.cuerpo!.activada! }
@@ -372,6 +383,66 @@ describe('Ajustes del colegio (el UTP decide en la aplicación, sin archivos ni 
       await pulsar([...c.querySelectorAll('form')][1].querySelector('button[type=submit]') as HTMLButtonElement)
       expect(c.querySelector('[role=alert]')?.textContent).toContain('No se puede guardar nada en esa carpeta')
       expect(c.textContent).not.toContain('Guardado. Vale desde el próximo respaldo')
+    })
+  })
+  describe('elegir otro modelo de resumen (opcional, solo entre los que la aplicación ofrece y ya están descargados)', () => {
+    const fila = (c: HTMLElement, etiqueta: string) => [...c.querySelectorAll('details li')].find((li) => li.querySelector('p')?.textContent?.startsWith(etiqueta)) as HTMLElement  // por el nombre de la fila, no por su nota
+
+    it('el desplegable lista «Automático» y las opciones, con cuál está en uso y qué falta', async () => {
+      texto = { ...baseTexto, opciones: baseTexto.opciones.map((o) => (o.modelo === 'llama3.2:3b' ? { ...o, instalado: false } : o)) }
+      const c = await montar()
+      const d = c.querySelector('details') as HTMLDetailsElement
+      expect(d.textContent).toContain('Usar otro modelo (opcional)')
+      expect(d.open).toBe(false) // la vista normal sigue siendo simple
+      d.open = true
+      expect(fila(c, 'Automático (recomendado)').textContent).toContain('En uso')
+      expect(fila(c, 'Gemma 4 E2B').textContent).toContain('Nota de Gemma 4 E2B.')
+      expect(fila(c, 'Llama 3.2 3B').textContent).toContain('No está descargado en este equipo.')
+      expect(fila(c, 'Llama 3.2 3B').querySelector('button')!.textContent).toContain('Descargar (2 GB)')
+      expect(fila(c, 'Llama 3.2 1B').querySelector('button')!.getAttribute('aria-label')).toBe('Usar Llama 3.2 1B')
+      expect(c.textContent).not.toMatch(/\.env|ollama pull|consola/i)
+      expect(await violaciones(c)).toEqual([])
+    })
+
+    it('un modelo instalado se pone en uso con un botón, se avisa cuándo vale, y «Automático» lo deshace', async () => {
+      const c = await montar()
+      await pulsar(c.querySelector('button[aria-label="Usar Llama 3.2 1B"]') as HTMLButtonElement)
+      expect(put('/ajustes/modelo-texto')).toEqual([{ modelo: 'llama3.2:1b' }])
+      expect(c.textContent).toContain('Listo: se usará Llama 3.2 1B desde la próxima clase.')
+      expect(fila(c, 'Llama 3.2 1B').textContent).toContain('En uso')
+      expect(fila(c, 'Automático (recomendado)').textContent).not.toContain('En uso')
+      await pulsar(c.querySelector('button[aria-label="Usar Automático (recomendado)"]') as HTMLButtonElement)
+      expect(put('/ajustes/modelo-texto')[1]).toEqual({ modelo: 'auto' })
+      expect(fila(c, 'Automático (recomendado)').textContent).toContain('En uso')
+      expect(await violaciones(c)).toEqual([])
+    })
+
+    it('un modelo que falta se descarga desde su fila, con su propia barra de avance', async () => {
+      texto = { ...baseTexto, opciones: baseTexto.opciones.map((o) => (o.modelo === 'llama3.2:3b' ? { ...o, instalado: false } : o)) }
+      const c = await montar()
+      await pulsar(c.querySelector('button[aria-label="Descargar Llama 3.2 3B"]') as HTMLButtonElement)
+      const k = (api as unknown as ReturnType<typeof vi.fn>).mock.calls.find((x) => x[0] === '/ajustes/modelo-texto/descargar')!
+      expect(k[1]).toEqual({ metodo: 'POST', cuerpo: { modelo: 'llama3.2:3b' } })
+      expect(fila(c, 'Llama 3.2 3B').querySelector('[role=progressbar]')).not.toBeNull()
+      expect(fila(c, 'Gemma 4 E2B').querySelector('[role=progressbar]')).toBeNull() // cada modelo, su propio avance
+      expect(c.querySelector('button[aria-label="Descargar Llama 3.2 3B"]')).toBeNull() // mientras baja no se pide otra vez
+    })
+
+    it('si el servidor rechaza la elección lo dice, y con Ollama cerrado solo queda «Automático»', async () => {
+      const mock = api as unknown as ReturnType<typeof vi.fn>
+      const anterior = mock.getMockImplementation() as (...a: unknown[]) => unknown
+      mock.mockImplementation((ruta: string, opciones?: { metodo?: string }) =>
+        ruta === '/ajustes/modelo-texto' && opciones?.metodo === 'PUT' ? Promise.reject(new Error('Ese modelo todavía no está descargado en este equipo. Descárgalo primero y después úsalo.')) : anterior(ruta, opciones),
+      )
+      const c = await montar()
+      await pulsar(c.querySelector('button[aria-label="Usar Llama 3.2 1B"]') as HTMLButtonElement)
+      expect(c.querySelector('[role=alert]')?.textContent).toContain('todavía no está descargado')
+      for (const r of raices.splice(0)) act(() => r.unmount())
+      document.body.innerHTML = ''
+      texto = { ...baseTexto, eleccion: 'llama3.2:1b', modelo: 'llama3.2:1b', ollama_responde: false, modelo_instalado: false, opciones: baseTexto.opciones.map((o) => ({ ...o, instalado: null })) }
+      const c2 = await montar()
+      expect(c2.querySelectorAll('details button[aria-label^="Usar "]').length).toBe(1) // solo «Automático»: lo demás no se puede comprobar
+      expect(c2.textContent).toContain('Ollama no responde: no se sabe si está descargado.')
     })
   })
 })

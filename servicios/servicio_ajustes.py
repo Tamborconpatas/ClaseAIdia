@@ -10,7 +10,8 @@ siempre, o el valor del código): un colegio que ya existe no cambia de comporta
 
 - Por colegio (columnas de `Colegio`): horas para revisar el material antes de publicarlo como «provisorio» y minutos de gracia del corte
   automático de la grabación.
-- Del servidor (tabla `ajustes_servidor`): carpeta y días del respaldo diario de la base. La base es una sola, así que vale para todos.
+- Del servidor (tabla `ajustes_servidor`): carpeta y días del respaldo diario de la base, y el modelo que escribe los resúmenes. La base es una
+  sola, así que valen para todos.
 """
 import os
 import tempfile
@@ -19,6 +20,8 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 
 from infraestructura.modelos_orm import AjusteServidor, Colegio
+from nucleo import configuracion as app_config
+from nucleo import modelos_ia
 from servicios import servicio_respaldo
 
 HORAS_REVISION_POR_DEFECTO = int(os.environ.get("HORAS_REVISION_PROFESOR", "24"))
@@ -30,7 +33,7 @@ RANGO_HORAS_REVISION = (1, 168)  # de una hora a una semana
 RANGO_MINUTOS_CORTE = (0, 120)  # 0 = se corta justo al terminar el bloque
 RANGO_DIAS_RESPALDO = (1, 365)
 
-_CARPETA, _DIAS = "carpeta_respaldos", "dias_respaldo"
+_CARPETA, _DIAS, _MODELO = "carpeta_respaldos", "dias_respaldo", "modelo_resumen"
 
 
 class ErrorAjuste(Exception):
@@ -128,4 +131,31 @@ def cambiar_ajustes_de_respaldo(db: Session, carpeta: str | None, dias: int | No
     nuevos_dias = _en_rango(dias, RANGO_DIAS_RESPALDO, "Días de respaldo", "días")
     _poner(db, _CARPETA, nueva)
     _poner(db, _DIAS, str(nuevos_dias) if nuevos_dias is not None else None)
+    db.commit()
+
+
+def modelo_elegido(db: Session) -> str | None:
+    """Lo que eligió el UTP, o None si no eligió (la aplicación decide sola)."""
+    return _leer(db, _MODELO)
+
+
+def modelo_de_resumen(db: Session) -> str:
+    """Lo que se pide para el resumen: lo que eligió el UTP o, si no eligió, `ollama_model` de quien administra el servidor (`auto` por defecto)."""
+    return modelo_elegido(db) or app_config.get_param("ollama_model")
+
+
+def cambiar_modelo_de_resumen(db: Session, modelo: str, instalado: bool | None) -> None:
+    """`modelo`: uno de los que la aplicación ofrece, o `auto` para que decida sola (borra la elección). `instalado`: lo que dice Ollama de ese
+    modelo (None = no responde). Solo se elige uno que ya está descargado: elegir uno que falta dejaría sin resumen a todas las clases."""
+    if modelo == "auto":
+        _poner(db, _MODELO, None)
+        db.commit()
+        return
+    if modelo not in {m for m, _, _ in modelos_ia.ELEGIBLES}:
+        raise ErrorAjuste("Ese modelo no está entre los que la aplicación ofrece.")
+    if instalado is None:
+        raise ErrorAjuste("Ollama no responde, así que no se puede comprobar que ese modelo esté instalado. Ábrelo y vuelve a intentarlo.", 409)
+    if not instalado:
+        raise ErrorAjuste("Ese modelo todavía no está descargado en este equipo. Descárgalo primero y después úsalo.", 409)
+    _poner(db, _MODELO, modelo)
     db.commit()

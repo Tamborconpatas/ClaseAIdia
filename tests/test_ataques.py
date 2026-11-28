@@ -98,7 +98,7 @@ def m(cliente, colegio_id, headers_utp, tmp_path, monkeypatch):
     """Un colegio con UTP, una profesora (Ana), un alumno (Luis), un curso, un bloque, una clase con material y una
     grabación en curso; más un segundo colegio con su UTP. Con límites altos: aquí se prueba la API, no el freno por IP."""
     monkeypatch.setattr(limites, "por_ip", LimitadorDeFallos(10**9, 600))
-    monkeypatch.setattr(servicio_modelos, "instalado", lambda modelo, url: True)  # ninguna barrida de rutas toca el Ollama real ni arranca una descarga
+    monkeypatch.setattr(servicio_modelos, "modelos_instalados", lambda url: type("T", (set,), {"__contains__": lambda s, x: True})())  # ninguna barrida de rutas toca el Ollama real ni arranca una descarga
     monkeypatch.setattr(sg, "ahora_local", lambda: LUNES_0930)
     monkeypatch.setattr(sg, "ahora_utc", lambda: datetime.datetime(2026, 9, 28, 12, 30))
     monkeypatch.setattr(sg, "CARPETA_AUDIO", tmp_path / "audio")

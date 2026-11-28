@@ -22,12 +22,20 @@ from servicios import servicio_pizarra as sp
 from test_clases import esc  # noqa: F401
 
 
+class _Todos(set):
+    """Los modelos de un Ollama que tiene todo lo que se le pregunte."""
+
+    def __contains__(self, _):
+        return True
+
+
 @pytest.fixture(autouse=True)
 def ollama(monkeypatch):
     """Ollama de mentira: responde, sin el modelo instalado, y no baja nada de verdad."""
     sm._descargas.clear()
     estado = {"instalado": False, "responde": True, "pedidos": []}
-    monkeypatch.setattr(sm, "instalado", lambda modelo, url: (estado["instalado"] if estado["responde"] else None))
+    # Una sola consulta a Ollama alcanza para todas las filas: «instalado» = los tiene todos, y si no, ninguno.
+    monkeypatch.setattr(sm, "modelos_instalados", lambda url: (_Todos() if estado["instalado"] else set()) if estado["responde"] else None)
     monkeypatch.setattr(sm, "_correr", lambda modelo, url: estado["pedidos"].append((modelo, url)))
     monkeypatch.setattr(sm.threading, "Thread", type("H", (), {"__init__": lambda self, target, args=(), **k: setattr(self, "t", (target, args)), "start": lambda self: self.t[0](*self.t[1])}))
     monkeypatch.setattr("interfaz.api.rutas_ajustes.memoria_total_gb", lambda: 15.64)
@@ -135,7 +143,7 @@ def test_el_utp_ve_el_modelo_que_escribe_los_resumenes_y_lo_que_hace_falta(clien
 
 
 def test_si_quien_administra_el_servidor_fijo_un_modelo_se_ofrece_ese(cliente, esc, monkeypatch):
-    monkeypatch.setattr("interfaz.api.rutas_ajustes.app_config.get_param", lambda k: "qwen2.5:7b")
+    monkeypatch.setattr("nucleo.configuracion.get_param", lambda k: "qwen2.5:7b")
     d = cliente.get(TEXTO, headers=esc["utp"]).json()
     assert d["modelo"] == "qwen2.5:7b" and d["tamano_gb"] is None  # de otro modelo no se sabe cuánto pesa
 
@@ -313,3 +321,95 @@ def test_solo_el_utp_ve_y_cambia_los_ajustes_de_clases_y_de_respaldo(cliente, es
             assert cliente.put(url, json=cuerpo, headers=esc[quien]).status_code == 403
     assert not (tmp_path / "x").exists()  # un rechazo no deja carpetas creadas
     assert cliente.get(CLASES, headers=esc["utp"]).json()["horas_revision"] == sa.HORAS_REVISION_POR_DEFECTO
+
+
+# --- Elegir el modelo que escribe los resúmenes (solo entre los que la aplicación ofrece y ya están descargados) ---
+
+
+def elegir(cliente, headers, modelo):
+    return cliente.put(TEXTO, json={"modelo": modelo}, headers=headers)
+
+
+def test_sin_elegir_nada_es_automatico_y_el_utp_ve_las_opciones_con_lo_que_falta(cliente, esc, ollama):
+    d = cliente.get(TEXTO, headers=esc["utp"]).json()
+    assert d["eleccion"] == "auto" and d["modelo"] == modelos_ia.MODELO_CPU
+    assert [o["modelo"] for o in d["opciones"]] == [m for m, _, _ in modelos_ia.ELEGIBLES]
+    assert all(o["instalado"] is False and o["etiqueta"] and o["nota"] for o in d["opciones"])
+    assert d["opciones"][0]["tamano_gb"] == 4.6
+    ollama["instalado"] = True
+    assert all(o["instalado"] is True for o in cliente.get(TEXTO, headers=esc["utp"]).json()["opciones"])
+
+
+def test_el_utp_elige_un_modelo_instalado_y_la_aplicacion_pasa_a_usarlo(cliente, esc, ollama):
+    ollama["instalado"] = True
+    d = elegir(cliente, esc["utp"], modelos_ia.MODELO_MINIMO).json()
+    assert d["eleccion"] == d["modelo"] == modelos_ia.MODELO_MINIMO
+    with cliente.sesion() as db:
+        assert sa.modelo_elegido(db) == modelos_ia.MODELO_MINIMO  # quedó en la base: es lo que se le pasa al trabajador
+        assert sa.modelo_de_resumen(db) == modelos_ia.MODELO_MINIMO
+    assert cliente.get(TEXTO, headers=esc["utp"]).json()["eleccion"] == modelos_ia.MODELO_MINIMO
+
+
+def test_automatico_borra_la_eleccion_y_la_aplicacion_vuelve_a_decidir_sola(cliente, esc, ollama):
+    ollama["instalado"] = True
+    elegir(cliente, esc["utp"], modelos_ia.MODELO_GPU)
+    d = elegir(cliente, esc["utp"], "auto").json()
+    assert d["eleccion"] == "auto" and d["modelo"] == modelos_ia.MODELO_CPU
+    with cliente.sesion() as db:
+        assert sa.modelo_elegido(db) is None
+
+
+def test_no_se_puede_elegir_un_modelo_que_no_esta_descargado_y_no_cambia_nada(cliente, esc, ollama):
+    ollama["instalado"] = True
+    elegir(cliente, esc["utp"], modelos_ia.MODELO_GPU)
+    ollama["instalado"] = False
+    r = elegir(cliente, esc["utp"], modelos_ia.MODELO_CPU)
+    assert r.status_code == 409 and "Descárgalo primero" in r.json()["detail"]
+    assert cliente.get(TEXTO, headers=esc["utp"]).json()["eleccion"] == modelos_ia.MODELO_GPU  # sigue el anterior
+
+
+def test_con_ollama_cerrado_no_se_puede_comprobar_asi_que_no_se_elige(cliente, esc, ollama):
+    ollama["responde"] = False
+    r = elegir(cliente, esc["utp"], modelos_ia.MODELO_CPU)
+    assert r.status_code == 409 and "Ollama no responde" in r.json()["detail"]
+    assert elegir(cliente, esc["utp"], "auto").status_code == 200  # volver a «automático» no necesita comprobar nada
+
+
+@pytest.mark.parametrize("modelo", ["cualquiera:70b", "", "llama3.2", "GEMMA4:E2B", "../../etc/passwd"])
+def test_un_modelo_que_la_aplicacion_no_ofrece_se_rechaza(cliente, esc, ollama, modelo):
+    ollama["instalado"] = True
+    r = elegir(cliente, esc["utp"], modelo)
+    assert r.status_code == 422 and "no está entre los que la aplicación ofrece" in r.json()["detail"]
+    assert cliente.put(TEXTO, json={}, headers=esc["utp"]).status_code == 422
+    with cliente.sesion() as db:
+        assert sa.modelo_elegido(db) is None
+
+
+def test_se_puede_descargar_cualquiera_de_los_modelos_que_se_ofrecen_y_no_otros(cliente, esc, ollama):
+    r = cliente.post(BAJAR_TEXTO, json={"modelo": modelos_ia.MODELO_GPU}, headers=esc["utp"])
+    assert r.status_code == 200
+    assert [m for m, _ in ollama["pedidos"]] == [modelos_ia.MODELO_GPU]
+    estado = {o["modelo"]: o["descarga"] for o in r.json()["opciones"]}
+    assert estado[modelos_ia.MODELO_GPU]["estado"] == "descargando" and estado[modelos_ia.MODELO_CPU] is None  # cada modelo, su propio avance
+    r = cliente.post(BAJAR_TEXTO, json={"modelo": "otro:7b"}, headers=esc["utp"])
+    assert r.status_code == 422 and "no está entre los que la aplicación ofrece" in r.json()["detail"]
+    assert len(ollama["pedidos"]) == 1
+
+
+def test_solo_el_utp_elige_el_modelo(cliente, esc, ollama):
+    ollama["instalado"] = True
+    assert cliente.put(TEXTO, json={"modelo": "auto"}).status_code == 401
+    for quien in ("ana", "alumno"):
+        assert elegir(cliente, esc[quien], modelos_ia.MODELO_MINIMO).status_code == 403
+    with cliente.sesion() as db:
+        assert sa.modelo_elegido(db) is None
+
+
+def test_el_trabajador_usa_lo_que_le_pasa_el_servidor_y_si_no_lo_de_quien_administra(monkeypatch):
+    monkeypatch.setenv(modelos_ia.VARIABLE_DEL_TRABAJADOR, "llama3.2:1b")
+    assert modelos_ia.configurado() == "llama3.2:1b"
+    monkeypatch.setenv(modelos_ia.VARIABLE_DEL_TRABAJADOR, "")  # el servidor la pone vacía cuando el UTP no eligió
+    monkeypatch.setattr("nucleo.configuracion.get_param", lambda k: "qwen2.5:7b")
+    assert modelos_ia.configurado() == "qwen2.5:7b"
+    monkeypatch.delenv(modelos_ia.VARIABLE_DEL_TRABAJADOR)
+    assert modelos_ia.configurado() == "qwen2.5:7b"

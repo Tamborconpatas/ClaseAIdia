@@ -86,16 +86,18 @@ def _procesamiento(db: Session, colegio_id: int) -> dict:
     return {"en_vivo": en_vivo, "procesando": procesando, "con_reintento": con_reintento, "con_error": con_error, "terminadas_24h": terminadas}
 
 
-def _ollama() -> dict:
+def _ollama(db: Session) -> dict:
     url = servicio_pizarra.url_ollama()
     nombres = servicio_modelos.modelos_instalados(url)
-    configurado = app_config.get_param("ollama_model")
+    configurado = servicio_ajustes.modelo_de_resumen(db)  # lo que eligió el UTP o, si no, lo de quien administra el servidor
     posibles = list(MODELOS_AUTO) if configurado == "auto" else [configurado]
-    return {
-        "responde": nombres is not None,
-        "modelo_texto": " o ".join(posibles),
-        "modelo_texto_instalado": nombres is not None and any(servicio_modelos.esta_en(m, nombres) for m in posibles),
-    }
+    instalado = nombres is not None and any(servicio_modelos.esta_en(m, nombres) for m in posibles)
+    # Si falta, ¿con cuál se resume mientras tanto? Solo cuando el modelo lo decide la aplicación o lo eligió el UTP (el trabajador cambia al que
+    # haya instalado); un modelo que fijó quien administra el servidor se respeta tal cual y, sin él, no hay resumen.
+    respaldo = None
+    if nombres is not None and not instalado and (configurado == "auto" or servicio_ajustes.modelo_elegido(db)):
+        respaldo = next((m for m in (*MODELOS_AUTO, modelos_ia.MODELO_MINIMO) if servicio_modelos.esta_en(m, nombres)), None)
+    return {"responde": nombres is not None, "modelo_texto": " o ".join(posibles), "modelo_texto_instalado": instalado, "modelo_de_respaldo": respaldo}
 
 
 def _disco() -> dict:
@@ -136,6 +138,8 @@ def construir_alertas(e: dict) -> list[dict]:
         alerta("disco", "aviso", f"Hay {round(d['audio_temporal_mb'] / 1000, 1)} GB de audio guardado sin ninguna clase que lo necesite: debería haberse borrado.")
     if not o["responde"]:
         alerta("ollama", "aviso", "El programa de IA (Ollama) no responde: las clases no se pueden resumir por ahora (quedan con error y se reintentan solas cuando vuelva).")
+    elif not o["modelo_texto_instalado"] and o.get("modelo_de_respaldo"):
+        alerta("ollama", "aviso", f"Falta el modelo que escribe los resúmenes ({o['modelo_texto']}): mientras tanto se resume con {o['modelo_de_respaldo']}. Se descarga desde «Ajustes».")
     elif not o["modelo_texto_instalado"]:
         alerta("ollama", "critico", f"Falta el modelo que escribe los resúmenes ({o['modelo_texto']}): sin él ninguna clase se puede resumir. Se descarga desde «Ajustes».")
     if r["cantidad"] == 0:
@@ -163,7 +167,7 @@ def estado_del_servidor(db: Session, colegio_id: int, vigilando: bool = True) ->
     e = {
         "generado_en": ahora.replace(tzinfo=datetime.timezone.utc),
         "procesamiento": _procesamiento(db, colegio_id),
-        "ollama": _ollama(),
+        "ollama": _ollama(db),
         "disco": _disco(),
         "respaldos": _respaldos(db),
         "memoria": {"total_gb": round(total, 1) if total else None, "libre_gb": round(libre, 1) if libre is not None else None},
