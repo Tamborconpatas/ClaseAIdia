@@ -13,6 +13,7 @@ siempre, o el valor del código): un colegio que ya existe no cambia de comporta
 - Del servidor (tabla `ajustes_servidor`): carpeta y días del respaldo diario de la base, y el modelo que escribe los resúmenes. La base es una
   sola, así que valen para todos.
 """
+import datetime
 import os
 import tempfile
 from pathlib import Path
@@ -32,6 +33,9 @@ DIAS_RESPALDO_POR_DEFECTO = int(os.environ.get("DIAS_DE_RESPALDO", servicio_resp
 RANGO_HORAS_REVISION = (1, 168)  # de una hora a una semana
 RANGO_MINUTOS_CORTE = (0, 120)  # 0 = se corta justo al terminar el bloque
 RANGO_DIAS_RESPALDO = (1, 365)
+RANGO_DIAS_CONSERVACION = (90, 730)  # de tres meses a dos años: menos borraría el material antes de que sirva para repasar
+DIAS_CONSERVACION_POR_DEFECTO = int(os.environ.get("DIAS_DE_CONSERVACION", "365"))
+MAX_DIAS_DE_PAUSA = 366  # una fecha de regreso más lejana que un año es un error de tecleo
 
 _CARPETA, _DIAS, _MODELO = "carpeta_respaldos", "dias_respaldo", "modelo_resumen"
 
@@ -50,6 +54,46 @@ def horas_de_revision(colegio: Colegio) -> int:
 
 def minutos_de_corte(colegio: Colegio) -> int:
     return colegio.minutos_corte if colegio.minutos_corte is not None else MINUTOS_CORTE_POR_DEFECTO
+
+
+def grabaciones_activas(colegio: Colegio) -> bool:
+    return colegio.grabaciones_activas
+
+
+def cambiar_grabaciones(db: Session, colegio: Colegio, activas: bool, hasta: datetime.date | None = None, hoy: datetime.date | None = None) -> None:
+    """Receso (fin de clases o vacaciones): con `activas` en False no se puede empezar a grabar. Lo ya grabado se procesa igual.
+    `hasta`: día en que la vigilancia las reactiva sola (solo con la pausa puesta; debe ser futuro y no más lejano que un año)."""
+    hoy = hoy or datetime.date.today()
+    if activas and colegio.anio_cerrado:
+        raise ErrorAjuste("El año está cerrado: antes de volver a grabar hay que preparar el año nuevo (qué pasa con los alumnos) en «Cursos» → «Preparar el año nuevo».", estado=409)
+    if activas:
+        hasta = None
+    elif hasta is not None and not hoy < hasta <= hoy + datetime.timedelta(days=MAX_DIAS_DE_PAUSA):
+        raise ErrorAjuste("La fecha para reactivar las grabaciones debe ser un día futuro y no pasar de un año. Déjala vacía para reactivarlas tú.")
+    colegio.grabaciones_activas, colegio.grabaciones_hasta = activas, hasta
+    db.commit()
+
+
+def reactivar_si_toca(db: Session, hoy: datetime.date | None = None) -> int:
+    """Los colegios cuya pausa tenía fecha de regreso y ya llegó (o pasó) vuelven a grabar. Devuelve cuántos."""
+    hoy = hoy or datetime.date.today()
+    # Con el año cerrado no se reactivan solas: ese día se avisa en «Estado» que falta preparar el año nuevo (los alumnos cambian de curso en febrero).
+    vencidos = db.query(Colegio).filter(Colegio.grabaciones_activas.is_(False), Colegio.anio_cerrado.is_(False), Colegio.grabaciones_hasta.is_not(None), Colegio.grabaciones_hasta <= hoy).all()
+    for c in vencidos:
+        c.grabaciones_activas, c.grabaciones_hasta = True, None
+    if vencidos:
+        db.commit()
+    return len(vencidos)
+
+
+def dias_de_conservacion(colegio: Colegio) -> int:
+    return colegio.dias_conservacion if colegio.dias_conservacion is not None else DIAS_CONSERVACION_POR_DEFECTO
+
+
+def cambiar_conservacion(db: Session, colegio: Colegio, dias: int | None) -> None:
+    """`None` = volver al predeterminado (un año)."""
+    colegio.dias_conservacion = _en_rango(dias, RANGO_DIAS_CONSERVACION, "Plazo de conservación", "días")
+    db.commit()
 
 
 def _en_rango(valor: int | None, rango: tuple[int, int], nombre: str, unidad: str) -> int | None:

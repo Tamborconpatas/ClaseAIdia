@@ -80,6 +80,56 @@ def test_cada_colegio_decide_por_su_cuenta(cliente, esc, otro_colegio):
     assert ver(cliente, esc["utp"]).json()["activada"] is True
 
 
+def test_el_receso_de_grabaciones_es_del_colegio_y_solo_el_utp_lo_cambia(cliente, esc, otro_colegio):
+    url = "/ajustes/grabaciones"
+    assert cliente.get(url, headers=esc["utp"]).json() == {"activas": True, "hasta": None, "anio_cerrado": False}  # encendido por defecto: nada cambia hasta que el UTP lo apague
+    for quien in ("ana", "alumno"):
+        assert cliente.get(url, headers=esc[quien]).status_code == 403
+        assert cliente.put(url, json={"activas": False}, headers=esc[quien]).status_code == 403
+    assert cliente.put(url, json={"activas": False}, headers=esc["utp"]).json() == {"activas": False, "hasta": None, "anio_cerrado": False}
+    assert cliente.get(url, headers=esc["utp"]).json() == {"activas": False, "hasta": None, "anio_cerrado": False}  # quedó guardado en la base
+    assert cliente.get(url, headers=otro_colegio[1]).json() == {"activas": True, "hasta": None, "anio_cerrado": False}  # el otro colegio no se enteró
+    assert cliente.put(url, json={"activas": "quizás"}, headers=esc["utp"]).status_code == 422
+
+
+def test_la_pausa_puede_llevar_una_fecha_de_regreso_y_se_reactiva_sola(cliente, esc):
+    from infraestructura.modelos_orm import Colegio
+
+    url, hoy = "/ajustes/grabaciones", datetime.date.today()
+    regreso = (hoy + datetime.timedelta(days=30)).isoformat()
+    assert cliente.put(url, json={"activas": False, "hasta": regreso, "anio_cerrado": False}, headers=esc["utp"]).json() == {"activas": False, "hasta": regreso, "anio_cerrado": False}
+    with cliente.sesion() as db:
+        assert sa.reactivar_si_toca(db, hoy) == 0  # todavía no llega el día
+        assert sa.reactivar_si_toca(db, hoy + datetime.timedelta(days=30)) == 1  # el día de regreso vuelve a grabar
+        assert db.query(Colegio).first().grabaciones_activas is True and db.query(Colegio).first().grabaciones_hasta is None
+    assert cliente.get(url, headers=esc["utp"]).json() == {"activas": True, "hasta": None, "anio_cerrado": False}
+
+
+def test_la_fecha_de_regreso_debe_ser_futura_y_no_pasar_de_un_ano_y_al_activar_se_borra(cliente, esc):
+    url, hoy = "/ajustes/grabaciones", datetime.date.today()
+    for mala in (hoy, hoy - datetime.timedelta(days=3), hoy + datetime.timedelta(days=400)):
+        r = cliente.put(url, json={"activas": False, "hasta": mala.isoformat()}, headers=esc["utp"])
+        assert r.status_code == 422 and "fecha" in r.json()["detail"].lower()
+    assert cliente.get(url, headers=esc["utp"]).json()["activas"] is True  # nada cambió
+    cliente.put(url, json={"activas": False, "hasta": (hoy + datetime.timedelta(days=5)).isoformat()}, headers=esc["utp"])
+    assert cliente.put(url, json={"activas": True, "hasta": (hoy + datetime.timedelta(days=5)).isoformat()}, headers=esc["utp"]).json() == {"activas": True, "hasta": None, "anio_cerrado": False}
+
+
+def test_el_plazo_de_conservacion_se_cambia_con_vista_previa_y_solo_lo_ve_el_utp(cliente, esc, otro_colegio):
+    url = "/ajustes/conservacion"
+    base = cliente.get(url, headers=esc["utp"]).json()
+    assert (base["dias"], base["dias_por_defecto"], base["rango_dias"]) == (365, 365, [90, 730])
+    for quien in ("ana", "alumno"):
+        assert cliente.get(url, headers=esc[quien]).status_code == 403
+        assert cliente.put(url, json={"dias": 200}, headers=esc[quien]).status_code == 403
+    for malo in (89, 731, 1.5, "x", True):
+        assert cliente.put(url, json={"dias": malo}, headers=esc["utp"]).status_code == 422
+    assert cliente.get(url + "?dias=30", headers=esc["utp"]).status_code == 422  # la vista previa también respeta el rango
+    assert cliente.put(url, json={"dias": 200}, headers=esc["utp"]).json()["dias"] == 200
+    assert cliente.get(url, headers=otro_colegio[1]).json()["dias"] == 365  # el otro colegio no se enteró
+    assert cliente.put(url, json={"dias": None}, headers=esc["utp"]).json()["dias"] == 365  # null = el predeterminado
+
+
 def test_el_ajuste_vive_en_el_colegio_y_la_funcion_lo_lee_de_ahi(cliente, esc):
     from infraestructura.modelos_orm import Colegio
 

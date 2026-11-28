@@ -518,8 +518,105 @@ AccionGrabacion = Literal[
 _ID_DISPOSITIVO = Field(min_length=8, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
 
 
+class CierreCursoIn(BaseModel):
+    """A dónde pasan los alumnos de un curso que no repiten ni se fueron: un curso que ya existe, uno nuevo o egresan (último curso)."""
+
+    curso_id: int
+    destino_id: int | None = None
+    destino_nuevo: str | None = Field(default=None, max_length=40)
+    egresa: bool = False
+
+
+class CierrePlanIn(BaseModel):
+    cursos: list[CierreCursoIn] = Field(max_length=200)
+    repiten: list[int] = Field(default_factory=list, max_length=5000)  # alumnos que se quedan en su curso
+    se_van: list[int] = Field(default_factory=list, max_length=5000)  # alumnos que dejaron el colegio: se borra su cuenta
+
+
+class CierreAnioNuevoConfirmarIn(CierrePlanIn):
+    confirmo: bool = False
+
+
+class CierreConfirmarIn(BaseModel):
+    confirmo: bool = False
+
+
+class CierreEstadoOut(BaseModel):
+    """Antes de cerrar el año: si ya está cerrado, cuántas clases se borrarían y qué lo impide."""
+
+    anio_cerrado: bool
+    clases_a_borrar: int
+    problemas: list[str]
+
+
+class CierreHechoOut(BaseModel):
+    clases_borradas: int
+    respaldo: str | None  # nombre del respaldo aparte hecho justo antes
+
+
+class CierreResumenOut(BaseModel):
+    pasan: int
+    repiten: int
+    se_van: int
+    egresan: int
+    cuentas_a_borrar: int
+    cursos_nuevos: list[str]
+    codigos_nuevos: int
+
+
+class CierreCursoOut(BaseModel):
+    curso_id: int
+    curso: str
+    alumnos: int
+    destino: str | None
+
+
+class CierreVistaPreviaOut(BaseModel):
+    problemas: list[str]
+    resumen: CierreResumenOut
+    cursos: list[CierreCursoOut]
+
+
+class CierreCodigoOut(BaseModel):
+    curso: str
+    codigo: str
+
+
+class CierreAnioNuevoOut(BaseModel):
+    resumen: CierreResumenOut
+    respaldo: str | None
+    codigos: list[CierreCodigoOut]  # los códigos nuevos de todos los cursos, para dárselos a los alumnos que entran
+
+
 class AjusteFotosEditar(BaseModel):
     activada: bool
+
+
+class AjusteGrabacionesEditar(BaseModel):
+    activas: bool
+    hasta: datetime.date | None = None  # solo con la pausa puesta: el día en que se reactivan solas
+
+
+class AjusteGrabacionesOut(BaseModel):
+    """Receso del colegio: con `activas` en False los profesores no pueden empezar a grabar; con `hasta`, se reactivan solas ese día."""
+
+    activas: bool
+    hasta: datetime.date | None
+    anio_cerrado: bool  # con el año cerrado no se pueden reactivar sin preparar antes el año nuevo (qué pasa con los alumnos)
+
+
+class AjusteConservacionEditar(BaseModel):
+    dias: int | None  # null = el predeterminado
+
+
+class AjusteConservacionOut(BaseModel):
+    """Cuánto se guarda el material de una clase. `se_borrarian`: clases que se borrarían esta noche con el plazo consultado."""
+
+    dias: int
+    dias_por_defecto: int
+    rango_dias: list[int]
+    se_borrarian: int
+    borradas: int = 0  # al guardar: las clases que se borraron en ese momento
 
 
 class DescargaOut(BaseModel):
@@ -680,7 +777,7 @@ class EstadoVigilanciaOut(BaseModel):
 
 
 class EstadoAlertaOut(BaseModel):
-    tema: Literal["disco", "ollama", "respaldos", "memoria", "vigilancia", "clases"]  # a qué parte del panel se refiere
+    tema: Literal["disco", "ollama", "respaldos", "memoria", "vigilancia", "clases", "grabaciones"]  # a qué parte del panel se refiere
     nivel: Literal["critico", "aviso"]
     texto: str
 
@@ -718,6 +815,9 @@ class EstadoServidorOut(BaseModel):
     memoria: EstadoMemoriaOut
     vigilancia: EstadoVigilanciaOut
     conexiones: EstadoConexionesOut
+    grabaciones_en_pausa: bool = False  # el UTP apagó las grabaciones (fin de clases o vacaciones)
+    grabaciones_hasta: datetime.date | None = None  # y el día en que se reactivan solas, si lo puso
+    anio_cerrado: bool = False  # el UTP cerró el año: falta preparar el año nuevo para volver a grabar
 
 
 class GrabacionCrear(BaseModel):

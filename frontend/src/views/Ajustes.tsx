@@ -8,7 +8,7 @@ import { Download, Info, Loader2 } from 'lucide-react'
 import { Cargando, ErrorForm, Requisito } from '@/components/comunes'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { api, type AjusteClases, type AjusteFotos, type AjusteModeloTexto, type AjusteRespaldos, type DescargaModelo, type OpcionModelo } from '@/lib/api'
+import { api, type AjusteClases, type AjusteConservacion, type AjusteFotos, type AjusteGrabaciones, type AjusteModeloTexto, type AjusteRespaldos, type DescargaModelo, type OpcionModelo } from '@/lib/api'
 import { CREDITO } from '@/lib/autoria'
 import { useCarga, useSondeo } from '@/lib/usar'
 import { cn } from '@/lib/utils'
@@ -19,7 +19,8 @@ const MEMORIA_MINIMA_GB = 12
 /**
  * Ajustes del colegio. El UTP decide aquí lo que en otras aplicaciones se tocaría en un archivo de configuración: la app se
  * reparte portable y nadie edita archivos ni escribe comandos. Hoy: el modelo que escribe los resúmenes (necesario), cómo se tratan
- * las clases (plazo de revisión y corte automático), el respaldo diario y las fotos de la pizarra (opcionales).
+ * las clases (plazo de revisión y corte automático), el receso de grabaciones (fin de clases y vacaciones), el respaldo diario y las fotos de la
+ * pizarra (opcionales).
  */
 export function Ajustes() {
   return (
@@ -28,6 +29,8 @@ export function Ajustes() {
       <ClasesDelColegio />
       <RespaldosDelServidor />
       <FotosDePizarra />
+      <RecesoDeGrabaciones />
+      <ConservacionDeClases />
       <p className="text-center text-xs text-muted-foreground">{CREDITO}</p>
     </div>
   )
@@ -257,12 +260,203 @@ function CampoNumerico({ id, etiqueta, ayuda, valor, onCambio, min, max }: {
   const ok = valor.trim() !== '' && Number.isInteger(n) && n >= min && n <= max
   return (
     <div className="space-y-1">
-      <label htmlFor={id} className="text-sm font-medium">{etiqueta}</label>
+      <label htmlFor={id} className="block text-sm font-medium">{etiqueta}</label>
       <Input id={id} type="number" inputMode="numeric" min={min} max={max} value={valor} aria-invalid={!ok} aria-describedby={`${id}-ayuda`} onChange={(e) => onCambio(e.target.value)} className="h-11 w-28 text-base desk:h-9 desk:text-sm" />
       <p id={`${id}-ayuda`} className={cn('text-xs leading-relaxed', ok ? 'text-muted-foreground' : 'text-destructive')}>
         {ok ? ayuda : `Escribe un número entero de ${min} a ${max}.`}
       </p>
     </div>
+  )
+}
+
+const fechaLarga = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })
+const mañana = () => {
+  const d = new Date()
+  d.setDate(d.getDate() + 1)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+/** Apaga el empezar a grabar cuando terminan las clases o hay vacaciones, y puede reactivarlas solo el día del regreso. Lo ya grabado se
+ * procesa y los alumnos siguen viendo su material. */
+function RecesoDeGrabaciones() {
+  const carga = useCarga(() => api<AjusteGrabaciones>('/ajustes/grabaciones'), [])
+  const [guardado, setGuardado] = useState<AjusteGrabaciones | null>(null)
+  const [fecha, setFecha] = useState<string | null>(null)
+  const [enviando, setEnviando] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const actual = guardado ?? carga.datos
+  if (carga.error) return <ErrorForm mensaje={carga.error} />
+  if (!actual) return <Cargando />
+  const regreso = fecha ?? actual.hasta ?? ''
+
+  const enviar = async (activas: boolean, hasta: string | null) => {
+    setEnviando(true)
+    setError(null)
+    try {
+      const nuevo = await api<AjusteGrabaciones>('/ajustes/grabaciones', { metodo: 'PUT', cuerpo: { activas, hasta } })
+      setGuardado(nuevo)
+      setFecha(null)
+    } catch (e) {
+      setError((e as Error).message)
+    }
+    setEnviando(false)
+  }
+
+  return (
+    <section aria-labelledby="titulo-receso" className="space-y-4 rounded-2xl border bg-card p-4 desk:p-5">
+      <div>
+        <h2 id="titulo-receso" className="text-lg font-semibold">Fin de clases y vacaciones</h2>
+        <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+          Apágalas cuando terminen las clases o haya vacaciones. Mientras estén apagadas los profesores no pueden empezar a grabar; lo que ya se grabó se sigue procesando y
+          los alumnos siguen viendo su material.
+        </p>
+      </div>
+      <div className="flex items-center justify-between gap-4 rounded-xl bg-muted/50 p-3.5">
+        <div>
+          <p id="etiqueta-receso" className="font-medium">Grabaciones activadas</p>
+          <p className="text-sm text-muted-foreground">
+            {actual.activas
+              ? 'Activadas: los profesores pueden grabar sus clases.'
+              : actual.hasta
+                ? `En pausa: se reactivan solas el ${fechaLarga(actual.hasta)}.`
+                : 'En pausa: nadie puede empezar a grabar.'}
+          </p>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={actual.activas}
+          aria-labelledby="etiqueta-receso"
+          disabled={enviando || (actual.anio_cerrado && !actual.activas)}
+          onClick={() => void enviar(!actual.activas, actual.activas ? regreso || null : null)}
+          className={cn(
+            'relative inline-flex h-8 w-14 shrink-0 items-center rounded-full border-2 border-transparent transition-colors focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none disabled:opacity-60',
+            actual.activas ? 'bg-primary' : 'bg-input',
+          )}
+        >
+          <span className={cn('pointer-events-none block size-6 rounded-full bg-background shadow transition-transform', actual.activas ? 'translate-x-6' : 'translate-x-0.5')} />
+        </button>
+      </div>
+      {actual.anio_cerrado && (
+        <p role="note" className="rounded-xl bg-amber-50 p-3.5 text-sm text-amber-950 ring-1 ring-amber-200 dark:bg-amber-950/40 dark:text-amber-100 dark:ring-amber-800">
+          El año está cerrado: para volver a grabar hay que preparar el año nuevo en «Cursos» → «Preparar el año nuevo», donde decides qué pasa con los alumnos. La fecha de abajo
+          solo sirve de recordatorio en el panel «Estado».
+        </p>
+      )}
+      <div className="space-y-1">
+        <label htmlFor="fecha-regreso" className="text-sm font-medium">Reactivarlas solas el (opcional)</label>
+        <div className="flex flex-wrap items-center gap-2">
+          <Input id="fecha-regreso" type="date" min={mañana()} value={regreso} onChange={(e) => setFecha(e.target.value)} aria-describedby="fecha-regreso-ayuda" className="h-11 w-44 text-base desk:h-9 desk:text-sm" />
+          {!actual.activas && regreso !== (actual.hasta ?? '') && (
+            <Button type="button" variant="outline" className="h-11 desk:h-9" disabled={enviando} onClick={() => void enviar(false, regreso || null)}>
+              {regreso ? 'Guardar la fecha' : 'Quitar la fecha'}
+            </Button>
+          )}
+        </div>
+        <p id="fecha-regreso-ayuda" className="text-xs leading-relaxed text-muted-foreground">
+          {actual.activas ? 'Si las pones en pausa con una fecha, el día del regreso se activan solas.' : 'Sin fecha, las reactivas tú con el interruptor.'}
+        </p>
+      </div>
+      <p role="status" aria-live="polite" className="sr-only">{actual.activas ? 'Grabaciones activadas.' : 'Grabaciones en pausa.'}</p>
+      <ErrorForm mensaje={error} />
+    </section>
+  )
+}
+
+/** Cuánto se guarda el material de cada clase. Al acortar el plazo avisa cuántas clases se borrarían ya, porque no hay vuelta atrás. */
+function ConservacionDeClases() {
+  const carga = useCarga(() => api<AjusteConservacion>('/ajustes/conservacion'), [])
+  if (carga.error) return <ErrorForm mensaje={carga.error} />
+  if (!carga.datos) return <Cargando />
+  return <FormularioConservacion inicial={carga.datos} />
+}
+
+function FormularioConservacion({ inicial }: { inicial: AjusteConservacion }) {
+  const [guardado, setGuardado] = useState(inicial)
+  const [dias, setDias] = useState(String(inicial.dias))
+  const [enviando, setEnviando] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [aviso, setAviso] = useState('')
+  const [pendiente, setPendiente] = useState<{ dias: number | null; borrarian: number } | null>(null)
+  const [d0, d1] = guardado.rango_dias
+  const n = Number(dias)
+  const valido = dias.trim() !== '' && Number.isInteger(n) && n >= d0 && n <= d1
+  const cambio = n !== guardado.dias
+
+  const guardar = async (nuevo: number | null) => {
+    setEnviando(true)
+    setError(null)
+    setAviso('')
+    setPendiente(null)
+    try {
+      const r = await api<AjusteConservacion>('/ajustes/conservacion', { metodo: 'PUT', cuerpo: { dias: nuevo } })
+      setGuardado(r)
+      setDias(String(r.dias))
+      setAviso(r.borradas ? `Guardado. Se borraron ${r.borradas} ${r.borradas === 1 ? 'clase' : 'clases'} que ya pasaron el plazo.` : 'Guardado.')
+    } catch (e) {
+      setError((e as Error).message)
+    }
+    setEnviando(false)
+  }
+  // Un plazo más corto puede borrar clases que hoy se ven: se pregunta cuántas antes de guardar.
+  const enviar = async (e: FormEvent) => {
+    e.preventDefault()
+    setError(null)
+    setAviso('')
+    try {
+      const previa = await api<AjusteConservacion>(`/ajustes/conservacion?dias=${n}`)
+      if (previa.se_borrarian > 0) setPendiente({ dias: n, borrarian: previa.se_borrarian })
+      else await guardar(n)
+    } catch (err) {
+      setError((err as Error).message)
+    }
+  }
+
+  return (
+    <section aria-labelledby="titulo-conservacion" className="space-y-4 rounded-2xl border bg-card p-4 desk:p-5">
+      <div>
+        <h2 id="titulo-conservacion" className="text-lg font-semibold">Cuánto tiempo se guardan las clases</h2>
+        <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+          Pasado este plazo desde la fecha de cada clase, se borra sola con su resumen, su transcripción y todo su material: cada año escolar empieza de cero. Es lo
+          que dice el aviso de privacidad.
+        </p>
+      </div>
+      <form onSubmit={(e) => void enviar(e)} className="space-y-4">
+        <CampoNumerico
+          id="dias-conservacion"
+          etiqueta="Días que se guarda cada clase"
+          ayuda={`${guardado.dias_por_defecto} días son un año, lo predeterminado. Borrar no se puede deshacer.`}
+          valor={dias}
+          onCambio={setDias}
+          min={d0}
+          max={d1}
+        />
+        {pendiente && (
+          <div role="alert" className="space-y-3 rounded-xl bg-amber-50 p-3.5 text-sm text-amber-950 ring-1 ring-amber-200 dark:bg-amber-950/40 dark:text-amber-100 dark:ring-amber-800">
+            <p>
+              Con {pendiente.dias} días se borrarán ahora <strong>{pendiente.borrarian} {pendiente.borrarian === 1 ? 'clase' : 'clases'}</strong> que ya pasaron ese plazo, y no se
+              pueden recuperar.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" className="h-11 desk:h-9" disabled={enviando} onClick={() => void guardar(pendiente.dias)}>Guardar y borrar</Button>
+              <Button type="button" variant="outline" className="h-11 desk:h-9" onClick={() => setPendiente(null)}>Cancelar</Button>
+            </div>
+          </div>
+        )}
+        <div className="flex flex-wrap items-center gap-2">
+          <Button type="submit" className="h-11 desk:h-9" disabled={!valido || !cambio || enviando || pendiente !== null}>
+            {enviando ? <Loader2 className="animate-spin" /> : null} Guardar
+          </Button>
+          {guardado.dias !== guardado.dias_por_defecto && (
+            <Button type="button" variant="outline" className="h-11 desk:h-9" disabled={enviando} onClick={() => void guardar(null)}>
+              Volver a {guardado.dias_por_defecto} días
+            </Button>
+          )}
+          <p role="status" aria-live="polite" className="text-sm text-muted-foreground">{aviso}</p>
+        </div>
+        <ErrorForm mensaje={error} />
+      </form>
+    </section>
   )
 }
 

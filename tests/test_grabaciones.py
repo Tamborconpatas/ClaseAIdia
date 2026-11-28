@@ -179,6 +179,33 @@ def test_en_la_demostracion_se_graba_cualquier_bloque_de_clase_a_cualquier_hora(
     assert _crear(g, bloque="recreo").status_code == 404  # un bloque ajeno sigue siendo ajeno
 
 
+def test_con_las_grabaciones_en_pausa_no_se_empieza_a_grabar_pero_lo_en_curso_sigue(g):
+    """Receso (fin de clases o vacaciones): el UTP apaga el empezar a grabar; una sesión que ya estaba en marcha se puede terminar."""
+    gid = _crear(g).json()["id"]  # empezada antes de la pausa
+    assert g["c"].put("/ajustes/grabaciones", json={"activas": False}, headers=g["utp"]).json() == {"activas": False, "hasta": None, "anio_cerrado": False}
+    r = _crear(g, bloque="bloque_martes")
+    assert r.status_code == 409 and "pausa" in r.json()["detail"]
+    hoy = g["c"].get("/grabaciones/hoy", headers=g["ana"]).json()[0]
+    assert hoy["puede_grabar"] is True and hoy["grabacion"]["id"] == gid  # la sesión en curso se retoma igual
+    assert g["c"].get("/estado", headers=g["utp"]).json()["grabaciones_en_pausa"] is True
+    g["c"].put("/ajustes/grabaciones", json={"activas": True}, headers=g["utp"])
+    assert "no es de hoy" in _crear(g, bloque="bloque_martes").json()["detail"]  # reactivadas: ya no es la pausa lo que lo impide
+
+
+def test_en_pausa_el_profesor_ve_el_motivo_y_el_panel_avisa(g):
+    g["c"].put("/ajustes/grabaciones", json={"activas": False}, headers=g["utp"])
+    hoy = g["c"].get("/grabaciones/hoy", headers=g["ana"]).json()[0]
+    assert hoy["puede_grabar"] is False and "pausa" in hoy["motivo"]
+    alertas = g["c"].get("/estado", headers=g["utp"]).json()["alertas"]
+    assert any(a["tema"] == "grabaciones" and "en pausa" in a["texto"] for a in alertas)
+    regreso = datetime.date.today() + datetime.timedelta(days=20)
+    g["c"].put("/ajustes/grabaciones", json={"activas": False, "hasta": regreso.isoformat()}, headers=g["utp"])
+    alertas = g["c"].get("/estado", headers=g["utp"]).json()["alertas"]
+    assert any(a["tema"] == "grabaciones" and f"Se reactivan solas el {regreso.day} de" in a["texto"] for a in alertas)  # el aviso dice cuándo
+    g["c"].put("/ajustes/grabaciones", json={"activas": True}, headers=g["utp"])
+    assert not any(a["tema"] == "grabaciones" for a in g["c"].get("/estado", headers=g["utp"]).json()["alertas"])
+
+
 def test_crear_dos_veces_retoma_la_misma_sesion_y_no_duplica(g):
     a = _crear(g)
     b = _crear(g)

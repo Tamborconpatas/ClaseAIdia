@@ -12,12 +12,12 @@ from infraestructura.basedatos import obtener_db
 from infraestructura.modelos_orm import Colegio, RolNombre, Usuario
 from interfaz.api.dependencias_auth import requiere_rol
 from interfaz.api.esquemas import (
-    AjusteClasesEditar, AjusteClasesOut, AjusteFotosEditar, AjusteFotosOut, AjusteModeloDescargar, AjusteModeloEditar, AjusteModeloTextoOut,
+    AjusteClasesEditar, AjusteClasesOut, AjusteConservacionEditar, AjusteConservacionOut, AjusteFotosEditar, AjusteFotosOut, AjusteGrabacionesEditar, AjusteGrabacionesOut, AjusteModeloDescargar, AjusteModeloEditar, AjusteModeloTextoOut,
     AjusteRespaldosEditar, AjusteRespaldosOut,
 )
 from nucleo import modelos_ia
 from nucleo.memoria import memoria_total_gb
-from servicios import servicio_ajustes as sa, servicio_modelos, servicio_pizarra, servicio_respaldo
+from servicios import servicio_ajustes as sa, servicio_conservacion, servicio_modelos, servicio_pizarra, servicio_respaldo
 
 router = APIRouter(prefix="/ajustes", tags=["ajustes"])
 utp_actual = requiere_rol(RolNombre.UTP)
@@ -55,6 +55,49 @@ def cambiar_fotos(datos: AjusteFotosEditar, db: Session = Depends(obtener_db), u
     db.get(Colegio, utp.colegio_id).fotos_pizarra = datos.activada
     db.commit()
     return _estado_fotos(db, utp)
+
+
+def _receso(colegio: Colegio) -> dict:
+    return {"activas": sa.grabaciones_activas(colegio), "hasta": colegio.grabaciones_hasta, "anio_cerrado": colegio.anio_cerrado}
+
+
+def _conservacion(db: Session, colegio: Colegio, consultado: int | None = None) -> dict:
+    dias = sa.dias_de_conservacion(colegio) if consultado is None else consultado
+    if consultado is not None and not sa.RANGO_DIAS_CONSERVACION[0] <= consultado <= sa.RANGO_DIAS_CONSERVACION[1]:
+        raise sa.ErrorAjuste(f"Plazo de conservación: escribe un número entero de {sa.RANGO_DIAS_CONSERVACION[0]} a {sa.RANGO_DIAS_CONSERVACION[1]} días.")
+    return {
+        "dias": sa.dias_de_conservacion(colegio), "dias_por_defecto": sa.DIAS_CONSERVACION_POR_DEFECTO, "rango_dias": list(sa.RANGO_DIAS_CONSERVACION),
+        "se_borrarian": servicio_conservacion.contar_vencidas(db, colegio, dias),
+    }
+
+
+@router.get("/grabaciones", response_model=AjusteGrabacionesOut)
+def ver_grabaciones(db: Session = Depends(obtener_db), utp: Usuario = Depends(utp_actual)):
+    return _receso(db.get(Colegio, utp.colegio_id))
+
+
+@router.put("/grabaciones", response_model=AjusteGrabacionesOut)
+def cambiar_grabaciones(datos: AjusteGrabacionesEditar, db: Session = Depends(obtener_db), utp: Usuario = Depends(utp_actual)):
+    """Receso del colegio (fin de clases o vacaciones): apaga o enciende el empezar a grabar. Lo ya grabado se procesa igual."""
+    colegio = db.get(Colegio, utp.colegio_id)
+    sa.cambiar_grabaciones(db, colegio, datos.activas, datos.hasta)
+    return _receso(colegio)
+
+
+@router.get("/conservacion", response_model=AjusteConservacionOut)
+def ver_conservacion(dias: int | None = None, db: Session = Depends(obtener_db), utp: Usuario = Depends(utp_actual)):
+    """El plazo de este colegio. Con `dias`, dice cuántas clases se borrarían con ese plazo (vista previa antes de guardarlo)."""
+    return _conservacion(db, db.get(Colegio, utp.colegio_id), dias)
+
+
+@router.put("/conservacion", response_model=AjusteConservacionOut)
+def cambiar_conservacion(datos: AjusteConservacionEditar, db: Session = Depends(obtener_db), utp: Usuario = Depends(utp_actual)):
+    """Cuántos días se guarda el material de cada clase de este colegio (`null` = un año). Un plazo más corto borra al instante, y sin vuelta
+    atrás, lo que ya lo pasó (la respuesta dice cuántas clases se borraron)."""
+    colegio = db.get(Colegio, utp.colegio_id)
+    sa.cambiar_conservacion(db, colegio, datos.dias)
+    borradas = servicio_conservacion.borrar_vencidas(db, solo=colegio)
+    return {**_conservacion(db, colegio), "borradas": borradas}
 
 
 @router.post("/fotos-pizarra/modelo", response_model=AjusteFotosOut)
