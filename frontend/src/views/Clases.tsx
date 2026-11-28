@@ -3,7 +3,7 @@
  * Este archivo forma parte del proyecto "Transcriptor de clases (ClaseAIdia)".
  * Licencia Apache v2.0 + Commons Clause v1.0. Uso comercial restringido para terceros.
  */
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { AlertTriangle, ArrowLeft, Check, CheckCircle2, ChevronRight, Clock, EyeOff, FileText, Layers, ListChecks, Loader2, MapPin, Network, PenLine, Pencil, RotateCcw, Sparkles } from 'lucide-react'
 import { Cargando, ErrorForm, Vacio } from '@/components/comunes'
 import { FotoLeida } from '@/components/FotoLeida'
@@ -36,12 +36,54 @@ export function Clases({ cursoInicial, claseInicial }: { cursoInicial: number | 
   const { rol } = useSesion()
   const clases = useCarga(() => api<ClaseResumen[]>('/clases'), [])
   const [curso, setCurso] = useState<number | null>(cursoInicial)
+  const [materia, setMateria] = useState<string | null>(null)
   const [seleccion, setSeleccion] = useState<number | null>(claseInicial)
   const esAlumno = rol === 'ALUMNO'
 
-  const lista = useMemo(() => clases.datos ?? [], [clases.datos])
+  // Más nueva primero, sin fiarse del orden en que llegue (el «Última» de cada materia sale de acá).
+  const lista = useMemo(() => [...(clases.datos ?? [])].sort((a, b) => b.fecha.localeCompare(a.fecha) || b.hora_inicio.localeCompare(a.hora_inicio)), [clases.datos])
   const cursos = useMemo(() => [...new Map(lista.map((c) => [c.curso_id, c.curso_nombre]))].sort((a, b) => a[1].localeCompare(b[1], 'es')), [lista])
   const visibles = curso ? lista.filter((c) => c.curso_id === curso) : lista
+  // El alumno ve sus clases separadas por materia.
+  const materias = useMemo(() => {
+    const por = new Map<string, { n: number; ultima: string }>()
+    for (const c of lista) {
+      const m = por.get(nombreMateria(c))
+      por.set(nombreMateria(c), { n: (m?.n ?? 0) + 1, ultima: m?.ultima ?? c.fecha })
+    }
+    return [...por].sort((a, b) => a[0].localeCompare(b[0], 'es'))
+  }, [lista])
+  const porMaterias = esAlumno && materias.length > 1
+
+  // El foco acompaña al alumno: al entrar a una materia queda en su título y al volver, en su botón.
+  const cabecera = useRef<HTMLHeadingElement>(null)
+  const botonesMateria = useRef(new Map<string, HTMLButtonElement>())
+  const materiaPrevia = useRef<string | null>(null)
+  useEffect(() => {
+    if (materia) cabecera.current?.focus()
+    else if (materiaPrevia.current) botonesMateria.current.get(materiaPrevia.current)?.focus()
+    materiaPrevia.current = materia
+  }, [materia])
+  // El gesto «atrás» del celular sube un nivel (clase → materia → materias) en vez de salirse de la aplicación.
+  const scrollAntes = useRef(0)
+  const empujadas = useRef(0)
+  useEffect(() => {
+    if (!esAlumno) return
+    const alAtras = (e: PopStateEvent) => {
+      const nivel = e.state?.claseidia
+      empujadas.current = nivel === 'clase' ? empujadas.current : nivel === 'materia' ? 1 : 0
+      if (nivel !== 'clase') setSeleccion(null)
+      if (nivel !== 'clase' && nivel !== 'materia') setMateria(null)
+      if (nivel === 'materia') requestAnimationFrame(() => window.scrollTo(0, scrollAntes.current)) // vuelve de una clase: donde estaba
+    }
+    window.addEventListener('popstate', alAtras)
+    return () => window.removeEventListener('popstate', alAtras)
+  }, [esAlumno])
+  // Al salir de «Clases» (otra pestaña, cerrar sesión) se retiran las entradas que dejó, para que «atrás» no tenga pasos que no hacen nada.
+  // Las páginas de privacidad y términos viven en el historial por su hash: ahí no se toca nada.
+  useEffect(() => () => {
+    if (empujadas.current > 0 && !window.location.hash.startsWith('#/')) window.history.go(-empujadas.current)
+  }, [])
 
   if (clases.cargando && !clases.datos) return <Cargando />
   if (clases.error) return <ErrorForm mensaje={clases.error} />
@@ -55,11 +97,40 @@ export function Clases({ cursoInicial, claseInicial }: { cursoInicial: number | 
     )
   }
 
-  // Un profesor con varios cursos ve las clases agrupadas por curso.
+  // Un profesor con varios cursos ve las clases agrupadas por curso. El alumno con varias materias primero elige la materia
+  // (una pantalla de botones grandes) y después ve solo las clases de esa materia.
+  const eligiendoMateria = porMaterias && materia === null
+  const delAlumno = porMaterias ? lista.filter((c) => nombreMateria(c) === materia) : visibles
   const grupos: [string | null, ClaseResumen[]][] =
     !esAlumno && !curso && cursos.length > 1
       ? cursos.map(([id, nombre]) => [nombre, visibles.filter((c) => c.curso_id === id)])
-      : [[null, visibles]]
+      : [[null, esAlumno ? delAlumno : visibles]]
+  // Cada nivel que se abre deja una entrada en el historial, para que «atrás» suba de a un nivel; si no la hay (se llegó
+  // desde el Horario), se cambia el estado directo. La lista de una materia empieza arriba aunque la pantalla anterior estuviera a medio recorrer.
+  const elegirMateria = (m: string | null) => {
+    if (m === null && window.history.state?.claseidia === 'materia') return window.history.back()
+    if (m !== null && esAlumno) {
+      window.history.pushState({ claseidia: 'materia' }, '')
+      empujadas.current++
+    }
+    setMateria(m)
+    window.scrollTo(0, 0)
+  }
+  const abrirClase = (id: number) => {
+    scrollAntes.current = window.scrollY
+    if (esAlumno) {
+      window.history.pushState({ claseidia: 'clase' }, '')
+      empujadas.current++
+    }
+    setSeleccion(id)
+  }
+  // Al volver de una clase se queda en la lista de su materia (no en la pantalla de materias).
+  const volver = () => {
+    if (window.history.state?.claseidia === 'clase') return window.history.back()
+    const c = lista.find((x) => x.id === seleccion)
+    if (porMaterias && c) setMateria(nombreMateria(c))
+    setSeleccion(null)
+  }
 
   return (
     <div className="desk:grid desk:grid-cols-[minmax(0,22rem)_minmax(0,1fr)] desk:items-start desk:gap-6 xl:grid-cols-[minmax(0,26rem)_minmax(0,1fr)]">
@@ -72,27 +143,61 @@ export function Clases({ cursoInicial, claseInicial }: { cursoInicial: number | 
             ))}
           </div>
         )}
-        {grupos.map(([titulo, items]) => (
-          <section key={titulo ?? 'todas'} className="space-y-2">
-            {titulo && (
-              <h2 className="flex items-center gap-2 pt-1 text-sm font-semibold">
-                {titulo} <span className="text-xs font-normal text-muted-foreground">{items.length} {items.length === 1 ? 'clase' : 'clases'}</span>
-              </h2>
+        {eligiendoMateria ? (
+          <ul className="grid grid-cols-2 gap-3">
+            {materias.map(([m, { n, ultima }]) => (
+              <li key={m}>
+                <button
+                  ref={(el) => void (el ? botonesMateria.current.set(m, el) : botonesMateria.current.delete(m))}
+                  onClick={() => elegirMateria(m)}
+                  className="flex h-full min-h-32 w-full flex-col justify-between rounded-2xl border bg-card p-4 text-left transition-colors hover:bg-muted/50"
+                >
+                  <span aria-hidden className={cn('size-4 rounded-full border-2', colorAsignatura(m))} />
+                  <span>
+                    <span className="block text-base font-semibold leading-tight [overflow-wrap:anywhere]">{m}</span>
+                    <span className="mt-1 block text-xs text-muted-foreground">{n} {n === 1 ? 'clase' : 'clases'}</span>
+                    <span className="block text-xs text-muted-foreground">Última: {diaClase(ultima).toLowerCase()}</span>
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <>
+            {porMaterias && (
+              <div className="sticky top-14 z-10 -mx-4 flex items-center gap-1 border-b bg-background/95 px-4 backdrop-blur short:top-11 desk:top-0 desk:mx-0 desk:px-0">
+                <button onClick={() => elegirMateria(null)} className="-ml-2 flex h-11 shrink-0 items-center gap-1 rounded-lg px-2 text-sm text-muted-foreground hover:text-foreground">
+                  <ArrowLeft className="size-4" /> Materias
+                </button>
+                <h2 ref={cabecera} tabIndex={-1} className="flex min-w-0 flex-1 items-center gap-2 text-base font-semibold outline-none desk:text-lg">
+                  <span aria-hidden className={cn('size-3.5 shrink-0 rounded-full border-2', colorAsignatura(materia))} />
+                  <span className="truncate" title={materia ?? undefined}>{materia}</span>
+                </h2>
+              </div>
             )}
-            <ul className="space-y-2">
-              {items.map((c) => (
-                <li key={c.id}>
-                  <FilaClase c={c} mostrarEstado={!esAlumno} seleccionada={c.id === seleccion} onClick={() => setSeleccion(c.id)} />
-                </li>
-              ))}
-            </ul>
-          </section>
-        ))}
+            {grupos.map(([titulo, items]) => (
+              <section key={titulo ?? 'todas'} className="space-y-2">
+                {titulo && (
+                  <h2 className="flex items-center gap-2 pt-1 text-sm font-semibold">
+                    {titulo} <span className="text-xs font-normal text-muted-foreground">{items.length} {items.length === 1 ? 'clase' : 'clases'}</span>
+                  </h2>
+                )}
+                <ul className="space-y-2">
+                  {items.map((c) => (
+                    <li key={c.id}>
+                      <FilaClase c={c} mostrarEstado={!esAlumno} fechaPrimero={porMaterias} seleccionada={c.id === seleccion} onClick={() => abrirClase(c.id)} />
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ))}
+          </>
+        )}
       </div>
 
       <div className={cn('desk:sticky desk:top-6', !seleccion && 'hidden desk:block')}>
         {seleccion ? (
-          <DetalleClase key={seleccion} id={seleccion} onVolver={() => setSeleccion(null)} onCambio={clases.recargar} />
+          <DetalleClase key={seleccion} id={seleccion} onVolver={volver} onCambio={clases.recargar} />
         ) : (
           <div className="rounded-2xl border border-dashed p-10">
             <Vacio icono={FileText} titulo="Elige una clase">Verás su resumen, los puntos clave, la hoja de repaso y las tarjetas de estudio.</Vacio>
@@ -103,6 +208,19 @@ export function Clases({ cursoInicial, claseInicial }: { cursoInicial: number | 
   )
 }
 
+const nombreMateria = (c: ClaseResumen) => c.asignatura?.trim() || 'Sin materia'
+
+/** «Hoy» y «Ayer» se entienden más rápido que una fecha; el resto, «vie, 27 nov». */
+function diaClase(fecha: string): string {
+  const dia = (d: Date) => `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`
+  const f = new Date(`${fecha}T00:00:00`)
+  const hoy = new Date()
+  const ayer = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() - 1)
+  if (dia(f) === dia(hoy)) return 'Hoy'
+  if (dia(f) === dia(ayer)) return 'Ayer'
+  return f.getFullYear() === hoy.getFullYear() ? fechaCorta(fecha) : `${fechaCorta(fecha)} ${f.getFullYear()}`
+}
+
 function Chip({ activo, onClick, children }: { activo: boolean; onClick: () => void; children: string }) {
   return (
     <button
@@ -110,7 +228,7 @@ function Chip({ activo, onClick, children }: { activo: boolean; onClick: () => v
       aria-selected={activo}
       onClick={onClick}
       className={cn(
-        'h-10 shrink-0 rounded-full px-4 text-sm font-medium transition-colors desk:h-8 desk:px-3.5',
+        'h-11 shrink-0 rounded-full px-4 text-sm font-medium transition-colors desk:h-8 desk:px-3.5',
         activo ? 'bg-primary text-primary-foreground' : 'bg-card text-muted-foreground ring-1 ring-border hover:text-foreground',
       )}
     >
@@ -129,25 +247,27 @@ function Estado({ estado, comoAlumno = false }: { estado: EstadoClase; comoAlumn
   )
 }
 
-function FilaClase({ c, mostrarEstado, seleccionada, onClick }: { c: ClaseResumen; mostrarEstado: boolean; seleccionada: boolean; onClick: () => void }) {
+function FilaClase({ c, mostrarEstado, fechaPrimero, seleccionada, onClick }: { c: ClaseResumen; mostrarEstado: boolean; fechaPrimero: boolean; seleccionada: boolean; onClick: () => void }) {
   return (
     <button
       onClick={onClick}
       aria-current={seleccionada ? 'true' : undefined}
       className={cn(
-        'flex w-full items-center gap-3 rounded-xl border-l-4 px-3.5 py-3 text-left transition-shadow hover:shadow-sm',
-        colorAsignatura(c.asignatura),
-        seleccionada && 'ring-2 ring-primary',
+        'flex w-full items-center gap-3 rounded-xl px-3.5 py-3 text-left',
+        fechaPrimero
+          ? cn('border bg-card transition-colors hover:bg-muted/50', seleccionada && 'border-primary bg-primary/5')
+          : cn('border-l-4 transition-shadow hover:shadow-sm', colorAsignatura(c.asignatura), seleccionada && 'ring-2 ring-primary'),
       )}
     >
       <div className="min-w-0 flex-1">
         <div className="flex items-start justify-between gap-2">
-          <p className="truncate text-base font-semibold leading-tight">{c.asignatura}</p>
+          <p className={cn('truncate text-base font-semibold leading-tight', fechaPrimero && 'first-letter:uppercase')}>{fechaPrimero ? diaClase(c.fecha) : c.asignatura}</p>
           {(mostrarEstado || c.estado === 'provisoria') && <Estado estado={c.estado} comoAlumno={!mostrarEstado} />}
         </div>
         <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs opacity-75">
-          <span className="font-medium capitalize">{fechaCorta(c.fecha)}</span>
+          {!fechaPrimero && <span className="font-medium capitalize">{fechaCorta(c.fecha)}</span>}
           <span className="flex items-center gap-1"><Clock className="size-3" /> {hhmm(c.hora_inicio)}–{hhmm(c.hora_fin)}</span>
+          {fechaPrimero && ['Hoy', 'Ayer'].includes(diaClase(c.fecha)) && <span className="first-letter:uppercase">{fechaCorta(c.fecha)}</span>}
           {mostrarEstado && <span>{c.curso_nombre}</span>}
         </p>
       </div>

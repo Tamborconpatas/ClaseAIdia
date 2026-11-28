@@ -120,9 +120,9 @@ function Acceso() {
         <p className="text-sm text-muted-foreground">Usa tu RUT para ingresar.</p>
       </div>
       <Tabs defaultValue="alumno">
-        <TabsList className="h-11 w-full desk:h-9">
-          <TabsTrigger value="alumno">Soy alumno</TabsTrigger>
-          <TabsTrigger value="staff">Profesor o UTP</TabsTrigger>
+        <TabsList className="h-auto min-h-11 w-full desk:min-h-9">
+          <TabsTrigger value="alumno" className="min-w-0 whitespace-normal py-2">Soy alumno</TabsTrigger>
+          <TabsTrigger value="staff" className="min-w-0 whitespace-normal py-2">Profesor o UTP</TabsTrigger>
         </TabsList>
         <TabsContent value="alumno" className="mt-5">
           <FormAlumno />
