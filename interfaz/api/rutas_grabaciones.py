@@ -34,7 +34,7 @@ def _salida(g: Grabacion) -> dict:
     b = g.clase.bloque
     return {
         "id": g.id, "clase_id": g.clase_id, "bloque_id": b.id, "asignatura": b.asignatura, "curso_nombre": b.curso.nombre,
-        "sala": b.sala, "fecha": g.clase.fecha, "hora_inicio": b.hora_inicio, "hora_fin": b.hora_fin,
+        "sala": b.sala, "fecha": g.clase.fecha, "hora_inicio": b.hora_inicio, "hora_fin": b.hora_fin_de_cadena,
         "estado": g.estado.value, "silenciada": g.silenciada, "prioritaria": g.clase.prioritaria, "corte_en": g.corte_en,
         "segundos_grabados": g.segundos_grabados, "nivel": g.nivel, "trozos": g.trozos, "grabador_id": g.grabador_id,
         "grabador_conectado": sg.grabador_conectado(g), "error": g.error,
@@ -67,6 +67,8 @@ def bloques_de_hoy(db: Session = Depends(obtener_db), profesor: Usuario = Depend
         bloques = consulta.filter(Bloque.dia_semana == 0).order_by(Bloque.hora_inicio).all()
     salida = []
     for b in bloques:
+        if b.cabeza_id != b.id:
+            continue  # segundo bloque de una clase doble: se graba con el primero
         clase = next((c for c in b.clases if c.fecha == ahora.date()), None)
         puede, motivo = sg.estado_de_hoy(b, ahora)
         if clase is not None and clase.contenido is not None:
@@ -76,7 +78,7 @@ def bloques_de_hoy(db: Session = Depends(obtener_db), profesor: Usuario = Depend
             puede, motivo = True, None  # una sesión en curso siempre se puede retomar
         salida.append({
             "bloque_id": b.id, "asignatura": b.asignatura, "curso_nombre": b.curso.nombre, "sala": b.sala,
-            "hora_inicio": b.hora_inicio, "hora_fin": b.hora_fin, "puede_grabar": puede, "motivo": motivo,
+            "hora_inicio": b.hora_inicio, "hora_fin": b.hora_fin_de_cadena, "puede_grabar": puede, "motivo": motivo,
             "grabacion": _salida(g) if g is not None else None,
         })
     return salida

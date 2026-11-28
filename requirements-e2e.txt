@@ -1,0 +1,2 @@
+# Solo para scripts/e2e_navegador.py (pruebas en un navegador real); no se empaqueta con la app.
+playwright>=1.50

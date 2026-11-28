@@ -37,7 +37,7 @@ export function Horario({ onAbrirClase }: { onAbrirClase: (claseId: number) => v
     setAviso(null)
     setBuscando(b.id)
     try {
-      const clase = (await api<ClaseResumen[]>('/clases')).find((c) => c.bloque_id === b.id)
+      const clase = (await api<ClaseResumen[]>('/clases')).find((c) => c.bloque_id === b.id || c.bloque_id === b.cabeza_id)
       if (clase) return onAbrirClase(clase.id)
       setAviso(
         rol === 'ALUMNO'

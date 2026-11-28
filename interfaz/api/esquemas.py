@@ -10,7 +10,8 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from infraestructura.modelos_orm import RolNombre, TipoBloque
-from nucleo.validadores import normalizar_rut, validar_rut
+from nucleo.nombres import nombre_de_persona_aceptable
+from nucleo.validadores import normalizar_rut, rut_de_alumno_plausible, validar_rut
 
 
 def _rut_valido_normalizado(valor: str) -> str:
@@ -146,6 +147,42 @@ class AlumnoOut(BaseModel):
     id: int
     nombre: str
     rut: str
+    revisar_nombre: bool = False
+
+
+def _rut_de_alumno(valor: str) -> str:
+    rut = _rut_valido_normalizado(valor)
+    if not rut_de_alumno_plausible(rut):
+        raise ValueError("Ese RUT no parece el de un alumno real: revisa que lo hayas escrito bien")
+    return rut
+
+
+def _nombre_de_alumno(valor: str) -> str:
+    valor = _nombre_de_persona(valor)
+    motivo = nombre_de_persona_aceptable(valor)
+    if motivo:
+        raise ValueError(motivo)
+    return valor
+
+
+def _nombre_de_persona(valor: str) -> str:
+    valor = " ".join(valor.split())
+    if not valor or len(valor) > 120:
+        raise ValueError("El nombre debe tener entre 1 y 120 caracteres")
+    return valor
+
+
+class AlumnoMoverIn(BaseModel):
+    curso_destino_id: int
+
+
+class UsuarioRenombrar(BaseModel):
+    nombre: str
+
+    @field_validator("nombre")
+    @classmethod
+    def _validar_nombre(cls, valor: str) -> str:
+        return _nombre_de_persona(valor)
 
 
 class CursoCrear(CursoBase):
@@ -157,6 +194,11 @@ class CursoOut(CursoBase):
 
     model_config = ConfigDict(from_attributes=True)
     id: int
+    cupo: int
+
+
+class CursoCupoIn(BaseModel):
+    cupo: int = Field(ge=1, le=100)
 
 
 class CursoConCodigoOut(CursoOut):
@@ -220,6 +262,8 @@ class BloqueOut(BloqueBase):
     curso_id: int
     # Un alumno no puede consultar usuarios, así que el nombre viaja en el propio bloque.
     profesor_nombre: str | None = None
+    # Primer bloque de la clase a la que pertenece (él mismo si no es parte de una clase doble).
+    cabeza_id: int
 
 
 class TokenOut(BaseModel):
@@ -340,6 +384,8 @@ class UnirseCursoIn(BaseModel):
     rut: str = Field(max_length=20)
     nombre: str = Field(max_length=120)
     pin: str = Field(max_length=64)
+    # El nombre sonó a broma y el alumno confirmó que es el suyo (ver 428 en /cursos/unirse).
+    confirmar_nombre: bool = False
 
     @field_validator("pin")
     @classmethod
@@ -349,7 +395,12 @@ class UnirseCursoIn(BaseModel):
     @field_validator("rut")
     @classmethod
     def _validar_rut(cls, valor: str) -> str:
-        return _rut_valido_normalizado(valor)
+        return _rut_de_alumno(valor)
+
+    @field_validator("nombre")
+    @classmethod
+    def _validar_nombre(cls, valor: str) -> str:
+        return _nombre_de_alumno(valor)
 
 
 EstadoClase = Literal["grabando", "procesando", "error", "por_aprobar", "provisoria", "publicada", "retirada"]
@@ -489,6 +540,72 @@ class AjusteFotosOut(BaseModel):
     descarga: DescargaOut | None = None
 
 
+class AjusteClasesEditar(BaseModel):
+    """Las dos llaves son obligatorias; `null` = volver al valor predeterminado. El rango lo valida el servicio, con un mensaje claro."""
+
+    horas_revision: int | None
+    minutos_corte: int | None
+
+
+class AjusteClasesOut(BaseModel):
+    """Cómo se tratan las clases en este colegio: cuánto tiene el profesor para revisar el material y cuándo se corta sola la grabación."""
+
+    horas_revision: int
+    minutos_corte: int
+    horas_revision_por_defecto: int
+    minutos_corte_por_defecto: int
+    rango_horas_revision: list[int]
+    rango_minutos_corte: list[int]
+
+
+class AjusteRespaldosEditar(BaseModel):
+    carpeta: str | None
+    dias: int | None
+
+
+class AjusteRespaldosOut(BaseModel):
+    """El respaldo diario de la base: dónde se guarda y cuántos días de copias se conservan (vale para todo el servidor)."""
+
+    carpeta: str
+    carpeta_por_defecto: str
+    dias: int
+    dias_por_defecto: int
+    rango_dias: list[int]
+
+
+class OpcionModeloOut(BaseModel):
+    """Un modelo de los que el UTP puede elegir para los resúmenes. `instalado`: None si Ollama no responde y no se sabe."""
+
+    modelo: str
+    etiqueta: str
+    nota: str
+    tamano_gb: float | None = None
+    instalado: bool | None
+    descarga: DescargaOut | None = None
+
+
+class AjusteModeloEditar(BaseModel):
+    modelo: str  # uno de los que se ofrecen, o «auto»
+
+
+class AjusteModeloDescargar(BaseModel):
+    modelo: str | None = None  # sin él, el que se está usando
+
+
+class AjusteModeloTextoOut(BaseModel):
+    """El modelo que escribe los resúmenes: sin él ninguna clase se resume. El UTP lo deja listo desde la aplicación, sin una consola."""
+
+    modelo: str
+    ollama_responde: bool
+    modelo_instalado: bool
+    memoria_total_gb: float | None
+    memoria_minima_gb: float
+    tamano_gb: float | None = None
+    descarga: DescargaOut | None = None
+    eleccion: str = "auto"  # lo que eligió el UTP, o «auto» si no eligió
+    opciones: list[OpcionModeloOut] = []
+
+
 # --- Estado del servidor (panel del UTP) ---------------------------------------------------------
 
 
@@ -532,6 +649,7 @@ class EstadoOllamaOut(BaseModel):
     responde: bool
     modelo_texto: str
     modelo_texto_instalado: bool
+    modelo_de_respaldo: str | None = None  # con cuál se resume mientras falta el modelo (None: con ninguno)
 
 
 class EstadoDiscoOut(BaseModel):
@@ -567,6 +685,29 @@ class EstadoAlertaOut(BaseModel):
     texto: str
 
 
+class EstadoConectadoOut(BaseModel):
+    nombre: str
+    rol: str
+    dispositivo: str | None  # «Teléfono · Android · Chrome»
+    codigo: str | None  # últimos 4 del código aleatorio del navegador, para distinguir dos equipos iguales
+    hace_segundos: int
+
+
+class EstadoNombrePorRevisarOut(BaseModel):
+    alumno: str
+    cursos: list[str]
+    dispositivo: str | None
+    codigo: str | None
+    otras_cuentas: list[str]  # otras personas que usaron ese mismo equipo
+
+
+class EstadoConexionesOut(BaseModel):
+    conectados: list[EstadoConectadoOut]
+    dispositivos_conectados: int
+    nombres_por_revisar: list[EstadoNombrePorRevisarOut]
+    dias_de_rastro: int
+
+
 class EstadoServidorOut(BaseModel):
     generado_en: datetime.datetime  # UTC
     alertas: list[EstadoAlertaOut]
@@ -576,6 +717,7 @@ class EstadoServidorOut(BaseModel):
     respaldos: EstadoRespaldosOut
     memoria: EstadoMemoriaOut
     vigilancia: EstadoVigilanciaOut
+    conexiones: EstadoConexionesOut
 
 
 class GrabacionCrear(BaseModel):

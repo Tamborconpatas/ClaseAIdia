@@ -24,8 +24,10 @@ from pathlib import Path
 from sqlalchemy.orm import Session, sessionmaker
 
 from infraestructura.seguridad import ahora_utc as reloj_de_revision
+from nucleo import modelos_ia
 from nucleo.disco import espacio_en_disco
 from nucleo.memoria import esperar_memoria
+from servicios import servicio_ajustes, servicio_conexiones
 from servicios.trabajador import CODIGO_SIN_MEMORIA
 
 from infraestructura.modelos_orm import (
@@ -47,7 +49,6 @@ MODELO_WHISPER = os.environ.get("MODELO_WHISPER", "small")
 MODOS_DE_LIMPIEZA = ("none", "light_dsp", "dsp", "heavy_dsp", "mmse")
 LIMPIEZA_POR_DEFECTO = "light_dsp"
 # Minutos después del término del bloque en que la grabación se corta sola (por si el profesor olvida terminarla).
-GRACIA_CORTE_MIN = int(os.environ.get("MINUTOS_CORTE_GRABACION", "15"))
 # El procesamiento de una clase corre en un proceso aparte (servicios/trabajador.py) para que, si se queda sin memoria,
 # caiga solo él y no el servidor que atiende a alumnos y profesores.
 RAIZ_DEL_PROYECTO = Path(__file__).resolve().parent.parent
@@ -124,10 +125,15 @@ def grabacion_libre() -> bool:
     return os.environ.get("DEMO_GRABACION_LIBRE") == "1"
 
 
+def _gracia_de(bloque: Bloque) -> int:
+    """Minutos después del término del bloque en que la grabación se corta sola: lo decide el UTP de su colegio en «Ajustes»."""
+    return servicio_ajustes.minutos_de_corte(bloque.curso.colegio)
+
+
 def _corte_de(bloque: Bloque, hoy: datetime.date) -> datetime.datetime:
     if grabacion_libre():
         return ahora_local() + datetime.timedelta(hours=3)
-    return datetime.datetime.combine(hoy, bloque.hora_fin) + datetime.timedelta(minutes=GRACIA_CORTE_MIN)
+    return datetime.datetime.combine(hoy, bloque.hora_fin_de_cadena) + datetime.timedelta(minutes=_gracia_de(bloque))
 
 
 def estado_de_hoy(bloque: Bloque, ahora: datetime.datetime) -> tuple[bool, str | None]:
@@ -139,7 +145,7 @@ def estado_de_hoy(bloque: Bloque, ahora: datetime.datetime) -> tuple[bool, str |
         if bloque.dia_semana != ahora.weekday():
             return False, "Este bloque no es de hoy"
         if ahora > _corte_de(bloque, ahora.date()):
-            return False, f"El bloque terminó hace más de {GRACIA_CORTE_MIN} minutos"
+            return False, f"El bloque terminó hace más de {_gracia_de(bloque)} minutos"
     libre = espacio_libre_gb()
     if libre < DISCO_MINIMO_PARA_GRABAR_GB:
         return False, f"El disco del servidor casi no tiene espacio libre ({libre:.1f} GB): no se puede empezar a grabar. Avisa al UTP para que libere espacio."
@@ -151,6 +157,7 @@ def crear_o_reanudar(db: Session, profesor: Usuario, bloque_id: int) -> Grabacio
     # 404 también si el bloque es de otro profesor: no revela que existe.
     if bloque is None or bloque.profesor_id != profesor.id:
         raise ErrorGrabacion("Bloque no encontrado", 404)
+    bloque = bloque.cadena()[0]  # una clase doble se graba una vez, en su primer bloque
     ahora = ahora_local()
     clase = db.query(Clase).filter_by(bloque_id=bloque.id, fecha=ahora.date()).first()
     if clase is not None and clase.contenido is not None:
@@ -466,7 +473,10 @@ def _trabajar_aparte(modo: str, grabacion_id: int, fabrica: sessionmaker) -> Non
         if modo == "clase" and libre < DISCO_MINIMO_PARA_PROCESAR_GB:  # transcribir escribe copias temporales del audio
             _fallo(grabacion_id, fabrica, f"El disco del servidor casi no tiene espacio libre ({libre:.1f} GB): no se puede procesar la clase por ahora.")
             return
-        proceso = subprocess.Popen([*COMANDO_TRABAJADOR, modo, str(grabacion_id)], cwd=RAIZ_DEL_PROYECTO)
+        with fabrica() as db:  # el trabajador es un proceso aparte: el modelo que eligió el UTP en «Ajustes» se lo pasa el servidor
+            elegido = servicio_ajustes.modelo_elegido(db)
+        entorno = {**os.environ, modelos_ia.VARIABLE_DEL_TRABAJADOR: elegido or ""}
+        proceso = subprocess.Popen([*COMANDO_TRABAJADOR, modo, str(grabacion_id)], cwd=RAIZ_DEL_PROYECTO, env=entorno)
         _anotar_proceso(grabacion_id, proceso.pid)
         try:
             codigo = proceso.wait(timeout=TIEMPO_MAXIMO_S)
@@ -765,6 +775,7 @@ def vigilar(db: Session, fabrica: sessionmaker, utc: datetime.datetime | None = 
     for g in db.query(Grabacion).filter(Grabacion.estado == E.ERROR, Grabacion.reintento_en.is_not(None), Grabacion.reintento_en <= utc).all():
         _reintentar(db, g)
     _recoger_perdidos(db, utc)
+    servicio_conexiones.limpiar_si_toca(db, utc)  # los equipos sin uso hace más de 30 días se olvidan
     despachar(fabrica)  # por si algo quedó esperando con un lugar libre
     ultima_vigilancia = ahora_utc()  # al terminar la pasada (si falla a medias, el pulso no se renueva y el panel lo avisa)
 

@@ -26,6 +26,7 @@ const sano: EstadoServidor = {
   respaldos: { carpeta: 'respaldos', cantidad: 5, mb: 16, ultimo: '2026-10-02', hace_dias: 0, en_el_mismo_disco: false },
   memoria: { total_gb: 15.6, libre_gb: 9.3 },
   vigilancia: { ultima_pasada: '2026-10-02T14:59:55Z', activa: true },
+  conexiones: { conectados: [], dispositivos_conectados: 0, nombres_por_revisar: [], dias_de_rastro: 30 },
 }
 const mock = () => api as unknown as ReturnType<typeof vi.fn>
 let raices: Root[] = []
@@ -66,6 +67,38 @@ const fila = (c: HTMLElement, titulo: string) => [...c.querySelectorAll('li')].f
 const clase = <const T extends object>(curso: string, asignatura: string | null, extra: T = {} as T) => ({ clase_id: 1, curso, asignatura, fecha: '2026-10-02', ...extra })
 
 describe('Panel de estado del UTP', () => {
+  it('muestra quién está conectado y desde qué equipo, y de dónde salió un nombre por revisar, sin violaciones de accesibilidad', async () => {
+    const c = await montar({
+      ...sano,
+      conexiones: {
+        conectados: [
+          { nombre: 'Juan Soto', rol: 'ALUMNO', dispositivo: 'Teléfono · Android · Chrome', codigo: 'A1B2', hace_segundos: 20 },
+          { nombre: 'Marcos Fuentes', rol: 'PROFESOR', dispositivo: 'Computador · Windows · Firefox', codigo: 'FF88', hace_segundos: 240 },
+          { nombre: 'Carolina Rojas', rol: 'UTP', dispositivo: null, codigo: null, hace_segundos: 5 },
+        ],
+        dispositivos_conectados: 2,
+        nombres_por_revisar: [{ alumno: 'Armando Casas', cursos: ['8°A'], dispositivo: 'Teléfono · Android · Chrome', codigo: 'A1B2', otras_cuentas: ['Juan Soto'] }],
+        dias_de_rastro: 30,
+      },
+    })
+    expect(await violaciones(c)).toEqual([])
+    const conectados = c.querySelector('[aria-label="Personas conectadas"]')?.textContent ?? ''
+    expect(c.textContent).toContain('3 personas en 2 equipos.')
+    expect(conectados).toContain('Juan SotoAlumnoTeléfono · Android · Chrome (equipo A1B2)ahora')
+    expect(conectados).toContain('hace 4 min')
+    expect(conectados).toContain('equipo desconocido')
+    const revisar = c.querySelector('[aria-label="Cuentas con un nombre por revisar"]')?.textContent ?? ''
+    expect(revisar).toContain('Armando Casas 8°A')
+    expect(revisar).toContain('Se registró desde: Teléfono · Android · Chrome (equipo A1B2) · el mismo equipo lo usaron: Juan Soto')
+    expect(c.textContent).toContain('no la dirección IP ni el número de teléfono. Se borra a los 30 días.')
+  })
+
+  it('sin nadie conectado ni nombres por revisar no dibuja la tarjeta de nombres', async () => {
+    const c = await montar()
+    expect(c.textContent).toContain('Nadie con la aplicación abierta en los últimos minutos.')
+    expect(c.textContent).not.toContain('Nombres por revisar')
+  })
+
   it('con el servidor sano dice que todo está en orden, sin violaciones de accesibilidad', async () => {
     const c = await montar()
     expect(await violaciones(c)).toEqual([])

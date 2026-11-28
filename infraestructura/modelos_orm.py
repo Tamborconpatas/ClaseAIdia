@@ -59,9 +59,40 @@ class Colegio(Base):
     # Ajuste del colegio (lo cambia el UTP en «Ajustes», no un archivo de configuración): ¿los profesores pueden sacar fotos de la
     # pizarra? Es opcional porque pide un modelo aparte (3,2 GB) y mucha memoria; apagado por defecto.
     fotos_pizarra: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # Más ajustes del colegio. Nulo = el predeterminado (las variables de entorno HORAS_REVISION_PROFESOR y MINUTOS_CORTE_GRABACION):
+    # horas que tiene el profesor para revisar el material antes de que se publique como «provisorio», y minutos después del término
+    # del bloque en que la grabación se corta sola.
+    horas_revision: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    minutos_corte: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     usuarios: Mapped[list["Usuario"]] = relationship(back_populates="colegio")
     cursos: Mapped[list["Curso"]] = relationship(back_populates="colegio")
+
+
+class AjusteServidor(Base):
+    """Ajustes que valen para todo el servidor (la base es una sola) y que el UTP cambia en «Ajustes»: la carpeta y los días del respaldo
+    diario. Viven en la base y no en un archivo porque en Docker la base está en el volumen y un archivo de la aplicación se perdería
+    al recrear el contenedor. Sin fila = el predeterminado (CARPETA_RESPALDOS y DIAS_DE_RESPALDO)."""
+
+    __tablename__ = "ajustes_servidor"
+
+    clave: Mapped[str] = mapped_column(String, primary_key=True)
+    valor: Mapped[str] = mapped_column(String, nullable=False)
+
+
+class Dispositivo(Base):
+    """Un navegador que usó la aplicación: un código aleatorio que él mismo se pone (no es la IP ni nada del equipo)
+    y un resumen como «Teléfono · Android · Chrome». Sirve para saber desde dónde se creó una cuenta con un nombre
+    indebido y quién está conectado. Se borra a los 30 días sin uso."""
+
+    __tablename__ = "dispositivos"
+    __table_args__ = (UniqueConstraint("colegio_id", "codigo", name="uq_dispositivo_codigo"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    colegio_id: Mapped[int] = mapped_column(ForeignKey("colegios.id"), nullable=False)
+    codigo: Mapped[str] = mapped_column(String, nullable=False)
+    resumen: Mapped[str] = mapped_column(String, nullable=False)
+    ultima_vez: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=False)
 
 
 class Usuario(Base):
@@ -84,6 +115,12 @@ class Usuario(Base):
     # Cada token de sesión lleva el número vigente al emitirse; cambiar una credencial o desactivar la cuenta lo sube
     # y las sesiones abiertas dejan de servir (un token robado no vale hasta que venza).
     version_sesion: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    # El nombre que eligió el alumno sonó a broma y confirmó que era el suyo: el profesor lo ve marcado para revisarlo.
+    revisar_nombre: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, server_default="0")
+    # Quién está conectado y desde qué equipo (ver servicio_conexiones): sin IP ni teléfono; se borra a los 30 días.
+    visto_en: Mapped[datetime.datetime | None] = mapped_column(DateTime, nullable=True)
+    dispositivo_id: Mapped[int | None] = mapped_column(ForeignKey("dispositivos.id"), nullable=True)
+    registro_dispositivo_id: Mapped[int | None] = mapped_column(ForeignKey("dispositivos.id"), nullable=True)
     colegio_id: Mapped[int] = mapped_column(ForeignKey("colegios.id"), nullable=False)
 
     colegio: Mapped["Colegio"] = relationship(back_populates="usuarios")
@@ -109,6 +146,8 @@ class Curso(Base):
     nombre: Mapped[str] = mapped_column(String, nullable=False)
     colegio_id: Mapped[int] = mapped_column(ForeignKey("colegios.id"), nullable=False)
     codigo_invitacion: Mapped[str] = mapped_column(String, nullable=False, unique=True, index=True)
+    # Máximo de alumnos; lo fija el UTP por curso (45 = máximo legal por sala en Chile).
+    cupo: Mapped[int] = mapped_column(Integer, nullable=False, default=45, server_default="45")
 
     colegio: Mapped["Colegio"] = relationship(back_populates="cursos")
     bloques: Mapped[list["Bloque"]] = relationship(back_populates="curso", cascade="all, delete-orphan")
@@ -148,6 +187,37 @@ class Bloque(Base):
     def profesor_nombre(self) -> str | None:
         """Solo el nombre (nunca el RUT): lo ven los alumnos del curso en su horario."""
         return self.profesor.nombre if self.profesor else None
+
+    def cadena(self) -> list["Bloque"]:
+        """Los bloques seguidos que forman una sola clase (p. ej. una clase doble): mismo curso, día, asignatura
+        y profesor, sin hueco entre uno y otro (un recreo en medio la corta). Siempre incluye a este bloque.
+        Los datos siguen siendo un bloque por celda del horario; la grabación y el material son de la cadena
+        entera y viven en su primer bloque."""
+        if self.tipo != TipoBloque.CLASE or not self.asignatura or self.profesor_id is None:
+            return [self]
+        parecidos = sorted(
+            (b for b in self.curso.bloques
+             if b.tipo == self.tipo and b.dia_semana == self.dia_semana and b.asignatura == self.asignatura and b.profesor_id == self.profesor_id),
+            key=lambda b: b.hora_inicio,
+        )
+        tanda: list[Bloque] = []
+        for b in parecidos:
+            if tanda and tanda[-1].hora_fin != b.hora_inicio:
+                if self in tanda:
+                    break
+                tanda = []
+            tanda.append(b)
+        return tanda
+
+    @property
+    def cabeza_id(self) -> int:
+        """El primer bloque de su cadena: el que lleva la clase de todos."""
+        return self.cadena()[0].id
+
+    @property
+    def hora_fin_de_cadena(self) -> datetime.time:
+        return self.cadena()[-1].hora_fin
+
     clases: Mapped[list["Clase"]] = relationship(back_populates="bloque", cascade="all, delete-orphan")
 
 

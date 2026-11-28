@@ -80,8 +80,14 @@ def test_con_un_modelo_de_3b_devuelve_las_relaciones_limpias_y_pide_json_con_esq
 
 def test_con_el_modelo_de_1b_no_se_intenta_porque_no_arma_relaciones_utiles(ollama, monkeypatch):
     pedidos, _ = ollama
-    monkeypatch.setattr(sme, "_modelo_que_cabe", lambda modelo, es_auto: sme._OLLAMA_MODEL_CPU)
+    monkeypatch.setattr(sme, "_modelo_que_cabe", lambda modelo, es_auto: sme._OLLAMA_MODEL_MINIMO)
     assert sme.generar_mapa_conceptual("Resumen", "- punto") == [] and pedidos == []
+
+
+def test_con_el_modelo_de_cpu_por_defecto_si_se_arma_el_mapa(ollama, monkeypatch):
+    pedidos, _ = ollama
+    monkeypatch.setattr(sme, "_modelo_que_cabe", lambda modelo, es_auto: sme._OLLAMA_MODEL_CPU)
+    assert sme.generar_mapa_conceptual("Resumen", "- punto") and len(pedidos) == 1
 
 
 def test_si_la_respuesta_no_sirve_no_hay_mapa(ollama):

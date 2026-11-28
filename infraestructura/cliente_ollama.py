@@ -102,6 +102,9 @@ def generate(
         "model": model,
         "prompt": prompt,
         "stream": False,
+        # Los modelos «con pensamiento» (Qwen3, Qwen3.5, Gemma 4…) gastan todo el tope de tokens pensando y devuelven la respuesta
+        # vacía. Medido (2026-11-26): con esto responden bien, y los modelos sin pensamiento (Llama, Gemma 3, Phi, Granite) lo aceptan.
+        "think": False,
         "keep_alive": _MANTENER_CARGADO,
         "options": {
             "num_predict": max_tokens,

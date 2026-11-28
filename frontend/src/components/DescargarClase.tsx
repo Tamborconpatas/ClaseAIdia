@@ -5,7 +5,7 @@
  */
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { FileDown, FileText, Loader2, Printer } from 'lucide-react'
+import { FileDown, FileText, Loader2 } from 'lucide-react'
 import { ErrorForm } from '@/components/comunes'
 import { VistaImpresion } from '@/components/VistaImpresion'
 import { Button } from '@/components/ui/button'
@@ -16,8 +16,8 @@ import { construirModelo, nombreDeArchivo, type Bloque } from '@/lib/exportar/mo
 
 /**
  * Descargar la clase en PDF o Word. Todo lo hace el teléfono o el PC de quien descarga; el servidor no interviene:
- * - PDF: se abre la impresión del navegador con una hoja pensada para papel («Guardar como PDF»); las fórmulas y los
- *   diagramas salen dibujados.
+ * - PDF: un archivo que se descarga directo, con las fórmulas y los diagramas dibujados. Si no se pudiera armar, queda de plan B la
+ *   impresión del navegador con una hoja pensada para papel («Guardar como PDF» desde ahí).
  * - Word: un .docx con las fórmulas y los diagramas como imagen, que se ve en cualquier programa (Word, Google Docs, el
  *   celular). El profesor, que puede querer editarlas, tiene además una versión con ecuaciones de Word editables.
  */
@@ -49,11 +49,21 @@ export function DescargarClase({ clase, esProfesor }: { clase: ClaseDetalle; esP
     }
   }, [hoja])
 
-  const pdf = () => {
+  const pdf = async () => {
     setError(null)
-    setAviso('Preparando la hoja para guardar como PDF…')
+    setAviso('Preparando el PDF…')
     setTrabajando('pdf')
-    setHoja(construirModelo(clase))
+    try {
+      const { generarPdf } = await import('@/lib/exportar/pdf') // la librería de PDF se baja solo al pedir el archivo
+      const nombre = nombreDeArchivo(clase, 'pdf')
+      descargar(await generarPdf(construirModelo(clase)), nombre)
+      setAviso(`Listo: se descargó ${nombre}.`)
+      setTrabajando(null)
+    } catch {
+      // Plan B, que no falla: la impresión del navegador, donde se elige «Guardar como PDF».
+      setAviso('No se pudo armar el PDF directo; se abre la impresión para guardarlo desde ahí…')
+      setHoja(construirModelo(clase))
+    }
   }
 
   const word = async (modo: 'word' | 'ecuaciones') => {
@@ -76,8 +86,8 @@ export function DescargarClase({ clase, esProfesor }: { clase: ClaseDetalle; esP
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap gap-2">
-        <Button variant="outline" className="h-11 flex-1 desk:h-9 desk:flex-none" disabled={trabajando !== null} onClick={pdf}>
-          {trabajando === 'pdf' ? <Loader2 className="animate-spin" /> : <Printer />} Guardar como PDF
+        <Button variant="outline" className="h-11 flex-1 desk:h-9 desk:flex-none" disabled={trabajando !== null} onClick={() => void pdf()}>
+          {trabajando === 'pdf' ? <Loader2 className="animate-spin" /> : <FileDown />} Guardar como PDF
         </Button>
         <Button variant="outline" className="h-11 flex-1 desk:h-9 desk:flex-none" disabled={trabajando !== null} onClick={() => void word('word')}>
           {trabajando === 'word' ? <Loader2 className="animate-spin" /> : <FileDown />} Descargar Word

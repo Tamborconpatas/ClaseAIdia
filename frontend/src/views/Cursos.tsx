@@ -7,7 +7,7 @@ import { useMemo, useState, type FormEvent } from 'react'
 import { QRCodeSVG } from 'qrcode.react'
 import { BookOpen, Check, Copy, Loader2, Pencil, Plus, QrCode, Sparkles, Trash2, Users } from 'lucide-react'
 import { Cargando, ErrorForm, Vacio } from '@/components/comunes'
-import { FilaConReset } from '@/components/FilaConReset'
+import { FilaAlumno } from '@/components/GestionAlumnos'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { api, type AlumnoDeCurso, type Curso } from '@/lib/api'
@@ -133,7 +133,7 @@ export function Cursos({ esUtp, esProfesor, onVerClases }: Props) {
                   </Button>
                 </div>
                 {abierto && panel?.tipo === 'codigo' && <CodigoCurso cursoId={c.id} />}
-                {abierto && panel?.tipo === 'alumnos' && <AlumnosDelCurso cursoId={c.id} />}
+                {abierto && panel?.tipo === 'alumnos' && <AlumnosDelCurso curso={c} esUtp={esUtp} otrosCursos={lista.filter((o) => o.id !== c.id)} onCupo={cursos.recargar} />}
               </li>
             )
           })}
@@ -251,32 +251,78 @@ function BorrarCurso({ curso, onListo, onCancelar }: { curso: Curso; onListo: ()
   )
 }
 
-/** Alumnos inscritos, con el reseteo de PIN: da un código de un solo uso que se entrega en persona. */
-function AlumnosDelCurso({ cursoId }: { cursoId: number }) {
+/** Alumnos inscritos. El profesor resetea PIN; el UTP además agrega, corrige, mueve, saca y elimina. */
+function AlumnosDelCurso({ curso, esUtp, otrosCursos, onCupo }: { curso: Curso; esUtp: boolean; otrosCursos: Curso[]; onCupo: () => void }) {
+  const cursoId = curso.id
   const alumnos = useCarga(() => api<AlumnoDeCurso[]>(`/cursos/${cursoId}/alumnos`), [cursoId])
-  if (alumnos.cargando) return <Cargando />
+  const [aviso, setAviso] = useState('')
+  const cambio = (texto: string) => {
+    setAviso(texto)
+    alumnos.recargar()
+  }
+  if (alumnos.cargando && !alumnos.datos) return <Cargando />
   if (alumnos.error) return <ErrorForm mensaje={alumnos.error} />
   const lista = alumnos.datos ?? []
-  if (lista.length === 0) {
-    return <p className="mt-4 rounded-xl bg-muted/50 p-4 text-sm text-muted-foreground">Todavía no hay alumnos inscritos. Comparte el código del curso para que se unan.</p>
-  }
   return (
-    <ul className="mt-4 divide-y rounded-xl bg-muted/40" aria-label="Alumnos del curso">
-      {lista.map((a) => (
-        <FilaConReset
-          key={a.id}
-          usuarioId={a.id}
-          nombre={a.nombre}
-          tipo="pin"
-          info={
-            <>
-              <p className="truncate font-medium">{a.nombre}</p>
-              <p className="text-xs tabular-nums text-muted-foreground">{a.rut}</p>
-            </>
-          }
-        />
-      ))}
-    </ul>
+    <>
+      {esUtp ? (
+        <Cupo curso={curso} inscritos={lista.length} onGuardado={(texto) => { setAviso(texto); onCupo() }} />
+      ) : (
+        <p className="mt-3 text-sm text-muted-foreground">
+          {lista.length} {lista.length === 1 ? 'alumno' : 'alumnos'} (máximo {curso.cupo})
+        </p>
+      )}
+      <p role="status" className="text-sm text-muted-foreground empty:hidden">
+        {aviso}
+      </p>
+      {lista.length === 0 ? (
+        <p className="mt-4 rounded-xl bg-muted/50 p-4 text-sm text-muted-foreground">Todavía no hay alumnos inscritos. Comparte el código del curso para que se unan.</p>
+      ) : (
+        <ul className="mt-4 divide-y rounded-xl bg-muted/40" aria-label="Alumnos del curso">
+          {lista.map((a) => (
+            <FilaAlumno key={a.id} alumno={a} cursoId={cursoId} otrosCursos={otrosCursos} completo={esUtp} onCambio={cambio} />
+          ))}
+        </ul>
+      )}
+    </>
+  )
+}
+
+/** El UTP fija cuántos alumnos admite el curso; el servidor no deja bajarlo de los que ya tiene. */
+function Cupo({ curso, inscritos, onGuardado }: { curso: Curso; inscritos: number; onGuardado: (aviso: string) => void }) {
+  const [valor, setValor] = useState(String(curso.cupo))
+  const [enviando, setEnviando] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const numero = Number(valor)
+  const valido = Number.isInteger(numero) && numero >= 1 && numero <= 100
+
+  const guardar = async (e: FormEvent) => {
+    e.preventDefault()
+    setEnviando(true)
+    setError(null)
+    try {
+      await api(`/cursos/${curso.id}/cupo`, { metodo: 'PUT', cuerpo: { cupo: numero } })
+      onGuardado(`El máximo de ${curso.nombre} quedó en ${numero} alumnos.`)
+    } catch (err) {
+      setError((err as Error).message)
+    }
+    setEnviando(false)
+  }
+
+  return (
+    <form onSubmit={guardar} className="mt-3 space-y-1.5">
+      <div className="flex flex-wrap items-center gap-2 text-sm">
+        <label htmlFor={`cupo-${curso.id}`} className="text-muted-foreground">
+          {inscritos} {inscritos === 1 ? 'alumno' : 'alumnos'} · máximo
+        </label>
+        <Input id={`cupo-${curso.id}`} type="number" inputMode="numeric" min={1} max={100} value={valor} onChange={(e) => setValor(e.target.value)} className="h-10 w-20 text-base desk:h-8 desk:text-sm" />
+        <Button type="submit" variant="outline" className="h-10 desk:h-8" disabled={enviando || !valido || numero === curso.cupo}>
+          {enviando && <Loader2 className="animate-spin" />} Guardar
+        </Button>
+      </div>
+      {!valido && <p className="text-xs text-destructive">Escribe un número entre 1 y 100.</p>}
+      <ErrorForm mensaje={error} />
+    </form>
   )
 }
 

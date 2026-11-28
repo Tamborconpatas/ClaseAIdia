@@ -141,6 +141,7 @@ def login_alumno(datos: LoginAlumnoIn, db: Session = Depends(obtener_db)):
         registrar_resultado_intento(usuario, exitoso=False, db=db)
         raise HTTPException(status_code=401, detail="Credenciales inválidas")
 
+    usuario.version_sesion += 1  # una sola sesión por alumno: la del equipo anterior se cierra
     registrar_resultado_intento(usuario, exitoso=True, db=db)
     return emitir_token(usuario)
 

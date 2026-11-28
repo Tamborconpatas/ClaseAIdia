@@ -50,6 +50,7 @@ CASOS = [
     ({"disco": {"audio_temporal_mb": 2000}, "procesamiento": {"con_reintento": [{}]}}, None, None),
     ({"ollama": {"responde": False, "modelo_texto_instalado": False}}, "aviso", "Ollama) no responde"),
     ({"ollama": {"modelo_texto_instalado": False}}, "critico", "Falta el modelo que escribe los resúmenes (llama3.2:3b)"),
+    ({"ollama": {"modelo_texto_instalado": False, "modelo_de_respaldo": "llama3.2:1b"}}, "aviso", "mientras tanto se resume con llama3.2:1b"),  # con respaldo la clase sí se resume
     ({"respaldos": {"cantidad": 0, "ultimo": None, "hace_dias": None}}, "aviso", "ningún respaldo"),
     ({"respaldos": {"hace_dias": 2}}, None, None),
     ({"respaldos": {"hace_dias": 3}}, "critico", "hace 3 días"),
@@ -94,11 +95,36 @@ def test_la_carpeta_de_respaldos_se_muestra_completa_y_con_su_ultimo_respaldo(tm
     (carpeta / f"escuela-{ayer}.db").write_bytes(b"x" * 1000)
     monkeypatch.setenv("CARPETA_RESPALDOS", str(carpeta))
     monkeypatch.chdir(tmp_path)  # un nombre relativo no le dice nada al UTP: se muestra la ruta completa
-    d = se._respaldos()
+    db = _base_con_tablas()
+    d = se._respaldos(db)
     assert d["carpeta"] == str(carpeta.resolve())
     monkeypatch.setenv("CARPETA_RESPALDOS", "copias")
-    assert se._respaldos()["carpeta"] == str(carpeta.resolve()) and os.path.isabs(se._respaldos()["carpeta"])
+    assert se._respaldos(db)["carpeta"] == str(carpeta.resolve()) and os.path.isabs(se._respaldos(db)["carpeta"])
     assert (d["cantidad"], d["ultimo"], d["hace_dias"]) == (1, ayer, 1)
+
+
+def _base_con_tablas():
+    """Una base vacía en memoria, con las tablas: los ajustes del UTP viven en ella."""
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session
+
+    from infraestructura.modelos_orm import Base
+
+    motor = create_engine("sqlite://")
+    Base.metadata.create_all(motor)
+    return Session(motor)
+
+
+def test_la_carpeta_que_fijo_el_utp_gana_sobre_la_variable_de_entorno_en_el_panel(tmp_path, monkeypatch):
+    elegida, de_entorno = tmp_path / "elegida", tmp_path / "entorno"
+    elegida.mkdir(), de_entorno.mkdir()
+    monkeypatch.setenv("CARPETA_RESPALDOS", str(de_entorno))
+    db = _base_con_tablas()
+    assert se._respaldos(db)["carpeta"] == str(de_entorno.resolve())
+    from servicios import servicio_ajustes
+
+    servicio_ajustes.cambiar_ajustes_de_respaldo(db, str(elegida), None)
+    assert se._respaldos(db)["carpeta"] == str(elegida.resolve())
 
 
 def test_ollama_apagado_no_se_confunde_con_modelo_faltante():
@@ -110,15 +136,28 @@ def test_ollama_apagado_no_se_confunde_con_modelo_faltante():
 # --- piezas sueltas --------------------------------------------------------------------------------
 
 
-def test_modelo_de_texto_en_auto_acepta_el_1b_o_el_3b_y_uno_configurado_solo_ese(monkeypatch):
+def test_modelo_de_texto_en_auto_acepta_el_de_cpu_o_el_de_gpu_y_uno_configurado_solo_ese(monkeypatch):
+    db = _base_con_tablas()
     monkeypatch.setattr(se.app_config, "get_param", lambda k: "auto")
-    monkeypatch.setattr(sm, "modelos_instalados", lambda url: {"llama3.2:1b"})
-    assert se._ollama() == {"responde": True, "modelo_texto": "llama3.2:1b o llama3.2:3b", "modelo_texto_instalado": True}
+    monkeypatch.setattr(sm, "modelos_instalados", lambda url: {"gemma4:e2b"})
+    assert se._ollama(db) == {"responde": True, "modelo_texto": "gemma4:e2b o llama3.2:3b", "modelo_texto_instalado": True, "modelo_de_respaldo": None}
     monkeypatch.setattr(se.app_config, "get_param", lambda k: "qwen3:8b")
-    d = se._ollama()
-    assert d["modelo_texto"] == "qwen3:8b" and d["modelo_texto_instalado"] is False  # el 1b instalado no cuenta
+    d = se._ollama(db)
+    assert d["modelo_texto"] == "qwen3:8b" and d["modelo_texto_instalado"] is False  # el que está instalado no cuenta
     monkeypatch.setattr(sm, "modelos_instalados", lambda url: None)
-    assert se._ollama()["responde"] is False and se._ollama()["modelo_texto_instalado"] is False
+    assert se._ollama(db)["responde"] is False and se._ollama(db)["modelo_texto_instalado"] is False
+
+
+def test_el_panel_exige_el_modelo_que_eligio_el_utp_y_no_el_automatico(monkeypatch):
+    from servicios import servicio_ajustes
+
+    db = _base_con_tablas()
+    monkeypatch.setattr(se.app_config, "get_param", lambda k: "auto")
+    monkeypatch.setattr(sm, "modelos_instalados", lambda url: {"gemma4:e2b", "llama3.2:1b"})
+    servicio_ajustes.cambiar_modelo_de_resumen(db, "llama3.2:1b", True)
+    assert se._ollama(db) == {"responde": True, "modelo_texto": "llama3.2:1b", "modelo_texto_instalado": True, "modelo_de_respaldo": None}
+    monkeypatch.setattr(sm, "modelos_instalados", lambda url: {"gemma4:e2b"})  # el elegido se desinstaló: ahora falta de verdad
+    assert se._ollama(db)["modelo_texto_instalado"] is False
 
 
 def test_misma_unidad(tmp_path, monkeypatch):
@@ -149,7 +188,7 @@ def equipo(monkeypatch, tmp_path):
     monkeypatch.setattr(se.app_config, "get_param", lambda k: "auto")
     monkeypatch.setattr(sm, "modelos_instalados", lambda url: {"llama3.2:3b"})
     monkeypatch.setattr(se, "_disco", lambda: sano()["disco"])
-    monkeypatch.setattr(se, "_respaldos", lambda: sano()["respaldos"])
+    monkeypatch.setattr(se, "_respaldos", lambda db: sano()["respaldos"])
     monkeypatch.setattr(se, "memoria_total_gb", lambda: 15.64)
     monkeypatch.setattr(se, "memoria_libre_gb", lambda: 9.26)
 
@@ -174,7 +213,7 @@ def test_un_servidor_sano_y_ocioso_se_ve_asi(cliente, esc, equipo):
     d = ver(cliente, esc["utp"]).json()
     assert d["alertas"] == []
     assert d["procesamiento"] == {"en_vivo": [], "procesando": [], "con_reintento": [], "con_error": [], "terminadas_24h": 0}
-    assert d["ollama"] == {"responde": True, "modelo_texto": "llama3.2:1b o llama3.2:3b", "modelo_texto_instalado": True}
+    assert d["ollama"] == {"responde": True, "modelo_texto": "gemma4:e2b o llama3.2:3b", "modelo_texto_instalado": True, "modelo_de_respaldo": None}
     assert d["memoria"] == {"total_gb": 15.6, "libre_gb": 9.3}
     assert d["vigilancia"]["activa"] is None  # el servidor de pruebas no enciende la vigilancia
     assert d["generado_en"].endswith(("Z", "+00:00"))

@@ -5,7 +5,7 @@
 # Términos completos en el archivo LICENSE de la raíz.
 
 import jwt
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
@@ -13,6 +13,7 @@ from infraestructura.basedatos import obtener_db
 from infraestructura.modelos_orm import RolNombre, Usuario
 from infraestructura.seguridad import crear_token, decodificar_token
 from interfaz.api.esquemas import TokenOut
+from servicios import servicio_conexiones
 
 _bearer = HTTPBearer()
 
@@ -24,6 +25,7 @@ def emitir_token(usuario: Usuario) -> TokenOut:
 
 
 def usuario_actual(
+    request: Request,
     credentials: HTTPAuthorizationCredentials = Depends(_bearer),
     db: Session = Depends(obtener_db),
 ) -> Usuario:
@@ -47,6 +49,7 @@ def usuario_actual(
         raise HTTPException(status_code=401, detail="Cuenta desactivada")
     if payload.get("v", 0) != usuario.version_sesion:  # cambió una credencial o se cerraron todas las sesiones
         raise HTTPException(status_code=401, detail="Sesión cerrada: vuelve a ingresar")
+    servicio_conexiones.registrar_actividad(db, usuario, request)  # quién está conectado, desde qué equipo (sin IP)
     return usuario
 
 
