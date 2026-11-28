@@ -735,3 +735,25 @@ Gemma 4 E2B es 3,5 veces más rápido y empata en texto impreso, pero **con letr
 - Las fotos de la pizarra (Qwen2.5-VL) llegaron a 4,70 GB en 11 fotos seguidas (3,75 GB a la primera): con el trabajador y el servidor, ≈ 5,8 GB. No se suman al resumen: son etapas distintas.
 - **El supuesto «un modelo a la vez y se suelta» del README no se cumple del todo**: el proceso del trabajador conserva ~0,9 GB mientras Ollama carga el modelo de texto.
 - **No medido**: Windows (se estima 3–4 GB en reposo; de ahí el mínimo de 12 GB), el túnel de acceso remoto, un navegador en el mismo PC, dos clases simultáneas, y una clase de 90 minutos completa con el muestreador (solo se midieron partes: 5 min de voz y la ventana máxima por separado). El modelo liviano (`llama3.2:1b`) suma ~2,7 GB por cálculo (0,9 + 1,6 + 0,2), no medido en conjunto.
+
+## La cola en un equipo lento: clase de 90 minutos solo con CPU (2026-11-27)
+
+Lo que faltaba de la Fase 5: la cola solo se había probado con audio corto y con GPU, y el tiempo de una clase de 90 min en un PC escolar era una estimación. `python -m scripts.medir_cola` (nuevo) levanta un servidor temporal, encola N clases (una profesora, un curso y un bloque por clase), sube el audio en trozos de 7 MB como el equipo grabador y mide, desde fuera como lo vería el profesor, la espera, el procesamiento y la memoria de cada una.
+
+**El «PC escolar» de la medición** (una aproximación, no un PC real): los 4 núcleos lentos de un i5-13420H (los «E», 3,4 GHz, sin hiperhilos; `taskset -c 8-11`), 12 GB de memoria como máximo (`MemoryMax`, comprobado en `memory.max`), sin GPU, la aplicación creyendo que tiene 4 núcleos (`PYTHON_CPU_COUNT=4` → usa **3 hilos**, como en un PC de 4 núcleos) y **un Ollama propio dentro de la misma restricción** (el del sistema habría usado los núcleos rápidos y dejado el resumen sin frenar). Modelo `gemma4:e2b`. Pasó por el camino real: servidor, trabajador aparte, Whisper `small`, limpieza de audio y resumen con mapa.
+
+**Un fallo de método que casi arruina la medición**: `systemd-run -p AllowedCPUs=8-11` **devuelve éxito y no limita nada** en una sesión de usuario sin delegación de `cpuset` (`nproc` seguía diciendo 12). Se vio al comprobar dentro del scope; `taskset` sí limita. Está escrito en el docstring del script.
+
+| Medición | Espera | Procesamiento | Transcribir | Resumir | Por minuto de clase |
+|---|---|---|---|---|---|
+| 1 clase de 90 min | 0 | **60,3 min** | 17,7 min | 42,6 min | 0,67 |
+| 2 clases de 5 min en cola: la 1.ª | 0 | 5,6 min | 1,0 | 4,6 | 1,12 |
+| …la 2.ª (esperó a la 1.ª) | 5,6 min | 5,1 min | | | 1,03 |
+
+- **La clase de 90 min cabe**: tarda 60 min, el 67 % de lo que dura. Memoria: pico total **6,3 GB** (trabajador 2,3, modelo de Ollama 5,1, servidor 0,1); con audio de 90 min el trabajador llega a 2,3 GB (con 5 min eran 1,7). No quedó audio en el disco.
+- **La cola hace lo que debe**: la segunda clase se vio en posición 1, esperó exactamente lo que tardó la primera y se procesó después; ambas terminaron.
+- **El cuello de botella es el resumen** (42,6 de 60,3 min, el 70 %), no Whisper. Contra el equipo rápido de las mediciones anteriores (3 hilos): Whisper es solo 1,3 veces más lento, **el resumen 3,0 veces**, y el total 2,2 veces.
+- **Modelo derivado de los dos puntos** (aproximado, lineal): una clase de *m* minutos tarda unos **0,64·m + 2,4 min** (hay un costo fijo de ~2,4 min por cargar el modelo y generar las secciones y el mapa): 45 min → ~31, 60 → ~41, 90 → ~60.
+- **Hasta dónde aguanta**: con clases de 90 min seguidas el equipo alcanza a procesar en tiempo real mientras sea hasta **1,5 veces más lento que este** (≈ 3,3 veces más lento que el i5 de 13.ª generación). Si es más lento, se forma atraso: con un PC el doble de lento que el medido, una clase de 90 min tarda ~121 min y con 6 seguidas el atraso al final de la jornada es de unos 150 min; **se vacía de noche**, y el plazo de cada clase es la misma clase de la semana siguiente (`clave_de_cola`), así que ninguna se pierde. Lo que cambia es cuándo ven el material los alumnos.
+- **Límites**: es **una sola corrida** por punto (sin variación entre corridas); el audio de 90 min se armó con la clase real de 62,6 min más sus primeros 27,4 (el texto repetido cuesta igual de procesar, pero no es una clase de 90 min distinta); la extrapolación es lineal y el equipo es una aproximación con núcleos de un i5 reciente, no un PC escolar real con su disco, su memoria y su Windows; no se midió la cola con **dos clases de 90 min** (la mecánica se midió con dos de 5).
+- **Qué mejoraría el tiempo** (no se hizo): el resumen es el 70 % del tiempo y es proporcional al número de bloques de la transcripción (9 en una clase de 62 min); un modelo más liviano (`llama3.2:1b`, que ya existe como mínimo) o bloques más grandes lo acortarían a cambio de calidad, y habría que medirlo.
